@@ -445,7 +445,7 @@ app.post("/admin/level", async (c) => {
   if (!isValidWxId(wxId) || !Number.isInteger(level) || level < 0 || level > 99) {
     return c.json({ error: "invalid payload" }, 400);
   }
-  if (isAdmin(wxId)) return c.json({ error: "protected account" }, 403);
+  if (isAdmin(wxId) && level === 0) return c.json({ error: "protected account" }, 403);
   if (level === 0) {
     sqlite.transaction(() => {
       sqlite.query("DELETE FROM reads WHERE id IN (SELECT id FROM messages WHERE wx_id = ?)").run(wxId);
