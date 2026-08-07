@@ -82,13 +82,21 @@ async function portOpen(port: number): Promise<boolean> {
       return false;
     }
   }
-  try {
-    const sock = await Bun.connect({ hostname: "127.0.0.1", port });
-    sock.end();
-    return true;
-  } catch {
-    return false;
+  /* Linux：解析 ss -tln（备选 /proc/net/tcp{,6}），不依赖主动建连 */
+  const r = run("ss", ["-tln"]);
+  if (r.ok && r.out) {
+    return new RegExp(`[:.]${port}\\s`).test(r.out);
   }
+  const hex = port.toString(16).padStart(4, "0");
+  for (const f of ["/proc/net/tcp", "/proc/net/tcp6"]) {
+    try {
+      const content = readFileSync(f, "utf8");
+      if (content.includes(":" + hex + " ") && content.includes("0A")) return true;
+    } catch {
+      /* 文件不存在则跳过 */
+    }
+  }
+  return false;
 }
 
 /* ────────────── 安装 / 卸载 / 服务控制 ──────────────
