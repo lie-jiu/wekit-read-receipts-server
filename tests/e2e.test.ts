@@ -63,6 +63,11 @@ describe("端到端（客户端兼容）", () => {
     expect(regMsg.status).toBe(200);
     expect((await regMsg.json()).id).toBe(ID);
 
+    // 重复注册幂等：返回同一 id，count 不丢
+    const dupMsg = await post("/register", { wxId: WXID, content: CONTENT, createTime: Number(CREATE_TIME) }, sc);
+    expect(dupMsg.status).toBe(200);
+    expect((await dupMsg.json()).id).toBe(ID);
+
     // 先打点后注册 → count 不丢
     expect(await (await get(`/count?wxId=${WXID}&id=${ID}`)).text()).toBe('{"count":3}');
 

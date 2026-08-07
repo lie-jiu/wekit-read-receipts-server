@@ -101,7 +101,7 @@ app.post("/register", async (c) => {
     if (!user || user.level <= 0) return c.json({ error: "not registered" }, 403);
 
     const id = await computeId(wxId, content, createTime);
-    const inserted = sqlite.transaction(() => {
+    sqlite.transaction(() => {
       const now = chinaNow();
       const res = sqlite
         .query("INSERT OR IGNORE INTO messages (id, wx_id, content, timestamp) VALUES (?, ?, ?, ?)")
@@ -126,10 +126,9 @@ app.post("/register", async (c) => {
       sqlite
         .query("UPDATE users SET message_count = (SELECT COUNT(*) FROM messages WHERE wx_id = ?) WHERE wx_id = ?")
         .run(wxId, wxId);
-      return true;
     })();
 
-    if (inserted) ids.push(id);
+    ids.push(id);
   }
 
   return c.json(Array.isArray(body) ? { ids } : { id: ids[0] ?? "" });
