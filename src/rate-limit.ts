@@ -47,18 +47,23 @@ export function setIpResolver(fn: IpResolver | null): void {
   ipResolver = fn;
 }
 
+/** 去掉 IPv4-mapped IPv6 前缀：::ffff:a.b.c.d → a.b.c.d */
+function normalizeIp(ip: string): string {
+  return ip.startsWith("::ffff:") ? ip.slice(7) : ip;
+}
+
 export function clientIp(c: Context): string {
   if (ipResolver) {
     const ip = ipResolver(c);
     if (ip) return ip;
   }
   const env = c.env as { requestIP?: (req: Request) => { address: string } | null };
-  const peer = env.requestIP?.(c.req.raw)?.address ?? "unknown";
+  const peer = normalizeIp(env.requestIP?.(c.req.raw)?.address ?? "unknown");
   if (TRUSTED_PROXY.length === 0) return peer;
   if (!TRUSTED_PROXY.some((cidr) => ipInCidr(peer, cidr))) return peer;
   const xff = c.req.header("x-forwarded-for");
   if (xff) {
-    const first = xff.split(",")[0]?.trim();
+    const first = normalizeIp(xff.split(",")[0]?.trim() ?? "");
     if (first) return first;
   }
   return peer;
