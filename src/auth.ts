@@ -1,6 +1,6 @@
 import type { Context } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
-import { ADMINS, SESSION_TTL_DAYS, SESSION_TTL_MS, TRUSTED_PROXY } from "./config";
+import { isAdmin, SESSION_TTL_DAYS, SESSION_TTL_MS, TRUSTED_PROXY } from "./config";
 import { ipInCidr } from "./rate-limit";
 import { sqlite } from "./db";
 import { chinaNow, sha256HexSync } from "./utils";
@@ -105,7 +105,7 @@ export function getSessionUser(c: Context): SessionUser | null {
     wxId: row.wx_id,
     level: row.level,
     messageCount: row.message_count,
-    isAdmin: ADMINS.has(row.wx_id),
+    isAdmin: isAdmin(row.wx_id),
   };
 }
 

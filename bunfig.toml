@@ -1,2 +1,0 @@
-[test]
-env = { DB_PATH = ":memory:", NODE_ENV = "test" }

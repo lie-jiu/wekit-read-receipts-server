@@ -3,13 +3,14 @@ export const isProd = process.env.NODE_ENV === "production";
 export const PORT = Number(process.env.PORT ?? 3000);
 export const DB_PATH = process.env.DB_PATH ?? (isProd ? "/var/lib/read-receipts.db" : "./data.db");
 
-/** 逗号分隔的 wxid 列表，这些账号具备管理员权限 */
-export const ADMINS = new Set(
-  (process.env.ADMIN ?? "")
+/** 逗号分隔的 wxid 列表，这些账号具备管理员权限（惰性读取，避免模块加载时 env 未就绪） */
+export function isAdmin(wxId: string): boolean {
+  return (process.env.ADMIN ?? "")
     .split(",")
     .map((s) => s.trim())
-    .filter(Boolean),
-);
+    .filter(Boolean)
+    .includes(wxId);
+}
 
 /** 可选邀请码；设置后新注册必须携带正确邀请码 */
 export const INVITE_CODE = process.env.INVITE_CODE?.trim() || "";
@@ -57,19 +58,25 @@ export const SECURITY_HEADERS = {
 export const CSP = {
   LOGIN: [
     "default-src 'none'",
-    "base-uri 'none'",
+    "script-src 'unsafe-inline'",
+    "style-src 'unsafe-inline'",
+    "img-src data:",
+    "connect-src 'self'",
     "form-action 'self'",
+    "base-uri 'none'",
     "frame-ancestors 'none'",
-    "style-src 'self' 'unsafe-inline'",
-    "script-src 'self'",
+    "object-src 'none'",
   ].join("; "),
   DASHBOARD: [
-    "default-src 'self'",
-    "base-uri 'none'",
+    "default-src 'none'",
+    "script-src 'unsafe-inline'",
+    "style-src 'unsafe-inline'",
+    "img-src 'self' data:",
+    "connect-src 'self'",
     "form-action 'self'",
+    "base-uri 'none'",
     "frame-ancestors 'none'",
-    "style-src 'self' 'unsafe-inline'",
-    "script-src 'self'",
+    "object-src 'none'",
   ].join("; "),
 };
 

@@ -1,13 +1,13 @@
 import type { Context } from "hono";
 import { Hono } from "hono";
 import {
-  ADMINS,
   CSP,
   INVITE_CODE,
   MAX_CONTENT_LENGTH,
   MAX_REGISTER_BATCH,
   PIXEL_PNG,
   SECURITY_HEADERS,
+  isAdmin,
   loginDelayMs,
   quotaFor,
 } from "./config";
@@ -23,10 +23,22 @@ import {
 } from "./auth";
 import { sqlite } from "./db";
 import { clientIp, overLimit, rateLimit } from "./rate-limit";
-import { chinaDate, chinaNow, computeId, escapeLike, isValidId, isValidWxId, maskWxId, timingSafeEqual } from "./utils";
-import { renderAdmin, renderDashboard, renderLogin } from "./pages";
+import { chinaDate, chinaNow, computeId, escapeLike, isValidId, isValidWxId, maskContent, maskWxId, timingSafeEqual } from "./utils";
+import { LOGIN_HTML, adminPage, htmlPage } from "./pages";
 
 const app = new Hono();
+
+/** 兼容 JSON 与表单提交（登录/注册页复用 CF 版前端，发的是 x-www-form-urlencoded） */
+async function parseBody(c: Context): Promise<Record<string, unknown>> {
+  const ct = c.req.header("content-type") ?? "";
+  if (ct.includes("application/x-www-form-urlencoded")) {
+    const form = await c.req.parseBody();
+    return Object.fromEntries(
+      Object.entries(form).map(([k, v]) => [k, typeof v === "string" ? v : ""]),
+    );
+  }
+  return await c.req.json();
+}
 
 app.use("*", async (c, next) => {
   for (const [k, v] of Object.entries(SECURITY_HEADERS)) c.header(k, v);
@@ -140,9 +152,9 @@ app.use("/auth/*", rateLimit("auth"));
 
 app.post("/auth/register", async (c) => {
   const ip = clientIp(c);
-  let body: { wxId?: unknown; password?: unknown; inviteCode?: unknown };
+  let body: { wxId?: unknown; password?: unknown; inviteCode?: unknown; invite?: unknown };
   try {
-    body = await c.req.json();
+    body = await parseBody(c);
   } catch {
     return c.json({ error: "invalid JSON" }, 400);
   }
@@ -152,7 +164,7 @@ app.post("/auth/register", async (c) => {
     return c.json({ error: "invalid credentials" }, 400);
   }
   if (INVITE_CODE) {
-    const code = typeof body.inviteCode === "string" ? body.inviteCode : "";
+    const code = typeof body.inviteCode === "string" ? body.inviteCode : typeof body.invite === "string" ? body.invite : "";
     if (!timingSafeEqual(code, INVITE_CODE)) {
       await new Promise((r) => setTimeout(r, loginDelayMs()));
       return c.json({ error: "invalid invite code" }, 403);
@@ -173,7 +185,7 @@ app.post("/auth/verify", async (c) => {
   const ip = clientIp(c);
   let body: { wxId?: unknown; password?: unknown };
   try {
-    body = await c.req.json();
+    body = await parseBody(c);
   } catch {
     return c.json({ error: "invalid JSON" }, 400);
   }
@@ -234,7 +246,7 @@ app.get("/login", (c) => {
   if (getSessionUser(c)) return c.redirect("/");
   c.header("Content-Security-Policy", CSP.LOGIN);
   c.header("Content-Type", "text/html; charset=utf-8");
-  return c.body(renderLogin());
+  return c.body(LOGIN_HTML);
 });
 
 app.get("/", (c) => {
@@ -242,7 +254,7 @@ app.get("/", (c) => {
   if (!user) return c.redirect("/login");
   c.header("Content-Security-Policy", CSP.DASHBOARD);
   c.header("Content-Type", "text/html; charset=utf-8");
-  return c.body(renderDashboard(user));
+  return c.body(htmlPage({ wxId: user.wxId, level: user.level }));
 });
 
 app.get("/messages", (c) => {
@@ -280,7 +292,7 @@ app.get("/messages", (c) => {
   } else {
     rows = sqlite.query(`${base("WHERE m.wx_id = ?")}`).all(user.wxId, limit, offset) as typeof rows;
   }
-  return c.json({ messages: rows });
+  return c.json(rows.map((r) => ({ id: r.id, content: r.content, reads: r.read_count, timestamp: r.timestamp })));
 });
 
 app.delete("/messages", (c) => {
@@ -318,7 +330,7 @@ app.get("/reads/:id", (c) => {
   const rows = sqlite
     .query("SELECT ip, timestamp FROM reads WHERE id = ? ORDER BY timestamp DESC LIMIT 500")
     .all(id) as Array<{ ip: string; timestamp: string }>;
-  return c.json({ id, count: rows.length, reads: rows });
+  return c.json(rows);
 });
 
 const LEADERBOARD_TABLES: Record<string, string> = {
@@ -331,22 +343,42 @@ app.get("/leaderboard", (c) => {
   const denied = requireUserOr(c);
   if (denied) return denied;
   const me = getSessionUser(c)!;
-  const metric = c.req.query("metric") ?? "read";
-  const period = c.req.query("period") ?? "day";
-  const table = LEADERBOARD_TABLES[metric];
-  if (!table || !["day", "total"].includes(period)) return c.json({ error: "invalid params" }, 400);
+  const metric = c.req.query("metric") ?? "reg";
+  const scope = c.req.query("scope") ?? "total";
+  if (!["reg", "read", "msg"].includes(metric) || !["day", "total"].includes(scope)) {
+    return c.json({ error: "invalid params" }, 400);
+  }
 
-  const where = period === "day" ? " WHERE date = ?" : "";
-  const params: Array<string> = period === "day" ? [chinaDate()] : [];
+  // 注册/已读榜：统计表（按 wx_id 聚合）；消息榜：按消息实时聚合（统计表无消息维度）
+  if (metric === "msg") {
+    const dayCond = scope === "day" ? "AND r.timestamp >= ? " : "";
+    const params: Array<string> = scope === "day" ? [chinaDate() + " 00:00:00"] : [];
+    const rows = sqlite
+      .query(
+        `SELECT m.id, m.wx_id, m.content, COUNT(DISTINCT r.ip) AS total
+         FROM messages m LEFT JOIN reads r ON r.id = m.id ${dayCond}
+         GROUP BY m.id ORDER BY total DESC, m.wx_id ASC, m.id ASC LIMIT 10`,
+      )
+      .all(...params) as Array<{ id: string; wx_id: string; content: string; total: number }>;
+    return c.json(
+      rows.map((r) => ({
+        id: r.id,
+        wxId: maskWxId(r.wx_id),
+        content: maskContent(r.content),
+        count: r.total,
+        me: r.wx_id === me.wxId,
+      })),
+    );
+  }
+
+  const table = LEADERBOARD_TABLES[metric];
+  const where = scope === "day" ? " WHERE date = ?" : "";
+  const params: Array<string> = scope === "day" ? [chinaDate()] : [];
   const rows = sqlite
     .query(`SELECT wx_id, SUM(count) AS total FROM ${table}${where} GROUP BY wx_id ORDER BY total DESC LIMIT 10`)
     .all(...params) as Array<{ wx_id: string; total: number }>;
 
-  return c.json({
-    period,
-    metric,
-    entries: rows.map((r) => ({ wxId: maskWxId(r.wx_id), count: r.total, me: r.wx_id === me.wxId })),
-  });
+  return c.json(rows.map((r) => ({ wxId: maskWxId(r.wx_id), count: r.total, me: r.wx_id === me.wxId })));
 });
 
 /* ---- 管理员 ---- */
@@ -364,20 +396,16 @@ app.get("/admin", (c) => {
   if (!user) return c.redirect("/login");
   c.header("Content-Security-Policy", CSP.DASHBOARD);
   c.header("Content-Type", "text/html; charset=utf-8");
-  return c.body(renderAdmin(user));
+  return c.body(adminPage({ wxId: user.wxId }));
 });
 
 app.get("/admin/users", (c) => {
   const denied = adminOr(c);
   if (denied) return denied;
   const rows = sqlite
-    .query(
-      `SELECT u.wx_id, u.level, u.message_count, u.created_at,
-              (SELECT COUNT(*) FROM reads r JOIN messages m ON m.id = r.id WHERE m.wx_id = u.wx_id) AS read_count
-       FROM users u ORDER BY u.created_at DESC`,
-    )
-    .all() as Array<{ wx_id: string; level: number; message_count: number; created_at: string; read_count: number }>;
-  return c.json({ users: rows });
+    .query("SELECT wx_id AS wxId, level, created_at AS createdAt FROM users ORDER BY created_at DESC")
+    .all() as Array<{ wxId: string; level: number; createdAt: string }>;
+  return c.json(rows);
 });
 
 app.post("/admin/users", async (c) => {
@@ -417,7 +445,7 @@ app.post("/admin/level", async (c) => {
   if (!isValidWxId(wxId) || !Number.isInteger(level) || level < 0 || level > 99) {
     return c.json({ error: "invalid payload" }, 400);
   }
-  if (ADMINS.has(wxId)) return c.json({ error: "protected account" }, 403);
+  if (isAdmin(wxId)) return c.json({ error: "protected account" }, 403);
   if (level === 0) {
     sqlite.transaction(() => {
       sqlite.query("DELETE FROM reads WHERE id IN (SELECT id FROM messages WHERE wx_id = ?)").run(wxId);
@@ -455,7 +483,7 @@ app.delete("/admin/users/:wxId", (c) => {
   const denied = adminOr(c);
   if (denied) return denied;
   const wxId = c.req.param("wxId");
-  if (ADMINS.has(wxId)) return c.json({ error: "protected account" }, 403);
+  if (isAdmin(wxId)) return c.json({ error: "protected account" }, 403);
   sqlite.transaction(() => {
     sqlite.query("DELETE FROM reads WHERE id IN (SELECT id FROM messages WHERE wx_id = ?)").run(wxId);
     sqlite.query("DELETE FROM messages WHERE wx_id = ?").run(wxId);
@@ -470,27 +498,46 @@ app.get("/admin/messages", (c) => {
   const denied = adminOr(c);
   if (denied) return denied;
   const q = (c.req.query("q") ?? "").trim();
+  const fwx = (c.req.query("wxId") ?? "").trim();
   const limit = Math.min(Number(c.req.query("limit") ?? 50), 200);
-  const where = q ? "WHERE m.content LIKE ? ESCAPE '\\'" : "";
-  const params: Array<string> = q ? [`%${escapeLike(q)}%`, String(limit)] : [String(limit)];
+  const conds: Array<string> = [];
+  const params: Array<string> = [];
+  if (fwx) {
+    conds.push("m.wx_id = ?");
+    params.push(fwx);
+  }
+  if (q) {
+    conds.push("m.content LIKE ? ESCAPE '\\'");
+    params.push(`%${escapeLike(q)}%`);
+  }
+  const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
   const rows = sqlite
     .query(
-      `SELECT m.id, m.wx_id, m.content, m.timestamp,
-              (SELECT COUNT(DISTINCT r.ip) FROM reads r WHERE r.id = m.id) AS read_count
+      `SELECT m.id, m.wx_id AS wxId, m.content, m.timestamp,
+              (SELECT COUNT(DISTINCT r.ip) FROM reads r WHERE r.id = m.id) AS reads
        FROM messages m ${where} ORDER BY m.timestamp DESC LIMIT ?`,
     )
-    .all(...params) as Array<{ id: string; wx_id: string; content: string; timestamp: string; read_count: number }>;
-  return c.json({ messages: rows });
+    .all(...params, String(limit)) as Array<{ id: string; wxId: string; content: string; timestamp: string; reads: number }>;
+  return c.json(rows);
 });
 
 app.delete("/admin/messages", (c) => {
   const denied = adminOr(c);
   if (denied) return denied;
-  sqlite.transaction(() => {
-    sqlite.query("DELETE FROM reads").run();
-    sqlite.query("DELETE FROM messages").run();
-  })();
-  audit(null, "admin_delete_all_messages", null, clientIp(c));
+  const wxId = (c.req.query("wxId") ?? "").trim();
+  if (wxId) {
+    sqlite.transaction(() => {
+      sqlite.query("DELETE FROM reads WHERE id IN (SELECT id FROM messages WHERE wx_id = ?)").run(wxId);
+      sqlite.query("DELETE FROM messages WHERE wx_id = ?").run(wxId);
+    })();
+    audit(wxId, "admin_wipe_user", null, clientIp(c));
+  } else {
+    sqlite.transaction(() => {
+      sqlite.query("DELETE FROM reads").run();
+      sqlite.query("DELETE FROM messages").run();
+    })();
+    audit(null, "admin_delete_all_messages", null, clientIp(c));
+  }
   return c.json({ ok: true });
 });
 

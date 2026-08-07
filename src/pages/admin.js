@@ -1,0 +1,548 @@
+export function adminPage(session) { return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title data-i18n="title">Admin — Read Receipts</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:system-ui,-apple-system,sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh;min-height:100dvh;padding:2rem 1rem;padding-top:max(2rem,env(safe-area-inset-top));padding-bottom:max(2rem,env(safe-area-inset-bottom));padding-left:max(1rem,env(safe-area-inset-left));padding-right:max(1rem,env(safe-area-inset-right))}
+.container{max-width:1000px;margin:0 auto}
+.header{display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem;flex-wrap:wrap;gap:.75rem}
+.header h1{font-size:1.5rem;font-weight:700;color:#f1f5f9}
+.header .subtitle{font-size:.85rem;color:#64748b}
+.flex{display:flex;gap:.5rem;align-items:center}
+.btn{display:inline-flex;align-items:center;gap:.35rem;padding:.45rem .85rem;border:none;border-radius:6px;font-size:.8rem;font-weight:500;cursor:pointer;white-space:nowrap;text-decoration:none;transition:background .15s}
+.btn:active{transform:scale(.97)}
+.btn-primary{background:#2563eb;color:#fff}.btn-primary:hover{background:#1d4ed8}
+.btn-secondary{background:#475569;color:#e2e8f0}.btn-secondary:hover{background:#64748b}
+.btn-danger{background:#b91c1c;color:#fff}.btn-danger:hover{background:#991b1b}
+.btn-outline{background:transparent;color:#94a3b8;border:1px solid #475569}
+.btn-outline:hover{background:#1e293b;color:#e2e8f0}
+.btn-sm{padding:.3rem .6rem;font-size:.75rem}
+.lang-toggle{font-size:.7rem;font-weight:600;padding:.25rem .5rem;border-radius:4px;background:transparent;color:#64748b;border:1px solid #475569;cursor:pointer;letter-spacing:.03em}
+.lang-toggle:hover{color:#e2e8f0;border-color:#94a3b8}
+.tabs{display:flex;gap:.4rem;margin-bottom:1rem}
+.tab{padding:.5rem 1rem;border:1px solid #475569;border-radius:6px;background:transparent;color:#94a3b8;font-size:.85rem;font-weight:600;cursor:pointer;transition:background .15s,color .15s}
+.tab.active{background:#2563eb;border-color:#2563eb;color:#fff}
+.controls{display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;margin-bottom:1rem;background:#1e293b;border:1px solid #334155;border-radius:10px;padding:.75rem 1rem}
+.controls input{padding:.45rem .7rem;border:1px solid #475569;border-radius:6px;font-size:.85rem;background:#0f172a;color:#e2e8f0;outline:none;transition:border-color .15s;min-width:180px}
+.controls input:focus{border-color:#3b82f6}
+.controls .sep{color:#475569;font-size:.8rem;padding:0 .15rem}
+.table-wrapper{background:#1e293b;border:1px solid #334155;border-radius:10px;overflow:hidden}
+table{width:100%;border-collapse:collapse}
+th,td{text-align:left;padding:.65rem 1rem;font-size:.825rem}
+th{background:#0f172a;font-weight:600;color:#94a3b8;border-bottom:1px solid #334155}
+td{border-bottom:1px solid #1e293b;color:#cbd5e1}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:#0f172a80}
+.uuid-col{font-family:ui-monospace,"Cascadia Code","JetBrains Mono",monospace;font-size:.78rem;color:#60a5fa}
+.msg-col{max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ts-col{color:#94a3b8;white-space:nowrap}
+.empty-row td{text-align:center;padding:2.5rem 1rem;color:#475569;font-size:.85rem}
+.stats{display:flex;align-items:center;justify-content:space-between;padding:.5rem 1rem;background:#0f172a;border-bottom:1px solid #334155;font-size:.78rem;color:#64748b}
+.stats .count{color:#94a3b8;font-weight:600}
+.level-editor{display:inline-flex;align-items:center;gap:.25rem}
+.level-editor .btn{padding:.2rem .55rem;line-height:1;font-size:.85rem}
+.level-input{width:3.2rem;text-align:center;padding:.25rem .3rem;border:1px solid #475569;border-radius:6px;background:#0f172a;color:#e2e8f0;font-size:.8rem;outline:none;-moz-appearance:textfield}
+.level-input::-webkit-outer-spin-button,.level-input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+.level-input:focus{border-color:#3b82f6}
+.toast-container{position:fixed;top:max(1rem,env(safe-area-inset-top));right:max(1rem,env(safe-area-inset-right));z-index:1000;display:flex;flex-direction:column;gap:.5rem}
+.toast{display:flex;align-items:center;gap:.5rem;padding:.65rem 1rem;border-radius:8px;font-size:.85rem;font-weight:500;box-shadow:0 4px 12px rgba(0,0,0,.4);animation:toast-in .25s ease-out;max-width:360px}
+.toast-success{background:#065f46;color:#a7f3d0;border:1px solid #059669}
+.toast-error{background:#7f1d1d;color:#fecaca;border:1px solid #dc2626}
+.toast-info{background:#1e3a5f;color:#bfdbfe;border:1px solid #2563eb}
+@keyframes toast-in{from{opacity:0;translate:0 -.5rem}to{opacity:1;translate:0}}
+.toast-out{animation:toast-out .2s ease-in forwards}
+@keyframes toast-out{to{opacity:0;translate:0 -.5rem}}
+.modal-overlay{position:fixed;inset:0;z-index:999;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;animation:fade-in .15s ease-out}
+@keyframes fade-in{from{opacity:0}to{opacity:1}}
+.modal{background:#1e293b;border:1px solid #334155;border-radius:12px;padding:1.5rem;max-width:400px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,.5)}
+.modal h3{font-size:1.1rem;font-weight:600;margin-bottom:.5rem}
+.modal p{font-size:.875rem;color:#94a3b8;margin-bottom:1.25rem;line-height:1.5}
+.modal .actions{display:flex;gap:.5rem;justify-content:flex-end}
+.modal-form input{width:100%;padding:.55rem .7rem;border:1px solid #475569;border-radius:6px;font-size:.9rem;background:#0f172a;color:#e2e8f0;outline:none;margin-bottom:.6rem;transition:border-color .15s}
+.modal-form input:focus{border-color:#3b82f6}
+.hidden{display:none !important}
+@media (max-width:640px){body{padding:1rem .75rem}.header{flex-direction:column;align-items:stretch}.header .flex{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr))}.header .btn,.header .lang-toggle{width:100%;justify-content:center;min-height:40px}.tabs{display:grid;grid-template-columns:1fr 1fr}.tab{min-height:42px}.controls{flex-direction:column;align-items:stretch}.controls input{min-width:0;width:100%;min-height:44px}.btn{min-height:40px}.table-wrapper{padding:.5rem}table{display:block}thead{display:none}tbody{display:block}tbody tr{display:block;background:#0f172a;border:1px solid #334155;border-radius:10px;padding:.25rem 0;margin-bottom:.6rem}tbody tr:hover td,tbody tr:last-child td{background:transparent}tbody tr td{display:flex;align-items:center;justify-content:space-between;gap:.75rem;border-bottom:1px solid #1e293b;padding:.5rem .75rem;font-size:.8rem}tbody tr td:last-child{border-bottom:none}tbody tr td::before{content:attr(data-label);color:#64748b;font-weight:600;font-size:.72rem;flex-shrink:0}tbody tr td .flex{flex-wrap:nowrap}.uuid-col,.ts-col{white-space:normal;overflow-wrap:anywhere;text-align:right}.msg-col{max-width:none;white-space:normal;text-align:right;overflow-wrap:anywhere}.empty-row{border:1px dashed #334155;background:transparent !important}.empty-row td{justify-content:center;text-align:center;color:#64748b}.empty-row td::before{display:none}.level-input{font-size:1rem}.modal{max-width:94vw;width:94vw;padding:1.25rem}.modal .actions{flex-direction:column-reverse}.modal .actions .btn{width:100%;justify-content:center;min-height:44px}.modal-form input{min-height:44px}.toast-container{left:1rem;align-items:stretch}.toast{max-width:100%}}
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <div>
+      <h1 data-i18n="title">&#128737;&#65039; Admin Console</h1>
+      <div class="subtitle" id="adminName"></div>
+    </div>
+    <div class="flex">
+      <button type="button" class="lang-toggle" onclick="toggleLang()">中 / EN</button>
+      <a class="btn btn-outline btn-sm" href="/" data-i18n="dashboard">Dashboard</a>
+      <button class="btn btn-outline btn-sm" onclick="logout()" data-i18n="logout">Logout</button>
+    </div>
+  </div>
+  <div class="tabs">
+    <button id="tabUsers" class="tab active" onclick="showTab('users')" data-i18n="tabUsers">Users</button>
+    <button id="tabMsgs" class="tab" onclick="showTab('msgs')" data-i18n="tabMsgs">Messages</button>
+  </div>
+
+  <div id="secUsers">
+    <div class="controls">
+      <button class="btn btn-primary" onclick="openAddUser()" data-i18n="addUser">Add User</button>
+    </div>
+    <div class="table-wrapper">
+      <div class="stats"><span><span class="count" id="userCount">0</span> <span data-i18n="usersLabel">users</span></span></div>
+      <table>
+        <thead><tr><th>wxId</th><th data-i18n="level">Level</th><th data-i18n="registered">Registered</th><th data-i18n="actions">Actions</th></tr></thead>
+        <tbody id="userTbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div id="secMsgs" class="hidden">
+    <div class="controls">
+      <input id="fWxid" placeholder="Filter by wxId..." oninput="loadMsgs()" data-i18n="fWxidPlaceholder" data-i18n-placeholder/>
+      <input id="fContent" placeholder="Filter by message text..." oninput="loadMsgs()" data-i18n="fContentPlaceholder" data-i18n-placeholder/>
+      <span class="sep">|</span>
+      <input id="fDelWxid" placeholder="wxId to wipe all its data" data-i18n="fDelWxidPlaceholder" data-i18n-placeholder/>
+      <button class="btn btn-danger btn-sm" onclick="askClearUser()" data-i18n="wipeUserData">Wipe user data</button>
+    </div>
+    <div class="table-wrapper">
+      <div class="stats"><span><span class="count" id="msgCount">0</span> <span data-i18n="messagesLabel">messages</span></span></div>
+      <table>
+        <thead><tr><th>wxId</th><th data-i18n="message">Message</th><th data-i18n="reads">Reads</th><th data-i18n="timestamp">Timestamp</th><th></th></tr></thead>
+        <tbody id="msgTbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div id="toastContainer" class="toast-container"></div>
+<div id="modalOverlay" class="modal-overlay hidden">
+  <div class="modal">
+    <h3 id="modalTitle">Confirm</h3>
+    <p id="modalBody"></p>
+    <div class="actions">
+      <button class="btn btn-secondary" id="modalCancel" data-i18n="cancel">Cancel</button>
+      <button class="btn btn-danger" id="modalConfirm" data-i18n="confirm">Confirm</button>
+    </div>
+  </div>
+</div>
+<div id="passOverlay" class="modal-overlay hidden">
+  <div class="modal">
+    <h3 data-i18n="setPassword">Set Password</h3>
+    <div class="modal-form">
+      <input type="password" id="newUserPass" placeholder="New password (min 8 chars)" data-i18n="newPassPlaceholder" data-i18n-placeholder/>
+    </div>
+    <div class="actions">
+      <button class="btn btn-secondary" id="passCancel" data-i18n="cancel">Cancel</button>
+      <button class="btn btn-primary" id="passSave" data-i18n="save">Save</button>
+    </div>
+  </div>
+</div>
+<div id="addUserOverlay" class="modal-overlay hidden">
+  <div class="modal">
+    <h3 data-i18n="addUserTitle">Add User</h3>
+    <div class="modal-form">
+      <input id="newUserWxid" placeholder="wxId" data-i18n="addUserWxidPlaceholder" data-i18n-placeholder/>
+      <input type="password" id="newUserPw" placeholder="Password (min 8 chars)" data-i18n="newPassPlaceholder" data-i18n-placeholder/>
+    </div>
+    <div class="actions">
+      <button class="btn btn-secondary" id="addUserCancel" data-i18n="cancel">Cancel</button>
+      <button class="btn btn-primary" id="addUserSave" data-i18n="save">Save</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const ME = ${JSON.stringify({ wxId: session.wxId })};
+const $ = (id) => document.getElementById(id);
+let lang = localStorage.getItem("lang") || "zh-CN";
+const translations = {
+  "zh-CN": {
+    title: "管理后台",
+    dashboard: "仪表盘",
+    logout: "退出登录",
+    tabUsers: "用户",
+    tabMsgs: "消息",
+    addUser: "新增用户",
+    addUserTitle: "新增用户",
+    addUserWxidPlaceholder: "wxId",
+    addUserOk: "已创建用户 {0}",
+    addUserFail: "创建用户失败",
+    addUserEmptyWxid: "请填写 wxId",
+    usersLabel: "个用户",
+    messagesLabel: "条消息",
+    level: "等级",
+    registered: "注册时间",
+    actions: "操作",
+    message: "消息",
+    reads: "已读",
+    timestamp: "时间",
+    fWxidPlaceholder: "按 wxId 过滤...",
+    fContentPlaceholder: "按消息内容过滤...",
+    fDelWxidPlaceholder: "要清空数据的 wxId",
+    wipeUserData: "清空用户数据",
+    confirm: "确认",
+    cancel: "取消",
+    save: "保存",
+    setPassword: "设置密码",
+    newPassPlaceholder: "新密码（至少 8 位）",
+    delete: "删除",
+    noMessages: "暂无消息",
+    loadUsersFail: "加载用户失败",
+    loadMsgsFail: "加载消息失败",
+    networkError: "网络错误",
+    levelUpdated: "等级已更新",
+    levelFail: "等级更新失败",
+    passTooShort: "密码至少 8 位",
+    setPassOk: "已为 {0} 设置新密码",
+    setPassFail: "设置密码失败",
+    delUserTitle: "删除用户？",
+    delUserBody: "删除用户「{0}」及其全部消息和已读记录？此操作不可撤销。",
+    delUserFail: "删除用户失败",
+    userDeleted: "用户已删除",
+    delMsgTitle: "删除消息？",
+    delMsgBody: "删除这条消息及其已读记录？",
+    delMsgFail: "删除消息失败",
+    msgDeleted: "消息已删除",
+    enterWxid: "请先输入 wxId",
+    wipeTitle: "清空用户数据？",
+    wipeBody: "删除「{0}」的全部消息和已读记录？",
+    failed: "操作失败",
+    dataWiped: "数据已清空",
+  },
+  en: {
+    title: "Admin Console",
+    dashboard: "Dashboard",
+    logout: "Logout",
+    tabUsers: "Users",
+    tabMsgs: "Messages",
+    addUser: "Add User",
+    addUserTitle: "Add User",
+    addUserWxidPlaceholder: "wxId",
+    addUserOk: 'User "{0}" created',
+    addUserFail: "Failed to create user",
+    addUserEmptyWxid: "Enter a wxId",
+    usersLabel: "users",
+    messagesLabel: "messages",
+    level: "Level",
+    registered: "Registered",
+    actions: "Actions",
+    message: "Message",
+    reads: "Reads",
+    timestamp: "Timestamp",
+    fWxidPlaceholder: "Filter by wxId...",
+    fContentPlaceholder: "Filter by message text...",
+    fDelWxidPlaceholder: "wxId to wipe all its data",
+    wipeUserData: "Wipe user data",
+    confirm: "Confirm",
+    cancel: "Cancel",
+    save: "Save",
+    setPassword: "Set Password",
+    newPassPlaceholder: "New password (min 8 chars)",
+    delete: "Delete",
+    noMessages: "No messages",
+    loadUsersFail: "Failed to load users",
+    loadMsgsFail: "Failed to load messages",
+    networkError: "Network error",
+    levelUpdated: "Level updated",
+    levelFail: "Failed to update level",
+    passTooShort: "Password must be at least 8 characters",
+    setPassOk: 'Password set for "{0}"',
+    setPassFail: "Failed to set password",
+    delUserTitle: "Delete user?",
+    delUserBody: 'Delete user "{0}" and all their messages and reads? This cannot be undone.',
+    delUserFail: "Failed to delete user",
+    userDeleted: "User deleted",
+    delMsgTitle: "Delete message?",
+    delMsgBody: "Delete this message and its read records?",
+    delMsgFail: "Failed to delete message",
+    msgDeleted: "Message deleted",
+    enterWxid: "Enter a wxId first",
+    wipeTitle: "Wipe user data?",
+    wipeBody: 'Delete all messages and reads for "{0}"?',
+    failed: "Failed",
+    dataWiped: "Data wiped",
+  },
+};
+function t(key, ...args) {
+  let s = (translations[lang] && translations[lang][key]) || key;
+  args.forEach((a, i) => { s = s.split("{" + i + "}").join(a); });
+  return s;
+}
+function applyI18n() {
+  document.querySelectorAll("[data-i18n]").forEach((el) => {
+    const key = el.dataset.i18n;
+    if (el.tagName === "TITLE") document.title = t(key);
+    else if ("i18nPlaceholder" in el.dataset) el.placeholder = t(key);
+    else el.textContent = t(key);
+  });
+}
+function toggleLang() {
+  lang = lang === "zh-CN" ? "en" : "zh-CN";
+  localStorage.setItem("lang", lang);
+  applyI18n();
+  if ($("tabUsers").classList.contains("active")) loadUsers();
+  else loadMsgs();
+}
+/* 移动端卡片布局的列标签（跟随当前语言） */
+function setLabels() {
+  const apply = (tbodyEl, labels) => {
+    tbodyEl.querySelectorAll("tr:not(.empty-row)").forEach((tr) => {
+      Array.from(tr.cells).forEach((td, i) => {
+        if (labels[i]) td.setAttribute("data-label", labels[i]);
+      });
+    });
+  };
+  apply($("userTbody"), ["wxId", t("level"), t("registered"), t("actions")]);
+  apply($("msgTbody"), ["wxId", t("message"), t("reads"), t("timestamp"), t("actions")]);
+}
+applyI18n();
+const toastContainer = $("toastContainer");
+const modalOverlay = $("modalOverlay"), modalTitle = $("modalTitle"), modalBody = $("modalBody"), modalCancel = $("modalCancel"), modalConfirm = $("modalConfirm");
+const passOverlay = $("passOverlay"), newUserPass = $("newUserPass"), passCancel = $("passCancel"), passSave = $("passSave");
+const addUserOverlay = $("addUserOverlay"), newUserWxid = $("newUserWxid"), newUserPw = $("newUserPw"), addUserCancel = $("addUserCancel"), addUserSave = $("addUserSave");
+let targetWxId = "";
+
+$("adminName").textContent = ME.wxId;
+
+function esc(s){
+  return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+function escAttr(s){
+  return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");
+}
+function fmtTs(s){
+  const m = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})$/.exec(String(s || ""));
+  if (!m) return String(s || "");
+  const d = new Date(Date.UTC(+m[1], +m[2]-1, +m[3], +m[4], +m[5], +m[6]) + 8*3600*1000);
+  const p = (n) => String(n).padStart(2, "0");
+  return d.getUTCFullYear()+"-"+p(d.getUTCMonth()+1)+"-"+p(d.getUTCDate())+" "+p(d.getUTCHours())+":"+p(d.getUTCMinutes())+":"+p(d.getUTCSeconds());
+}
+function toast(message, type = "info"){
+  const el = document.createElement("div");
+  el.className = "toast toast-" + type;
+  el.textContent = message;
+  toastContainer.appendChild(el);
+  setTimeout(() => el.classList.add("toast-out"), 2800);
+  setTimeout(() => el.remove(), 3100);
+}
+function showModal(title, body, onConfirm){
+  modalTitle.textContent = title;
+  modalBody.textContent = body;
+  modalOverlay.classList.remove("hidden");
+  const cleanup = () => { modalOverlay.classList.add("hidden"); modalConfirm.onclick = null; };
+  modalCancel.onclick = cleanup;
+  modalOverlay.onclick = (e) => { if (e.target === modalOverlay) cleanup(); };
+  modalConfirm.onclick = () => { cleanup(); onConfirm(); };
+}
+function showTab(name){
+  $("tabUsers").classList.toggle("active", name === "users");
+  $("tabMsgs").classList.toggle("active", name === "msgs");
+  $("secUsers").classList.toggle("hidden", name !== "users");
+  $("secMsgs").classList.toggle("hidden", name !== "msgs");
+  if (name === "users") loadUsers(); else loadMsgs();
+}
+async function loadUsers() {
+  try {
+    const res = await fetch("/admin/users");
+    if (res.status === 401) { location.href = "/"; return; }
+    if (!res.ok) { toast(t("loadUsersFail"), "error"); return; }
+    const data = await res.json();
+    $("userCount").textContent = data.length;
+    $("userTbody").innerHTML = data
+      .map((u) => {
+        return (
+          "<tr>" +
+          '<td class="uuid-col">' + esc(u.wxId) + "</td>" +
+          '<td><span class="level-editor" data-wxid="' + escAttr(u.wxId) + '">' +
+          '<button type="button" class="btn btn-outline btn-sm level-minus" aria-label="Decrease level">−</button>' +
+          '<input class="level-input" type="number" min="0" max="99" value="' + u.level + '" />' +
+          '<button type="button" class="btn btn-outline btn-sm level-plus" aria-label="Increase level">+</button>' +
+          "</span></td>" +
+          '<td class="ts-col">' + esc(fmtTs(u.createdAt)) + "</td>" +
+          '<td class="flex">' +
+          '<button class="btn btn-outline btn-sm act-setpass" data-wxid="' + escAttr(u.wxId) + '">' + t("setPassword") + "</button>" +
+          '<button class="btn btn-danger btn-sm act-del-user" data-wxid="' + escAttr(u.wxId) + '">' + t("delete") + "</button>" +
+          "</td></tr>"
+        );
+      })
+      .join("");
+  } catch (e) { toast(t("networkError") + ": " + e.message, "error"); }
+  setLabels();
+}
+async function saveLevel(wxId, level) {
+  try {
+    const res = await fetch("/admin/level", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ wxId, level: Number(level) }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) { toast(data.error || t("levelFail"), "error"); return; }
+    toast(t("levelUpdated"), "success");
+  } catch (e) { toast(t("networkError"), "error"); }
+}
+function openSetPass(wxId) {
+  targetWxId = wxId;
+  newUserPass.value = "";
+  passOverlay.classList.remove("hidden");
+  newUserPass.focus();
+}
+function openAddUser() {
+  newUserWxid.value = "";
+  newUserPw.value = "";
+  addUserOverlay.classList.remove("hidden");
+  newUserWxid.focus();
+}
+function closeAddUser() { addUserOverlay.classList.add("hidden"); }
+addUserCancel.onclick = closeAddUser;
+addUserOverlay.onclick = (e) => { if (e.target === addUserOverlay) closeAddUser(); };
+addUserSave.onclick = async () => {
+  const wxId = newUserWxid.value.trim();
+  const password = newUserPw.value;
+  if (!wxId) { toast(t("addUserEmptyWxid"), "error"); return; }
+  if (password.length < 8) { toast(t("passTooShort"), "error"); return; }
+  try {
+    const res = await fetch("/admin/users", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ wxId, password }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) { toast(data.error || t("addUserFail"), "error"); return; }
+    toast(t("addUserOk", wxId), "success");
+    closeAddUser();
+    loadUsers();
+  } catch (e) { toast(t("networkError"), "error"); }
+};
+function closePass() { passOverlay.classList.add("hidden"); }
+passCancel.onclick = closePass;
+passOverlay.onclick = (e) => { if (e.target === passOverlay) closePass(); };
+passSave.onclick = async () => {
+  const password = newUserPass.value;
+  if (password.length < 8) { toast(t("passTooShort"), "error"); return; }
+  try {
+    const res = await fetch("/admin/password", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ wxId: targetWxId, password }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) { toast(data.error || t("setPassFail"), "error"); return; }
+    toast(t("setPassOk", targetWxId), "success");
+    closePass();
+  } catch (e) { toast(t("networkError"), "error"); }
+};
+function askDeleteUser(wxId) {
+  showModal(t("delUserTitle"), t("delUserBody", wxId), () => doDeleteUser(wxId));
+}
+async function doDeleteUser(wxId) {
+  try {
+    const res = await fetch("/admin/users/" + encodeURIComponent(wxId), { method: "DELETE" });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) { toast(data.error || t("delUserFail"), "error"); return; }
+    toast(t("userDeleted"), "success");
+    loadUsers();
+  } catch (e) { toast(t("networkError"), "error"); }
+}
+async function loadMsgs() {
+  try {
+    const params = new URLSearchParams();
+    const fwx = $("fWxid").value.trim(), fq = $("fContent").value.trim();
+    if (fwx) params.set("wxId", fwx);
+    if (fq) params.set("q", fq);
+    const qs = params.toString();
+    const res = await fetch("/admin/messages" + (qs ? "?" + qs : ""));
+    if (res.status === 401) { location.href = "/"; return; }
+    if (!res.ok) { toast(t("loadMsgsFail"), "error"); return; }
+    const data = await res.json();
+    $("msgCount").textContent = data.length;
+    $("msgTbody").innerHTML = data.length
+      ? data
+          .map(
+            (r) =>
+              "<tr>" +
+              '<td class="uuid-col">' + esc(r.wxId) + "</td>" +
+              '<td class="msg-col" title="' + escAttr(r.content) + '">' + esc(r.content) + "</td>" +
+              "<td>" + esc(r.reads) + "</td>" +
+              '<td class="ts-col">' + esc(fmtTs(r.timestamp)) + "</td>" +
+              '<td><button class="btn btn-danger btn-sm act-del-msg" data-id="' + escAttr(r.id) + '">' + t("delete") + "</button></td>" +
+              "</tr>"
+          )
+          .join("")
+      : '<tr class="empty-row"><td colspan="5">' + t("noMessages") + "</td></tr>";
+  } catch (e) { toast(t("networkError"), "error"); }
+  setLabels();
+}
+function askDeleteMsg(id) {
+  showModal(t("delMsgTitle"), t("delMsgBody"), () => doDeleteMsg(id));
+}
+async function doDeleteMsg(id) {
+  try {
+    const res = await fetch("/admin/messages/" + encodeURIComponent(id), { method: "DELETE" });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) { toast(data.error || t("delMsgFail"), "error"); return; }
+    toast(t("msgDeleted"), "success");
+    loadMsgs();
+  } catch (e) { toast(t("networkError"), "error"); }
+}
+function askClearUser() {
+  const wxId = $("fDelWxid").value.trim();
+  if (!wxId) { toast(t("enterWxid"), "error"); return; }
+  showModal(t("wipeTitle"), t("wipeBody", wxId), () => doClearUser(wxId));
+}
+async function doClearUser(wxId) {
+  try {
+    const res = await fetch("/admin/messages?wxId=" + encodeURIComponent(wxId), { method: "DELETE" });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) { toast(data.error || t("failed"), "error"); return; }
+    toast(t("dataWiped"), "success");
+    loadMsgs();
+  } catch (e) { toast(t("networkError"), "error"); }
+}
+async function logout() {
+  try { await fetch("/auth/logout", { method: "POST" }); } catch {}
+  location.href = "/";
+}
+function initAdminHandlers() {
+  const ut = $("userTbody");
+  ut.addEventListener("click", (e) => {
+    const btn = e.target.closest("button");
+    if (!btn) return;
+    const editor = btn.closest(".level-editor");
+    if (editor) {
+      const input = editor.querySelector(".level-input");
+      let v = parseInt(input.value, 10);
+      if (Number.isNaN(v)) v = 0;
+      v = btn.classList.contains("level-plus") ? Math.min(99, v + 1) : Math.max(0, v - 1);
+      input.value = v;
+      saveLevel(editor.dataset.wxid, v);
+      return;
+    }
+    const wxid = btn.dataset.wxid;
+    if (btn.classList.contains("act-setpass")) openSetPass(wxid);
+    else if (btn.classList.contains("act-del-user")) askDeleteUser(wxid);
+  });
+  ut.addEventListener("change", (e) => {
+    const input = e.target.closest(".level-input");
+    if (!input) return;
+    const editor = input.closest(".level-editor");
+    let v = parseInt(input.value, 10);
+    if (Number.isNaN(v)) v = 0;
+    v = Math.max(0, Math.min(99, v));
+    input.value = v;
+    saveLevel(editor.dataset.wxid, v);
+  });
+  const mt = $("msgTbody");
+  mt.addEventListener("click", (e) => {
+    const btn = e.target.closest(".act-del-msg");
+    if (!btn) return;
+    askDeleteMsg(btn.dataset.id);
+  });
+}
+showTab("users");
+initAdminHandlers();
+</script>
+</body>
+</html>`; }

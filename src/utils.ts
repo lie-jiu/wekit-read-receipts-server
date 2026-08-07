@@ -58,11 +58,11 @@ export function maskWxId(wxId: string): string {
   return wxId.slice(0, 6) + "…" + wxId.slice(-2);
 }
 
-/** 内容脱敏：超过 32 字符截断 */
-export function maskContent(content: string, max = 32): string {
-  const c = content.replace(/\s+/g, " ").trim();
-  if (c.length <= max) return c;
-  return c.slice(0, max) + "…";
+/** 内容脱敏（与 CF 版一致）：≥5 字只留前后各 2 字，中间星号；不足 5 字全文 */
+export function maskContent(content: string): string {
+  const s = String(content ?? "");
+  if (s.length < 5) return s;
+  return s.slice(0, 2) + "***" + s.slice(-2);
 }
 
 /** 时间展示：`YYYY-MM-DD HH:MM:SS` 已是 UTC+8，直接截取分钟 */
