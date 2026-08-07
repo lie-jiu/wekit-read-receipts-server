@@ -87,3 +87,31 @@ ADMIN=wxid_admin bun run dev              # 管理员权限来自 ADMIN 环境�
 ```
 
 生产建议：HTTPS 终止于反代层、`TRUSTED_PROXY` 仅填反代网段、`DB_PATH` 指向持久化磁盘（WAL 自动开启）、`ADMIN` 声明受保护账号、`INVITE_CODE` 开启邀请码以限制注册。
+
+## 管理脚本
+
+`bun run manage <command>`（帮助：`bun run manage`）：
+
+```bash
+# 服务控制（Windows 免管理员；开机自启 = 启动文件夹 + 隐藏窗口）
+bun run manage install          # 安装开机自启并启动
+bun run manage uninstall        # 停止并移除自启
+bun run manage start|stop|restart
+bun run manage status           # 端口/自启状态与访问地址
+
+# 配置（写入 .env，restart 后生效）
+bun run manage admin set <wxId[,wxId...]>   # 设置管理员
+bun run manage admin clear
+bun run manage invite set <code>            # 设置注册邀请码
+bun run manage invite clear
+bun run manage env <KEY>=<VALUE>            # 任意环境变量，如 PORT=8080
+
+# 用户管理
+bun run manage user add <wxId> <password> [level]
+bun run manage user list
+bun run manage user delete <wxId>
+bun run manage user level <wxId> <level>    # 0 = 拉黑清空
+bun run manage user pass <wxId> <password>  # 重置密码
+```
+
+日志位于 `.wekit/logs/server.log`。

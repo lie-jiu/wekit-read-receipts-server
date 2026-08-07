@@ -30,6 +30,9 @@ data.db-wal
 *.sqlite-shm
 *.sqlite-wal
 
+# manage 脚本生成的运行文件（自启任务/日志）
+.wekit
+
 # caches
 .eslintcache
 .cache

@@ -17,6 +17,7 @@
     "dev": "bun --watch index.ts",
     "start": "bun index.ts",
     "test": "bun test",
-    "mkuser": "bun scripts/mkuser.ts"
+    "mkuser": "bun scripts/mkuser.ts",
+    "manage": "bun scripts/manage.ts"
   }
 }
