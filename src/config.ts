@@ -20,7 +20,6 @@ export const TRUSTED_PROXY: string[] = (process.env.TRUSTED_PROXY ?? "")
   .map((s) => s.trim())
   .filter(Boolean);
 
-export const SESSION_COOKIE_NAME = isProd ? "__Host-session" : "session";
 export const SESSION_TTL_DAYS = 30;
 export const SESSION_TTL_MS = SESSION_TTL_DAYS * 24 * 3600 * 1000;
 

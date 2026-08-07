@@ -1,6 +1,7 @@
 import type { Context } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
-import { ADMINS, SESSION_COOKIE_NAME, SESSION_TTL_DAYS, SESSION_TTL_MS, isProd } from "./config";
+import { ADMINS, SESSION_TTL_DAYS, SESSION_TTL_MS, TRUSTED_PROXY } from "./config";
+import { ipInCidr } from "./rate-limit";
 import { sqlite } from "./db";
 import { chinaNow, sha256HexSync } from "./utils";
 
@@ -40,14 +41,40 @@ export async function hashPassword(password: string): Promise<string> {
   return Bun.password.hash(password);
 }
 
+/** 请求是否走 TLS：直连 HTTPS，或经受信代理转发（X-Forwarded-Proto） */
+function isSecureRequest(c: Context): boolean {
+  try {
+    if (new URL(c.req.url).protocol === "https:") return true;
+  } catch {
+    /* fallthrough */
+  }
+  if (TRUSTED_PROXY.length === 0) return false;
+  const env = c.env as { requestIP?: (req: Request) => { address: string } | null };
+  const peer = env.requestIP?.(c.req.raw)?.address ?? "";
+  if (!peer || !TRUSTED_PROXY.some((cidr) => ipInCidr(peer, cidr))) return false;
+  return c.req.header("x-forwarded-proto")?.split(",")[0]?.trim() === "https";
+}
+
+/**
+ * 会话 cookie 随实际协议自适应：
+ * - HTTPS（含 TLS 反代）→ `__Host-session` + Secure
+ * - HTTP 直连（局域网/测试）→ `session` 不带 Secure，否则浏览器不存 cookie 无法登录
+ */
+function sessionCookie(c: Context): { name: string; secure: boolean } {
+  return isSecureRequest(c)
+    ? { name: "__Host-session", secure: true }
+    : { name: "session", secure: false };
+}
+
 export function createSession(c: Context, wxId: string): void {
   const token = randomToken();
   sqlite
     .query("INSERT INTO sessions (token_hash, wx_id, created_at, expires_at) VALUES (?, ?, ?, ?)")
     .run(sha256HexSync(token), wxId, chinaNow(), chinaNowPlus(SESSION_TTL_DAYS));
-  setCookie(c, SESSION_COOKIE_NAME, token, {
+  const { name, secure } = sessionCookie(c);
+  setCookie(c, name, token, {
     httpOnly: true,
-    secure: isProd,
+    secure,
     sameSite: "Lax",
     path: "/",
     maxAge: SESSION_TTL_MS / 1000,
@@ -55,15 +82,16 @@ export function createSession(c: Context, wxId: string): void {
 }
 
 export function destroySession(c: Context): void {
-  const token = getCookie(c, SESSION_COOKIE_NAME);
+  const { name } = sessionCookie(c);
+  const token = getCookie(c, name);
   if (token) {
     sqlite.query("DELETE FROM sessions WHERE token_hash = ?").run(sha256HexSync(token));
   }
-  deleteCookie(c, SESSION_COOKIE_NAME, { path: "/" });
+  deleteCookie(c, name, { path: "/" });
 }
 
 export function getSessionUser(c: Context): SessionUser | null {
-  const token = getCookie(c, SESSION_COOKIE_NAME);
+  const token = getCookie(c, sessionCookie(c).name);
   if (!token) return null;
   const row = sqlite
     .query(

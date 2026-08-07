@@ -6,7 +6,7 @@ export type Bucket = keyof typeof RATE_LIMITS;
 /** 进程内固定窗口：bucket + ip → {窗口起点, 计数} */
 const windows = new Map<string, { start: number; count: number }>();
 
-function ipInCidr(ip: string, cidr: string): boolean {
+export function ipInCidr(ip: string, cidr: string): boolean {
   const [net, prefixStr] = cidr.split("/");
   const prefix = Number(prefixStr);
   if (!net || !Number.isInteger(prefix)) return false;
