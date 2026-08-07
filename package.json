@@ -1,0 +1,22 @@
+{
+  "name": "wekit-read-receipts-server",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "drizzle-orm": "0.45.2",
+    "hono": "4.13.1"
+  },
+  "scripts": {
+    "dev": "bun --watch index.ts",
+    "start": "bun index.ts",
+    "test": "bun test",
+    "mkuser": "bun scripts/mkuser.ts"
+  }
+}
