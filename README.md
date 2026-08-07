@@ -93,7 +93,7 @@ ADMIN=wxid_admin bun run dev              # 管理员权限来自 ADMIN 环境�
 `bun run manage <command>`（帮助：`bun run manage`）：
 
 ```bash
-# 服务控制（Windows 免管理员；开机自启 = 启动文件夹 + 隐藏窗口）
+# 服务控制
 bun run manage install          # 安装开机自启并启动
 bun run manage uninstall        # 停止并移除自启
 bun run manage start|stop|restart
@@ -113,5 +113,10 @@ bun run manage user delete <wxId>
 bun run manage user level <wxId> <level>    # 0 = 拉黑清空
 bun run manage user pass <wxId> <password>  # 重置密码
 ```
+
+平台行为：
+- **Windows**：开机自启 = 启动文件夹 + 隐藏窗口（免管理员）
+- **Linux（systemd）**：`install` 需 `sudo bun run manage install`，注册为系统服务（崩溃自动重启、开机自启）
+- **Linux（无 systemd，如 WSL/Docker）**：回退为 nohup 后台运行，PID 记录在 `.wekit/server.pid`，仅 `start/stop/status` 可用
 
 日志位于 `.wekit/logs/server.log`。

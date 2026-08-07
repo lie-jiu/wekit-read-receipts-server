@@ -17,7 +17,13 @@ const ENV_FILE = join(ROOT, ".env");
 const WEKIT_DIR = join(ROOT, ".wekit");
 const LOG_FILE = join(WEKIT_DIR, "logs", "server.log");
 const CMD_FILE = join(WEKIT_DIR, "start-server.cmd");
+const SH_FILE = join(WEKIT_DIR, "start-server.sh");
+const PID_FILE = join(WEKIT_DIR, "server.pid");
+const UNIT_NAME = "wekit-read-receipts.service";
+const UNIT_FILE = `/etc/systemd/system/${UNIT_NAME}`;
 const isWin = process.platform === "win32";
+const isLinux = process.platform === "linux";
+const isSystemd = isLinux && existsSync("/run/systemd/system");
 const startupVbs = isWin
   ? join(process.env.APPDATA ?? "", "Microsoft", "Windows", "Start Menu", "Programs", "Startup", "wekit-read-receipts.vbs")
   : "";
@@ -62,21 +68,33 @@ function run(cmd: string, args: string[]): { ok: boolean; out: string; err: stri
   return { ok: r.exitCode === 0, out: r.stdout.toString(), err: r.stderr.toString() };
 }
 
-function portOpen(port: number): boolean {
+async function portOpen(port: number): Promise<boolean> {
+  if (isWin) {
+    try {
+      const r = run("powershell", [
+        "-NoProfile",
+        "-NonInteractive",
+        "-Command",
+        `(Get-NetTCPConnection -State Listen -LocalPort ${port} -ErrorAction SilentlyContinue) -ne $null`,
+      ]);
+      return r.ok && r.out.trim() === "True";
+    } catch {
+      return false;
+    }
+  }
   try {
-    const r = run("powershell", [
-      "-NoProfile",
-      "-NonInteractive",
-      "-Command",
-      `(Get-NetTCPConnection -State Listen -LocalPort ${port} -ErrorAction SilentlyContinue) -ne $null`,
-    ]);
-    return r.ok && r.out.trim() === "True";
+    const sock = await Bun.connect({ hostname: "127.0.0.1", port });
+    sock.end();
+    return true;
   } catch {
     return false;
   }
 }
 
-/* ────────────── 安装 / 卸载（启动文件夹自启，无需管理员权限） ────────────── */
+/* ────────────── 安装 / 卸载 / 服务控制 ──────────────
+ * Windows：启动文件夹 + 隐藏窗口（免管理员）
+ * Linux：优先 systemd（install 需 sudo）；无 systemd（WSL/Docker）回退 nohup + pidfile
+ */
 
 function ensureRunFiles(): void {
   if (!existsSync(join(WEKIT_DIR, "logs"))) mkdirSync(join(WEKIT_DIR, "logs"), { recursive: true });
@@ -88,9 +106,54 @@ function ensureRunFiles(): void {
       `"${process.execPath}" start >> "${LOG_FILE}" 2>&1`,
     ].join("\r\n"),
   );
+  writeFileSync(
+    SH_FILE,
+    [
+      "#!/usr/bin/env bash",
+      `cd "${ROOT}" || exit 1`,
+      `exec "${process.execPath}" start >> "${LOG_FILE}" 2>&1`,
+    ].join("\n"),
+  );
 }
 
-function install(): void {
+function systemdUser(): string {
+  return process.env.SUDO_USER || process.env.USER || "root";
+}
+
+function installSystemd(): void {
+  if (process.getuid?.() !== 0 && process.env.SUDO_USER === undefined) {
+    console.error("systemd 安装需要 root 权限，请用 sudo 执行：\n  sudo bun run manage install");
+    process.exit(1);
+  }
+  const user = systemdUser();
+  const unit = [
+    "[Unit]",
+    "Description=wekit-read-receipts",
+    "After=network.target",
+    "",
+    "[Service]",
+    `WorkingDirectory=${ROOT}`,
+    `ExecStart=${process.execPath} start`,
+    `User=${user}`,
+    "Restart=always",
+    "RestartSec=3",
+    "",
+    "[Install]",
+    "WantedBy=multi-user.target",
+    "",
+  ].join("\n");
+  try {
+    writeFileSync(UNIT_FILE, unit);
+  } catch (e) {
+    console.error("写入 " + UNIT_FILE + " 失败，请用 sudo 执行 install。");
+    process.exit(1);
+  }
+  run("systemctl", ["daemon-reload"]);
+  run("systemctl", ["enable", "--now", UNIT_NAME]);
+  console.log("已安装 systemd 服务并启动（" + UNIT_FILE + "）。");
+}
+
+async function install(): Promise<void> {
   if (isWin) {
     ensureRunFiles();
     writeFileSync(
@@ -100,57 +163,133 @@ function install(): void {
     console.log("已写入开机自启（启动文件夹，登录后隐藏窗口运行）。");
     serviceStart();
     console.log("服务已启动。日志: " + LOG_FILE);
+  } else if (isLinux) {
+    if (isSystemd) {
+      installSystemd();
+    } else {
+      ensureRunFiles();
+      serviceStart();
+      console.log("已启动（无 systemd，进程退出后不会自动重启；开机自启请自行配置，如 rc.local 执行 " + SH_FILE + "）。");
+      console.log("日志: " + LOG_FILE);
+    }
   } else {
-    console.error(
-      "非 Windows 平台请使用 systemd 或手动运行 `bun start`。\n" +
-        "systemd 示例（/etc/systemd/system/wekit-read-receipts.service）：\n" +
-        `[Unit]\nDescription=wekit-read-receipts\n[Service]\nWorkingDirectory=${ROOT}\nExecStart=${process.execPath} start\nRestart=always\n[Install]\nWantedBy=multi-user.target`,
-    );
+    console.error("仅支持 Windows / Linux。");
     process.exit(1);
   }
 }
 
-function uninstall(): void {
-  if (existsSync(startupVbs)) {
-    rmSync(startupVbs);
-    console.log("已移除开机自启。");
+function uninstall(): void {  if (isWin) {
+    if (existsSync(startupVbs)) {
+      rmSync(startupVbs);
+      console.log("已移除开机自启。");
+    }
+    serviceStop();
+  } else if (isLinux) {
+    if (isSystemd) {
+      if (process.getuid?.() !== 0) {
+        console.error("卸载 systemd 服务需要 root 权限，请用 sudo 执行：\n  sudo bun run manage uninstall");
+        process.exit(1);
+      }
+      run("systemctl", ["disable", "--now", UNIT_NAME]);
+      if (existsSync(UNIT_FILE)) rmSync(UNIT_FILE);
+      run("systemctl", ["daemon-reload"]);
+      console.log("已停止并移除 systemd 服务。");
+    } else {
+      serviceStop();
+      console.log("已停止服务。");
+    }
   }
-  serviceStop();
 }
 
 function serviceStart(): void {
-  if (!isWin) {
-    console.error("非 Windows 平台请用 systemctl / 手动进程管理。");
-    process.exit(1);
+  if (isWin) {
+    ensureRunFiles();
+    run("powershell", [
+      "-NoProfile", "-NonInteractive", "-Command",
+      `Start-Process -FilePath "cmd.exe" -ArgumentList '/c','"${CMD_FILE}"' -WindowStyle Hidden`,
+    ]);
+    console.log("已发送启动指令。");
+    return;
   }
-  ensureRunFiles();
-  run("powershell", [
-    "-NoProfile", "-NonInteractive", "-Command",
-    `Start-Process -FilePath "cmd.exe" -ArgumentList '/c','"${CMD_FILE}"' -WindowStyle Hidden`,
-  ]);
-  console.log("已发送启动指令。");
+  if (isSystemd) {
+    run("systemctl", ["start", UNIT_NAME]);
+    console.log("已发送启动指令（systemctl start）。");
+    return;
+  }
+  if (isLinux) {
+    ensureRunFiles();
+    if (existsSync(PID_FILE)) {
+      const pid = Number(readFileSync(PID_FILE, "utf8").trim());
+      if (pid > 0) {
+        try {
+          process.kill(pid, 0);
+          console.log("服务已在运行（PID " + pid + "）。");
+          return;
+        } catch {
+          /* 陈旧 pidfile，继续启动 */
+        }
+      }
+    }
+    const r = run("bash", ["-c", `nohup bash "${SH_FILE}" >/dev/null 2>&1 & echo $! > "${PID_FILE}"`]);
+    if (!r.ok) {
+      console.error("启动失败: " + (r.err || r.out));
+      process.exit(1);
+    }
+    console.log("已发送启动指令。");
+    return;
+  }
+  console.error("仅支持 Windows / Linux。");
+  process.exit(1);
 }
 
 function serviceStop(): void {
-  if (!isWin) {
-    console.error("非 Windows 平台请用 systemctl / 手动进程管理。");
-    process.exit(1);
+  if (isWin) {
+    const ps = [
+      "-NoProfile", "-NonInteractive", "-Command",
+      `Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'bun.exe' -and $_.CommandLine -like '*index.ts*' -and $_.ProcessId -ne $PID } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }`,
+    ];
+    const r = run("powershell", ps);
+    if (r.err.trim()) console.error(r.err.trim());
+    console.log("已发送停止指令。");
+    return;
   }
-  const ps = [
-    "-NoProfile", "-NonInteractive", "-Command",
-    `Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'bun.exe' -and $_.CommandLine -like '*index.ts*' -and $_.ProcessId -ne $PID } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }`,
-  ];
-  const r = run("powershell", ps);
-  if (r.err.trim()) console.error(r.err.trim());
-  console.log("已发送停止指令。");
+  if (isSystemd) {
+    run("systemctl", ["stop", UNIT_NAME]);
+    console.log("已发送停止指令（systemctl stop）。");
+    return;
+  }
+  if (isLinux) {
+    if (existsSync(PID_FILE)) {
+      const pid = Number(readFileSync(PID_FILE, "utf8").trim());
+      if (pid > 0) {
+        try {
+          process.kill(pid, "SIGTERM");
+          rmSync(PID_FILE);
+          console.log("已发送停止指令（PID " + pid + "）。");
+        } catch {
+          rmSync(PID_FILE);
+          console.log("未发现运行中的服务。");
+        }
+        return;
+      }
+    }
+    console.log("未发现运行中的服务（无 pidfile）。");
+    return;
+  }
+  console.error("仅支持 Windows / Linux。");
+  process.exit(1);
 }
 
-function status(): void {
+async function status(): Promise<void> {
   const { PORT } = requireConfigPort();
-  const running = portOpen(PORT);
+  const running = await portOpen(PORT);
+  let auto = "";
+  if (isWin) auto = existsSync(startupVbs) ? "已注册（启动文件夹）" : "未注册";
+  else if (isSystemd) auto = run("systemctl", ["is-enabled", UNIT_NAME]).out.trim() === "enabled" ? "已启用（systemd）" : "未启用";
+  else if (isLinux) auto = "无 systemd（手动/nohup 模式）";
   console.log(
     `端口 ${PORT}: ${running ? "服务运行中" : "未监听"}` +
-      (existsSync(startupVbs) ? "\n开机自启: 已注册（启动文件夹）" : "\n开机自启: 未注册"),
+      (auto ? `\n开机自启: ${auto}` : ""),
   );
   if (running) console.log(`访问地址: http://localhost:${PORT}`);
 }
@@ -261,7 +400,7 @@ const [cmd, ...args] = process.argv.slice(2);
 const help = `wekit-read-receipts 管理脚本
 
 服务控制:
-  bun run manage install           安装开机自启并启动服务（Windows，免管理员）
+  bun run manage install           安装开机自启并启动服务（Win 免管理员 / Linux systemd 需 sudo）
   bun run manage uninstall         停止服务并移除开机自启
   bun run manage start|stop|restart
   bun run manage status            查看服务状态与访问地址
@@ -281,12 +420,12 @@ const help = `wekit-read-receipts 管理脚本
   bun run manage user pass <wxId> <password>  重置密码`;
 
 switch (cmd) {
-  case "install": install(); break;
+  case "install": await install(); break;
   case "uninstall": uninstall(); break;
   case "start": serviceStart(); break;
   case "stop": serviceStop(); break;
   case "restart": serviceStop(); serviceStart(); break;
-  case "status": status(); break;
+  case "status": await status(); break;
   case "admin":
     if (args[0] === "set" && args[1]) setEnv("ADMIN", args[1]);
     else if (args[0] === "clear") clearEnv("ADMIN");
