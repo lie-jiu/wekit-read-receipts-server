@@ -7,6 +7,7 @@ migrate();
 console.log("SQLite " + (sqlite.query("SELECT sqlite_version() v").get() as { v: string }).v);
 
 const server = Bun.serve({
+  hostname: "127.0.0.1",
   port: PORT,
   fetch: app.fetch,
 });

@@ -1,7 +1,7 @@
 import type { Context } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { isAdmin, SESSION_TTL_DAYS, SESSION_TTL_MS, TRUSTED_PROXY } from "./config";
-import { ipInCidr } from "./rate-limit";
+import { ipInCidr, peerIp } from "./rate-limit";
 import { sqlite } from "./db";
 import { chinaNow, sha256HexSync } from "./utils";
 
@@ -49,9 +49,8 @@ function isSecureRequest(c: Context): boolean {
     /* fallthrough */
   }
   if (TRUSTED_PROXY.length === 0) return false;
-  const env = c.env as { requestIP?: (req: Request) => { address: string } | null };
-  const peer = env.requestIP?.(c.req.raw)?.address ?? "";
-  if (!peer || !TRUSTED_PROXY.some((cidr) => ipInCidr(peer, cidr))) return false;
+  const peer = peerIp(c);
+  if (peer === "unknown" || !TRUSTED_PROXY.some((cidr) => ipInCidr(peer, cidr))) return false;
   return c.req.header("x-forwarded-proto")?.split(",")[0]?.trim() === "https";
 }
 

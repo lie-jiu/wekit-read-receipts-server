@@ -52,15 +52,26 @@ function normalizeIp(ip: string): string {
   return ip.startsWith("::ffff:") ? ip.slice(7) : ip;
 }
 
+/** 直连方地址（Bun server.requestIP + ::ffff: 归一化），不信任任何代理头 */
+export function peerIp(c: Context): string {
+  const env = c.env as { requestIP?: (req: Request) => { address: string } | null };
+  return normalizeIp(env.requestIP?.(c.req.raw)?.address ?? "unknown");
+}
+
 export function clientIp(c: Context): string {
   if (ipResolver) {
     const ip = ipResolver(c);
     if (ip) return ip;
   }
-  const env = c.env as { requestIP?: (req: Request) => { address: string } | null };
-  const peer = normalizeIp(env.requestIP?.(c.req.raw)?.address ?? "unknown");
+  const peer = peerIp(c);
   if (TRUSTED_PROXY.length === 0) return peer;
   if (!TRUSTED_PROXY.some((cidr) => ipInCidr(peer, cidr))) return peer;
+  // 受信代理后：Cloudflare 覆盖写 CF-Connecting-IP（客户端不可伪造），优先于 X-Forwarded-For
+  const cf = c.req.header("cf-connecting-ip");
+  if (cf) {
+    const ip = normalizeIp(cf.trim());
+    if (ip) return ip;
+  }
   const xff = c.req.header("x-forwarded-for");
   if (xff) {
     const first = normalizeIp(xff.split(",")[0]?.trim() ?? "");
