@@ -1,5 +1,6 @@
 import type { Context } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
+import { pbkdf2Sync, timingSafeEqual } from "node:crypto";
 import { isAdmin, SESSION_TTL_DAYS, SESSION_TTL_MS, TRUSTED_PROXY } from "./config";
 import { ipInCidr, peerIp } from "./rate-limit";
 import { sqlite } from "./db";
@@ -28,13 +29,42 @@ export function audit(wxId: string | null, action: string, detail: string | null
     .run(wxId, action, detail, ip, chinaNow());
 }
 
+/**
+ * 密码验证：兼容 Workers 端 PBKDF2-SHA256 哈希（pbkdf2$iter$salt_hex$hash_hex），
+ * 其余（argon2id/bcrypt，Bun 内置）走 Bun.password.verify；未知格式返回 false。
+ */
+export async function verifyPassword(password: string, stored: string): Promise<boolean> {
+  if (stored.startsWith("pbkdf2$")) {
+    const [prefix, iterStr, saltHex, expected] = stored.split("$");
+    const iterations = Number(iterStr);
+    if (prefix !== "pbkdf2" || !iterStr || !saltHex || !expected) return false;
+    if (
+      !Number.isInteger(iterations) ||
+      iterations < 1000 ||
+      !/^[0-9a-f]+$/i.test(saltHex) ||
+      !/^[0-9a-f]+$/i.test(expected)
+    ) {
+      return false;
+    }
+    const derived = pbkdf2Sync(password, Buffer.from(saltHex, "hex"), iterations, 32, "sha256").toString("hex");
+    const a = Buffer.from(derived);
+    const b = Buffer.from(expected);
+    return a.length === b.length && timingSafeEqual(a, b);
+  }
+  try {
+    return await Bun.password.verify(password, stored);
+  } catch {
+    return false;
+  }
+}
+
 export async function login(wxId: string, password: string): Promise<boolean> {
   const row = sqlite
     .query("SELECT password_hash, level FROM users WHERE wx_id = ?")
     .get(wxId) as { password_hash: string; level: number } | undefined;
   if (!row) return false;
   if (row.level <= 0) return false;
-  return await Bun.password.verify(password, row.password_hash);
+  return verifyPassword(password, row.password_hash);
 }
 
 export async function hashPassword(password: string): Promise<string> {

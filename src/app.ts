@@ -20,6 +20,7 @@ import {
   login,
   requireAdmin,
   requireUser,
+  verifyPassword,
 } from "./auth";
 import { sqlite } from "./db";
 import { clientIp, overLimit, rateLimit } from "./rate-limit";
@@ -225,7 +226,7 @@ app.post("/auth/password", async (c) => {
   const row = sqlite.query("SELECT password_hash FROM users WHERE wx_id = ?").get(user.wxId) as {
     password_hash: string;
   };
-  if (!(await Bun.password.verify(oldPassword, row.password_hash))) {
+  if (!(await verifyPassword(oldPassword, row.password_hash))) {
     await new Promise((r) => setTimeout(r, loginDelayMs()));
     return c.json({ error: "invalid credentials" }, 401);
   }
