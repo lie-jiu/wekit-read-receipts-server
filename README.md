@@ -24,10 +24,12 @@ ADMIN=wxid_admin bun run dev              # 管理员权限来自 ADMIN 环境�
 | 变量 | 默认 | 说明 |
 |---|---|---|
 | `PORT` | `3000` | 监听端口 |
+| `BIND_HOST` | `127.0.0.1` | 监听地址。反代/隧道与服务同机时保持默认；**公网直连**或反代/cloudflared 在其它机器时设 `0.0.0.0` |
+| `TLS_CERT` / `TLS_KEY` | 无 | PEM 证书与私钥路径，**两者同时设置**启用内置 HTTPS（公网直连免反代） |
 | `DB_PATH` | `./data.db` | SQLite 文件路径 |
 | `ADMIN` | 无 | 管理员 wxId（逗号分隔多个），此类账号受保护：不可删除、不可降级（level 0） |
 | `INVITE_CODE` | 无 | 注册邀请码；未设置时注册直接通过 |
-| `TRUSTED_PROXY` | 空 | 信任的代理网段（CIDR，逗号分隔，如 `127.0.0.1/32,::1/128`）；**Nginx/Caddy 反代时必填**，否则将信任伪造的 `X-Forwarded-For` |
+| `TRUSTED_PROXY` | 空 | 信任的代理网段（CIDR，逗号分隔，如 `127.0.0.1/32,::1/128`）；**仅填真正直连服务的代理**，反代/CF Tunnel 场景必填，否则将信任伪造的 `X-Forwarded-For` |
 
 ## 端点
 
@@ -76,17 +78,108 @@ ADMIN=wxid_admin bun run dev              # 管理员权限来自 ADMIN 环境�
 
 ## 部署
 
+### 部署形态总览
+
+生产环境建议 HTTPS（`__Host-session` + Secure Cookie）。真实 IP 的获取取决于「谁直连服务」：
+
+| 形态 | BIND_HOST | TRUSTED_PROXY | 真实 IP 来源 | HTTPS |
+|---|---|---|---|---|
+| A. 公网服务器 + 反代（推荐） | 默认 | `127.0.0.1/32`（同机） | `X-Forwarded-For` 首项 | 反代终止（自动证书） |
+| B. 公网服务器直连 | `0.0.0.0` | **不设** | 直连公网 IP | 内置 TLS / 裸 HTTP |
+| C. 内网 + Cloudflare Tunnel | 默认（同机）/ `0.0.0.0`（异机） | `127.0.0.1/32`（同机） | `CF-Connecting-IP`（内置优先） | CF 终止 |
+| D. 纯内网/局域网 | 默认；多人访问设 `0.0.0.0` | **不设** | 直连内网 IP | 无 |
+
+> **安全铁律**：`TRUSTED_PROXY` 只填真正直连服务的代理网段。公网直连（无代理）时绝不设置，否则任何人都能伪造 `CF-Connecting-IP` / `X-Forwarded-For` 冒充任意 IP，绕过限流与审计。监听 `127.0.0.1` 时只有本机进程（反代/cloudflared）能访问，客户端无法直接伪造。
+
+生产建议：`DB_PATH` 指向持久化磁盘（WAL 自动开启）、`ADMIN` 声明受保护账号、`INVITE_CODE` 开启邀请码以限制公网注册、`NODE_ENV=production`。
+
+### A. 公网服务器 + 反向代理（推荐）
+
+HTTPS 由反代自动续期，服务保持仅本机可见：
+
 ```bash
-# 生产环境必须 HTTPS（__Host-session Secure Cookie 要求）
-# 反向代理务必透传真实 IP 并配置 TRUSTED_PROXY，否则会信任伪造的 X-Forwarded-For
-# Nginx 示例：
-# location / {
-#     proxy_pass http://127.0.0.1:3000;
-#     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-# }
+bun run manage env TRUSTED_PROXY=127.0.0.1/32   # 反代与服务同机；异机则 BIND_HOST=0.0.0.0 + TRUSTED_PROXY=<反代IP>/32
+sudo bun run manage install
 ```
 
-生产建议：HTTPS 终止于反代层、`TRUSTED_PROXY` 仅填反代网段、`DB_PATH` 指向持久化磁盘（WAL 自动开启）、`ADMIN` 声明受保护账号、`INVITE_CODE` 开启邀请码以限制注册。
+Caddy（自动 Let's Encrypt）：
+
+```caddyfile
+your-domain.com {
+    reverse_proxy 127.0.0.1:3000
+}
+```
+
+Nginx：
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name your-domain.com;
+    # ssl_certificate / ssl_certificate_key 由 certbot --nginx 生成
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Host $host;
+    }
+}
+```
+
+### B. 公网服务器直连（无反代）
+
+```bash
+bun run manage env BIND_HOST=0.0.0.0
+# 推荐启用内置 HTTPS（证书用 certbot / acme.sh 申请，续期后需 restart）：
+bun run manage env TLS_CERT=/etc/letsencrypt/live/your-domain.com/fullchain.pem
+bun run manage env TLS_KEY=/etc/letsencrypt/live/your-domain.com/privkey.pem
+sudo bun run manage install
+```
+
+安全组/防火墙放行 `PORT`。裸 HTTP 可用但会话 cookie 明文传输，仅限测试。
+
+### C. 内网 + Cloudflare Tunnel（无公网 IP）
+
+1. 配置并启动服务（详见上方命令，`TRUSTED_PROXY=127.0.0.1/32` 为同机场景）：
+   ```bash
+   bun run manage env TRUSTED_PROXY=127.0.0.1/32
+   sudo bun run manage install
+   ```
+   > cloudflared 在**其它机器**时：`BIND_HOST=0.0.0.0` + `TRUSTED_PROXY=<cloudflared 机器 IP>/32`，并把该机器 IP 加入防火墙白名单。
+2. Zero Trust → Networks → Tunnels → Create（Named tunnel），按页面安装 cloudflared 并登录：
+   ```bash
+   curl -L --output /tmp/cloudflared.deb https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
+   sudo dpkg -i /tmp/cloudflared.deb && cloudflared tunnel login
+   ```
+3. 创建隧道与配置：
+   ```bash
+   cloudflared tunnel create wekit
+   ```
+   `~/.cloudflared/config.yml`：
+   ```yaml
+   tunnel: wekit
+   credentials-file: /root/.cloudflared/wekit.json
+   ingress:
+     - hostname: rr.example.com
+       service: http://127.0.0.1:3000
+     - service: http_status:404
+   ```
+4. 绑定域名并注册为服务：
+   ```bash
+   cloudflared tunnel route dns wekit rr.example.com
+   sudo cloudflared service install
+   ```
+5. 验证：手机流量访问 `https://rr.example.com/pixel?wxId=<wxid>&id=<64位hex>`，服务端查询 `reads` 应记录运营商公网 IP（优先取 `CF-Connecting-IP`，客户端不可伪造）。
+
+### D. 纯内网/局域网
+
+本机使用无需任何配置。内网多设备访问：
+
+```bash
+bun run manage env BIND_HOST=0.0.0.0
+```
+
+HTTP 直连时登录 cookie 自动降级为普通 `session`（不带 Secure，浏览器才能保存），局域网可信环境可用；不设 `TRUSTED_PROXY` 则记录内网真实 IP。
 
 ## 管理脚本
 

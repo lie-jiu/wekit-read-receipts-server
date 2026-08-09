@@ -1,6 +1,11 @@
 export const isProd = process.env.NODE_ENV === "production";
 
 export const PORT = Number(process.env.PORT ?? 3000);
+/** 监听地址：默认仅回环（反代/隧道同机场景）；公网直连或反代在其它机器时设 0.0.0.0 */
+export const BIND_HOST = process.env.BIND_HOST ?? "127.0.0.1";
+/** 内置 HTTPS：PEM 证书与私钥路径，两者同时设置才启用（公网直连免反代） */
+export const TLS_CERT = process.env.TLS_CERT?.trim() || "";
+export const TLS_KEY = process.env.TLS_KEY?.trim() || "";
 export const DB_PATH = process.env.DB_PATH ?? (isProd ? "/var/lib/read-receipts.db" : "./data.db");
 
 /** 逗号分隔的 wxid 列表，这些账号具备管理员权限（惰性读取，避免模块加载时 env 未就绪） */
