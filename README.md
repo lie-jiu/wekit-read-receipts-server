@@ -86,8 +86,7 @@ ADMIN=wxid_admin bun run dev              # 管理员权限来自 ADMIN 环境�
 |---|---|---|---|---|
 | A. 公网服务器 + 反代（推荐） | 默认 | `127.0.0.1/32`（同机） | `X-Forwarded-For` 首项 | 反代终止（自动证书） |
 | B. 公网服务器直连 | `0.0.0.0` | **不设** | 直连公网 IP | 内置 TLS / 裸 HTTP |
-| C. 内网 + Cloudflare Tunnel | 默认（同机）/ `0.0.0.0`（异机） | `127.0.0.1/32`（同机） | `CF-Connecting-IP`（内置优先） | CF 终止 |
-| D. 纯内网/局域网 | 默认；多人访问设 `0.0.0.0` | **不设** | 直连内网 IP | 无 |
+| C. 无公网 IP 机器 + Cloudflare Tunnel | 默认（同机）/ `0.0.0.0`（异机） | `127.0.0.1/32`（同机） | `CF-Connecting-IP`（内置优先） | CF 终止 |
 
 > **安全铁律**：`TRUSTED_PROXY` 只填真正直连服务的代理网段。公网直连（无代理）时绝不设置，否则任何人都能伪造 `CF-Connecting-IP` / `X-Forwarded-For` 冒充任意 IP，绕过限流与审计。监听 `127.0.0.1` 时只有本机进程（反代/cloudflared）能访问，客户端无法直接伪造。
 
@@ -138,7 +137,7 @@ sudo bun run manage install
 
 安全组/防火墙放行 `PORT`。裸 HTTP 可用但会话 cookie 明文传输，仅限测试。
 
-### C. 内网 + Cloudflare Tunnel（无公网 IP）
+### C. 无公网 IP 机器 + Cloudflare Tunnel
 
 1. 配置并启动服务（详见上方命令，`TRUSTED_PROXY=127.0.0.1/32` 为同机场景）：
    ```bash
@@ -170,16 +169,6 @@ sudo bun run manage install
    sudo cloudflared service install
    ```
 5. 验证：手机流量访问 `https://rr.example.com/pixel?wxId=<wxid>&id=<64位hex>`，服务端查询 `reads` 应记录运营商公网 IP（优先取 `CF-Connecting-IP`，客户端不可伪造）。
-
-### D. 纯内网/局域网
-
-本机使用无需任何配置。内网多设备访问：
-
-```bash
-bun run manage env BIND_HOST=0.0.0.0
-```
-
-HTTP 直连时登录 cookie 自动降级为普通 `session`（不带 Secure，浏览器才能保存），局域网可信环境可用；不设 `TRUSTED_PROXY` 则记录内网真实 IP。
 
 ## 管理脚本
 
