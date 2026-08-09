@@ -170,6 +170,33 @@ sudo bun run manage install
    ```
 5. 验证：手机流量访问 `https://rr.example.com/pixel?wxId=<wxid>&id=<64位hex>`，服务端查询 `reads` 应记录运营商公网 IP（优先取 `CF-Connecting-IP`，客户端不可伪造）。
 
+## 从 CF Workers 迁移（wekit-read-receipts-cf-workers）
+
+将 D1 中的历史数据迁移到本服务（`scripts/migrate-d1.ts`，经 D1 REST API 分页拉取）：
+
+**迁移范围**：`users`（含 message_count 重算）、`messages`、`reads`（丢弃 D1 的 wx_id 列）、`registration_stats`（本地按北京时间重算）。
+**跳过**：`sessions`（用户需重新登录）、`audit_logs`（D1 无 wx_id/ip）、`read_stats` / `message_read_stats`（服务启动时自动重建）。
+
+> **时区**：D1 存储 UTC，本服务存储北京时间（UTC+8），迁移时自动转换。
+
+1. 创建 CF API Token（权限 `D1` → Read），并取得 **Account ID**（控制台右上角）与 **D1 Database ID**（D1 数据库页 URL 中的 UUID）
+2. 配置凭据（写入 `.env`，已 gitignore，不会进仓库）：
+   ```bash
+   bun run manage env CF_ACCOUNT_ID=<账户ID>
+   bun run manage env CF_D1_DATABASE_ID=<数据库ID>
+   bun run manage env CF_API_TOKEN=<令牌>
+   ```
+3. 执行迁移（脚本幂等，可重复运行；会清空本地 users/messages/reads/registration_stats 后写入）：
+   ```bash
+   bun run migrate-d1
+   ```
+4. 启动服务（首次启动自动重建 read_stats / message_read_stats），并在 Web 后台核对数据与 IP：
+   ```bash
+   sudo bun run manage install
+   bun run manage status
+   ```
+5. 迁移完成后**吊销该 API Token**（令牌已接触生产数据）。
+
 ## 管理脚本
 
 `bun run manage <command>`（帮助：`bun run manage`）：

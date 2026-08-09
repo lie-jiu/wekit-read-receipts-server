@@ -18,6 +18,7 @@
     "start": "bun index.ts",
     "test": "bun test",
     "mkuser": "bun scripts/mkuser.ts",
-    "manage": "bun scripts/manage.ts"
+    "manage": "bun scripts/manage.ts",
+    "migrate-d1": "bun scripts/migrate-d1.ts"
   }
 }
