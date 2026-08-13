@@ -99,6 +99,9 @@ tr.expanded .expand-icon{transform:rotate(90deg)}
 .msg-list-meta .reads{color:#059669;font-weight:600}
 .msg-list-empty{font-size:.82rem;color:#64748b;padding:.25rem 0}
 .hidden{display:none !important}
+.repo-footer{display:flex;align-items:center;justify-content:center;gap:.4rem;font-size:.78rem;color:#64748b;text-decoration:none;margin-top:2rem;padding:.5rem .8rem;border-radius:8px;transition:color .15s,background .15s}
+.repo-footer:hover{color:#e2e8f0;background:#1e293b}
+.repo-footer svg{width:16px;height:16px;flex-shrink:0}
 @media (max-width:640px){body{padding:1rem .75rem}.header{flex-direction:column;align-items:stretch}.header .flex{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr))}.header .btn,.header .lang-toggle{width:100%;justify-content:center;min-height:40px}.tabs{display:grid;grid-template-columns:1fr 1fr}.tab{min-height:42px}.controls{flex-direction:column;align-items:stretch}.controls input{min-width:0;width:100%;min-height:44px}.btn{min-height:40px}.table-wrapper{padding:.5rem}table{display:block}thead{display:none}tbody{display:block}tbody tr{display:block;background:#0f172a;border:1px solid #334155;border-radius:10px;padding:.25rem 0;margin-bottom:.6rem}tbody tr:hover td,tbody tr:last-child td{background:transparent}tbody tr td{display:flex;align-items:center;justify-content:space-between;gap:.75rem;border-bottom:1px solid #1e293b;padding:.5rem .75rem;font-size:.8rem}tbody tr td:last-child{border-bottom:none}tbody tr td::before{content:attr(data-label);color:#64748b;font-weight:600;font-size:.72rem;flex-shrink:0}tbody tr td .flex{flex-wrap:nowrap}.uuid-col,.ts-col{white-space:normal;overflow-wrap:anywhere;text-align:right}.msg-col{max-width:none;white-space:normal;text-align:right;overflow-wrap:anywhere}.empty-row{border:1px dashed #334155;background:transparent !important}.empty-row td{justify-content:center;text-align:center;color:#64748b}.empty-row td::before{display:none}.level-input{font-size:1rem}.modal{max-width:94vw;width:94vw;padding:1.25rem}.modal .actions{flex-direction:column-reverse}.modal .actions .btn{width:100%;justify-content:center;min-height:44px}.modal-form input{min-height:44px}.toast-container{left:1rem;align-items:stretch}.toast{max-width:100%}.detail-row{border:1px dashed #334155;background:transparent !important;margin-bottom:.6rem;border-radius:10px}.detail-row td{display:block;border:none;padding:.25rem .5rem}.detail-row td::before{display:none}.detail-card{margin:.5rem .4rem;padding:.75rem .85rem}.detail-grid{grid-template-columns:1fr}.expand-btn{width:2rem;height:2rem;min-width:40px;min-height:40px;font-size:.95rem}.msg-list-item{min-height:44px}.pagination{gap:.25rem}.page-info{width:100%;text-align:center;margin-left:0;margin-top:.25rem}}
 </style>
 </head>
@@ -193,6 +196,11 @@ tr.expanded .expand-icon{transform:rotate(90deg)}
     </div>
   </div>
 </div>
+
+<a class="repo-footer" href="https://github.com/lie-jiu/wekit-read-receipts-server" target="_blank" rel="noopener noreferrer" aria-label="GitHub repository">
+<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.012 8.012 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+<span>lie-jiu · GitHub</span>
+</a>
 
 <div id="toastContainer" class="toast-container"></div>
 <div id="modalOverlay" class="modal-overlay hidden">

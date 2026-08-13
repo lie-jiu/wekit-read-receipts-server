@@ -7,7 +7,7 @@ export const LOGIN_HTML = `<!doctype html>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ctext y='14' font-size='14'%3E%E2%9C%89%EF%B8%8F%3C/text%3E%3C/svg%3E" />
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-body{font-family:system-ui,-apple-system,sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh;min-height:100dvh;display:flex;align-items:center;justify-content:center;padding:1rem;padding-top:max(1rem,env(safe-area-inset-top));padding-bottom:max(1rem,env(safe-area-inset-bottom));padding-left:max(1rem,env(safe-area-inset-left));padding-right:max(1rem,env(safe-area-inset-right))}
+body{font-family:system-ui,-apple-system,sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh;min-height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1.25rem;padding:1rem;padding-top:max(1rem,env(safe-area-inset-top));padding-bottom:max(1rem,env(safe-area-inset-bottom));padding-left:max(1rem,env(safe-area-inset-left));padding-right:max(1rem,env(safe-area-inset-right))}
 .card{background:#1e293b;border:1px solid #334155;border-radius:12px;padding:2rem;max-width:min(380px,100%);width:100%;box-shadow:0 8px 32px rgba(0,0,0,.5)}
 h1{font-size:1.25rem;font-weight:700;margin-bottom:.5rem}
 p{font-size:.85rem;color:#94a3b8;margin-bottom:1.25rem}
@@ -24,7 +24,10 @@ button[type=submit]:disabled{opacity:.6;cursor:not-allowed}
 .hidden{display:none}
 .lang-toggle{position:fixed;top:max(1rem,env(safe-area-inset-top));right:max(1rem,env(safe-area-inset-right));font-size:.7rem;font-weight:600;padding:.25rem .5rem;border-radius:4px;background:transparent;color:#64748b;border:1px solid #475569;cursor:pointer;letter-spacing:.03em}
 .lang-toggle:hover{color:#e2e8f0;border-color:#94a3b8}
-@media (max-width:480px){.card{padding:1.5rem 1.25rem}.tab,button[type=submit],input{min-height:44px}.lang-toggle{padding:.5rem .6rem}}
+.repo-footer{display:flex;align-items:center;gap:.4rem;font-size:.78rem;color:#64748b;text-decoration:none;padding:.4rem .7rem;border-radius:8px;transition:color .15s,background .15s}
+.repo-footer:hover{color:#e2e8f0;background:#1e293b}
+.repo-footer svg{width:16px;height:16px;flex-shrink:0}
+@media (max-width:480px){.card{padding:1.5rem 1.25rem}.tab,button[type=submit],input{min-height:44px}.lang-toggle{padding:.5rem .6rem}.repo-footer{min-height:44px;padding:.5rem .8rem}}
 </style>
 </head>
 <body>
@@ -51,6 +54,10 @@ button[type=submit]:disabled{opacity:.6;cursor:not-allowed}
 </form>
 <div id="msg" class="msg"></div>
 </div>
+<a class="repo-footer" href="https://github.com/lie-jiu/wekit-read-receipts-server" target="_blank" rel="noopener noreferrer" aria-label="GitHub repository">
+<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.012 8.012 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+<span>lie-jiu · GitHub</span>
+</a>
 <script>
 const $ = (id) => document.getElementById(id);
 let lang = localStorage.getItem("lang") || "zh-CN";
