@@ -2,6 +2,7 @@ import type { Context } from "hono";
 import { Hono } from "hono";
 import {
   CSP,
+  ENABLE_GEO,
   INVITE_CODE,
   MAX_CONTENT_LENGTH,
   MAX_REGISTER_BATCH,
@@ -23,11 +24,36 @@ import {
   verifyPassword,
 } from "./auth";
 import { sqlite } from "./db";
+import { lookupIpLocation } from "./geo";
 import { clientIp, overLimit, rateLimit } from "./rate-limit";
 import { chinaDate, chinaNow, computeId, escapeLike, isValidId, isValidWxId, maskContent, maskWxId, timingSafeEqual } from "./utils";
 import { LOGIN_HTML, adminPage, htmlPage } from "./pages";
 
 const app = new Hono();
+
+type ReadRow = {
+  ip: string;
+  timestamp: string;
+  user_agent: string;
+  country: string;
+  region: string;
+  city: string;
+  isp: string;
+};
+
+function readRow(r: ReadRow) {
+  const located = r.country !== "" || r.region !== "" || r.city !== "" || r.isp !== "";
+  return {
+    ip: r.ip,
+    timestamp: r.timestamp,
+    userAgent: r.user_agent,
+    country: r.country,
+    region: r.region,
+    city: r.city,
+    isp: r.isp,
+    located,
+  };
+}
 
 /** 兼容 JSON 与表单提交（登录/注册页复用 CF 版前端，发的是 x-www-form-urlencoded） */
 async function parseBody(c: Context): Promise<Record<string, unknown>> {
@@ -54,9 +80,10 @@ app.get("/pixel", (c) => {
   const wxId = c.req.query("wxId") ?? "";
   const id = c.req.query("id") ?? "";
   if (isValidId(id) && isValidWxId(wxId)) {
+    const ua = (c.req.header("user-agent") ?? "").slice(0, 500);
     sqlite
-      .query("INSERT OR IGNORE INTO reads (id, ip, timestamp) VALUES (?, ?, ?)")
-      .run(id, ip, chinaNow());
+      .query("INSERT OR IGNORE INTO reads (id, ip, timestamp, user_agent) VALUES (?, ?, ?, ?)")
+      .run(id, ip, chinaNow(), ua);
   }
   c.header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
   c.header("Content-Type", "image/png");
@@ -255,7 +282,7 @@ app.get("/", (c) => {
   if (!user) return c.redirect("/login");
   c.header("Content-Security-Policy", CSP.DASHBOARD);
   c.header("Content-Type", "text/html; charset=utf-8");
-  return c.body(htmlPage({ wxId: user.wxId, level: user.level }));
+  return c.body(htmlPage({ wxId: user.wxId, level: user.level, geo: ENABLE_GEO }));
 });
 
 app.get("/messages", (c) => {
@@ -329,9 +356,48 @@ app.get("/reads/:id", (c) => {
   if (!msg) return c.json({ error: "not found" }, 404);
   if (msg.wx_id !== user.wxId) return c.json({ error: "forbidden" }, 403);
   const rows = sqlite
-    .query("SELECT ip, timestamp FROM reads WHERE id = ? ORDER BY timestamp DESC LIMIT 500")
-    .all(id) as Array<{ ip: string; timestamp: string }>;
-  return c.json(rows);
+    .query(
+      "SELECT ip, timestamp, user_agent, country, region, city, isp FROM reads WHERE id = ? ORDER BY timestamp DESC LIMIT 500",
+    )
+    .all(id) as ReadRow[];
+  return c.json(rows.map(readRow));
+});
+
+/** 按需 IP 定位：为指定已读记录补全省市/运营商（幂等，成功结果缓存 24h） */
+app.use("/reads/:id/geo", rateLimit("geo"));
+app.post("/reads/:id/geo", async (c) => {
+  const user = requireUser(c);
+  if (!user) return c.json({ error: "unauthorized" }, 401);
+  if (!ENABLE_GEO) return c.json({ error: "geo disabled" }, 403);
+  const id = c.req.param("id");
+  if (!isValidId(id)) return c.json({ error: "invalid id" }, 400);
+  let body: { ip?: unknown };
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: "invalid JSON" }, 400);
+  }
+  const ip = typeof body.ip === "string" ? body.ip : "";
+  if (!ip || ip.length > 64) return c.json({ error: "invalid ip" }, 400);
+
+  const msg = sqlite.query("SELECT wx_id FROM messages WHERE id = ?").get(id) as { wx_id: string } | undefined;
+  if (!msg) return c.json({ error: "not found" }, 404);
+  if (msg.wx_id !== user.wxId && !user.isAdmin) return c.json({ error: "forbidden" }, 403);
+
+  const row = sqlite
+    .query("SELECT country, region, city, isp FROM reads WHERE id = ? AND ip = ?")
+    .get(id, ip) as { country: string; region: string; city: string; isp: string } | undefined;
+  if (!row) return c.json({ error: "not found" }, 404);
+  if (row.country !== "" || row.region !== "" || row.city !== "" || row.isp !== "") {
+    return c.json({ ...readRow({ ip, timestamp: "", user_agent: "", ...row }), located: true });
+  }
+
+  const info = await lookupIpLocation(ip);
+  if (!info) return c.json({ ...readRow({ ip, timestamp: "", user_agent: "", country: "", region: "", city: "", isp: "" }), located: false }, 502);
+  sqlite
+    .query("UPDATE reads SET country = ?, region = ?, city = ?, isp = ? WHERE id = ? AND ip = ?")
+    .run(info.country, info.region, info.city, info.isp, id, ip);
+  return c.json({ ip, userAgent: "", country: info.country, region: info.region, city: info.city, isp: info.isp, located: true });
 });
 
 const LEADERBOARD_TABLES: Record<string, string> = {
@@ -561,9 +627,11 @@ app.get("/admin/reads/:id", (c) => {
   const id = c.req.param("id");
   if (!isValidId(id)) return c.json({ error: "invalid id" }, 400);
   const rows = sqlite
-    .query("SELECT ip, timestamp FROM reads WHERE id = ? ORDER BY timestamp DESC LIMIT 1000")
-    .all(id) as Array<{ ip: string; timestamp: string }>;
-  return c.json({ id, count: rows.length, reads: rows });
+    .query(
+      "SELECT ip, timestamp, user_agent, country, region, city, isp FROM reads WHERE id = ? ORDER BY timestamp DESC LIMIT 1000",
+    )
+    .all(id) as ReadRow[];
+  return c.json({ id, count: rows.length, reads: rows.map(readRow) });
 });
 
 app.notFound((c) => c.json({ error: "not found" }, 404));

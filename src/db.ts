@@ -94,6 +94,14 @@ CREATE TRIGGER messages_ad AFTER DELETE ON messages BEGIN
   INSERT INTO messages_fts(messages_fts, rowid, content) VALUES ('delete', old.rowid, old.content);
 END;
 `,
+  /* v2：已读明细扩展——UA 与按需 IP 定位（省市/运营商，不含经纬度） */
+  `
+ALTER TABLE reads ADD COLUMN user_agent TEXT NOT NULL DEFAULT '';
+ALTER TABLE reads ADD COLUMN country TEXT NOT NULL DEFAULT '';
+ALTER TABLE reads ADD COLUMN region TEXT NOT NULL DEFAULT '';
+ALTER TABLE reads ADD COLUMN city TEXT NOT NULL DEFAULT '';
+ALTER TABLE reads ADD COLUMN isp TEXT NOT NULL DEFAULT '';
+`,
 ];
 
 export const sqlite = new Database(DB_PATH, { create: true });

@@ -30,6 +30,7 @@ ADMIN=wxid_admin bun run dev              # 管理员权限来自 ADMIN 环境�
 | `ADMIN` | 无 | 管理员 wxId（逗号分隔多个），此类账号受保护：不可删除、不可降级（level 0） |
 | `INVITE_CODE` | 无 | 注册邀请码；未设置时注册直接通过 |
 | `TRUSTED_PROXY` | 空 | 信任的代理网段（CIDR，逗号分隔，如 `127.0.0.1/32,::1/128`）；**仅填真正直连服务的代理**，反代/CF Tunnel 场景必填，否则将信任伪造的 `X-Forwarded-For` |
+| `ENABLE_GEO` | `1` | 按需 IP 定位开关（`0`/`off`/`false` 关闭）：关闭后隐藏「定位」按钮并拒绝 geo 端点，打点路径始终零外部请求 |
 
 ## 端点
 
@@ -48,7 +49,8 @@ ADMIN=wxid_admin bun run dev              # 管理员权限来自 ADMIN 环境�
 | `/login`、`/auth/verify`、`/auth/register`、`/auth/logout`、`/auth/password`、`/auth/status` | 会话管理（30 天；HTTPS 下使用 `__Host-session` + Secure，HTTP 直连自动降级为普通 cookie） |
 | `/` | 用户仪表盘：消息搜索（FTS5 trigram）、读取明细、删除 |
 | `/messages`、`DELETE /messages` | 本人消息列表 / 清空 |
-| `/reads/:id` | 单条消息读取明细（IP、时间） |
+| `/reads/:id` | 单条消息读取明细（IP、UA、时间） |
+| `POST /reads/:id/geo` | 按需 IP 定位：为指定已读记录补全省市/运营商（幂等，成功缓存 24h；需登录，本人消息或管理员） |
 | `/leaderboard` | 排行榜：注册数 / 读取数 / 消息数 × 日榜 / 总榜（wxId 脱敏） |
 | `/admin/*` | 管理后台：用户管理、等级调整、消息管理（`level 0` = 拉黑并清空该用户数据） |
 
@@ -73,6 +75,7 @@ ADMIN=wxid_admin bun run dev              # 管理员权限来自 ADMIN 环境�
 ## 数据与维护
 
 - 时间一律 UTC+8；消息 id = `SHA-256(wxId + \x00 + content + \x00 + createTime)`，createTime 为客户端 13 位毫秒十进制字符串，绝不数值化/截断
+- 已读明细默认记录 `ip`、`user_agent`、时间；**定位为按需触发**——在已读详情中点「定位」按钮才调用免费三接口（ip-api → ipwho.is → ipinfo）补全省市/运营商（不含经纬度），结果仅本人/管理员可见，`ENABLE_GEO=0` 可整体关闭。打点路径 `GET /pixel` 不做任何外部请求
 - `reads` 表无外键、无 wxId，删用户/删消息由服务端在同一事务内清理对应 reads；残留孤儿 reads 由每日任务清理（保留 7 天）
 - 定时任务：每 10 分钟游标增量回填统计表；每日清理过期会话、30 天前审计日志、孤儿 reads 并重建 FTS
 

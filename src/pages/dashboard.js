@@ -215,6 +215,14 @@ export function htmlPage(session) { return `<!doctype html>
         color: #94a3b8;
         white-space: nowrap;
       }
+      .loc-col {
+        color: #7dd3fc;
+        font-size: 0.8rem;
+      }
+      .loc-text {
+        color: #7dd3fc;
+        font-size: 0.8rem;
+      }
 
       .empty-row td {
         text-align: center;
@@ -756,6 +764,7 @@ export function htmlPage(session) { return `<!doctype html>
           <thead>
             <tr>
               <th data-i18n="ipAddress">IP Address</th>
+              <th data-i18n="location">Location</th>
               <th data-i18n="readAt">Read At</th>
             </tr>
           </thead>
@@ -795,7 +804,7 @@ export function htmlPage(session) { return `<!doctype html>
     </div>
 
     <script>
-      const ME = ${JSON.stringify({ wxId: session.wxId, level: session.level })};
+      const ME = ${JSON.stringify({ wxId: session.wxId, level: session.level, geo: session.geo === true })};
       const tbody = document.getElementById("tbody");
       const recordCount = document.getElementById("recordCount");
       const toastContainer = document.getElementById("toastContainer");
@@ -860,7 +869,12 @@ export function htmlPage(session) { return `<!doctype html>
           failedClear: "清除记录失败",
           readDetails: "已读详情",
           ipAddress: "IP 地址",
+          location: "地区",
           readAt: "读取时间",
+          locate: "定位",
+          locating: "定位中…",
+          locateFailed: "定位失败",
+          noGeo: "无法定位",
           noReads: "暂无读取记录",
           close: "关闭",
           readsFor: "「{0}」的已读记录",
@@ -911,7 +925,12 @@ export function htmlPage(session) { return `<!doctype html>
           failedClear: "Failed to clear records",
           readDetails: "Read Details",
           ipAddress: "IP Address",
+          location: "Location",
           readAt: "Read At",
+          locate: "Locate",
+          locating: "Locating…",
+          locateFailed: "Locate failed",
+          noGeo: "Unresolved",
           noReads: "No reads yet",
           close: "Close",
           readsFor: 'Reads for: "{0}"',
@@ -1101,7 +1120,7 @@ export function htmlPage(session) { return `<!doctype html>
               : t("messageCount"),
           t("reads"),
         ]);
-        apply(detailTbody, [t("ipAddress"), t("readAt")]);
+        apply(detailTbody, [t("ipAddress"), t("location"), t("readAt")]);
       }
 
       async function loadLeaderboard() {
@@ -1317,7 +1336,7 @@ export function htmlPage(session) { return `<!doctype html>
       async function openDetail(id, content) {
         detailFor.textContent = t("readsFor", content);
         detailTbody.innerHTML =
-          '<tr class="empty-row"><td colspan="2">' + esc(t("loading")) + "</td></tr>";
+          '<tr class="empty-row"><td colspan="3">' + esc(t("loading")) + "</td></tr>";
         detailPanel.classList.remove("hidden");
         try {
           const res = await fetch("/reads/" + encodeURIComponent(id));
@@ -1326,28 +1345,82 @@ export function htmlPage(session) { return `<!doctype html>
             return;
           }
           if (!res.ok) {
-            detailTbody.innerHTML = \`<tr class="empty-row"><td colspan="2">HTTP \${res.status}</td></tr>\`;
+            detailTbody.innerHTML = \`<tr class="empty-row"><td colspan="3">HTTP \${res.status}</td></tr>\`;
             return;
           }
           const reads = await res.json();
           if (!reads.length) {
             detailTbody.innerHTML =
-              '<tr class="empty-row"><td colspan="2">' + esc(t("noReads")) + "</td></tr>";
+              '<tr class="empty-row"><td colspan="3">' + esc(t("noReads")) + "</td></tr>";
             return;
           }
           detailTbody.innerHTML = reads
-            .map(
-              (r) => \`<tr>
-      <td class="ip-col">\${esc(r.ip)}</td>
-      <td class="ts-col">\${esc(fmtTs(r.timestamp))}</td>
-    </tr>\`,
-            )
+            .map((r) => {
+              const parts = [r.country, r.region, r.city, r.isp].filter(Boolean);
+              const cell = r.located
+                ? '<span class="loc-text">' + esc(parts.join(" ") || t("noGeo")) + "</span>"
+                : ME.geo
+                  ? '<button class="btn btn-outline btn-sm" data-ip="' +
+                    escAttr(r.ip) +
+                    '" onclick="locateRead(\'' +
+                    id +
+                    "', this)\">" +
+                    esc(t("locate")) +
+                    "</button>"
+                  : '<span class="loc-text">' + esc(t("noGeo")) + "</span>";
+              return (
+                "<tr>" +
+                '<td class="ip-col">' +
+                esc(r.ip) +
+                "</td>" +
+                '<td class="loc-col">' +
+                cell +
+                "</td>" +
+                '<td class="ts-col">' +
+                esc(fmtTs(r.timestamp)) +
+                "</td>" +
+                "</tr>"
+              );
+            })
             .join("");
         } catch (e) {
           detailTbody.innerHTML =
-            '<tr class="empty-row"><td colspan="2">' + esc(t("networkError")) + "</td></tr>";
+            '<tr class="empty-row"><td colspan="3">' + esc(t("networkError")) + "</td></tr>";
         }
         setLabels();
+      }
+
+      async function locateRead(id, btn) {
+        if (btn.disabled) return;
+        btn.disabled = true;
+        const original = btn.textContent;
+        btn.textContent = t("locating");
+        try {
+          const res = await fetch("/reads/" + encodeURIComponent(id) + "/geo", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ ip: btn.dataset.ip }),
+          });
+          if (res.status === 401) {
+            location.href = "/";
+            return;
+          }
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || "HTTP " + res.status);
+          const span = document.createElement("span");
+          span.className = "loc-text";
+          span.textContent =
+            [data.country, data.region, data.city, data.isp].filter(Boolean).join(" ") ||
+            t("noGeo");
+          btn.replaceWith(span);
+        } catch (e) {
+          btn.textContent = t("locateFailed");
+          btn.disabled = false;
+          setTimeout(() => {
+            if (!btn.parentNode) return;
+            btn.textContent = original;
+          }, 2000);
+        }
       }
 
       /* ── keyboard ── */

@@ -43,6 +43,14 @@ export function quotaFor(level: number): number {
 export const MAX_CONTENT_LENGTH = 10_000;
 export const MAX_REGISTER_BATCH = 50;
 
+/** 按需 IP 定位开关：0/off/false 关闭后隐藏定位按钮并拒绝 geo 端点 */
+export const ENABLE_GEO = !["0", "off", "false", "no"].includes((process.env.ENABLE_GEO ?? "1").trim().toLowerCase());
+/** 定位外呼超时（每个接口）与缓存 TTL：成功 24h / 失败 1h */
+export const GEO_TIMEOUT_MS = 3000;
+export const GEO_CACHE_SUCCESS_MS = 24 * 3600 * 1000;
+export const GEO_CACHE_FAILURE_MS = 3600 * 1000;
+export const GEO_CACHE_MAX = 10_000;
+
 /** 限流档位：per-IP 固定窗口（毫秒） */
 export const RATE_LIMITS = {
   pixel: { limit: 200, windowMs: 60_000, failOpen: true },
@@ -50,6 +58,7 @@ export const RATE_LIMITS = {
   register: { limit: 30, windowMs: 60_000, failOpen: true },
   auth: { limit: 5, windowMs: 60_000, failOpen: false },
   admin: { limit: 30, windowMs: 60_000, failOpen: false },
+  geo: { limit: 30, windowMs: 60_000, failOpen: false },
 } as const;
 
 export const SECURITY_HEADERS = {
