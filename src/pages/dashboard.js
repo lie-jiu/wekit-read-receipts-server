@@ -1360,11 +1360,11 @@ export function htmlPage(session) { return `<!doctype html>
               const cell = r.located
                 ? '<span class="loc-text">' + esc(parts.join(" ") || t("noGeo")) + "</span>"
                 : ME.geo
-                  ? '<button class="btn btn-outline btn-sm" data-ip="' +
-                    escAttr(r.ip) +
-                    '" onclick="locateRead(\'' +
+                  ? '<button class="btn btn-outline btn-sm" data-id="' +
                     id +
-                    "', this)\">" +
+                    '" data-ip="' +
+                    escAttr(r.ip) +
+                    '" onclick="locateRead(this)">' +
                     esc(t("locate")) +
                     "</button>"
                   : '<span class="loc-text">' + esc(t("noGeo")) + "</span>";
@@ -1390,9 +1390,10 @@ export function htmlPage(session) { return `<!doctype html>
         setLabels();
       }
 
-      async function locateRead(id, btn) {
+      async function locateRead(btn) {
         if (btn.disabled) return;
         btn.disabled = true;
+        const id = btn.dataset.id;
         const original = btn.textContent;
         btn.textContent = t("locating");
         try {
