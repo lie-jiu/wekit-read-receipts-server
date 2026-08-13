@@ -40,6 +40,16 @@ tr:hover td{background:#0f172a80}
 .msg-col{max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ts-col{color:#94a3b8;white-space:nowrap}
 .empty-row td{text-align:center;padding:2.5rem 1rem;color:#475569;font-size:.85rem}
+.pagination{display:flex;align-items:center;justify-content:center;gap:.35rem;flex-wrap:wrap;padding:.65rem 1rem;border-top:1px solid #334155;background:#0f172a}
+.pagination:empty{display:none}
+.page-btn{min-width:2rem;height:2rem;padding:0 .5rem;border:1px solid #475569;border-radius:6px;background:transparent;color:#94a3b8;font-size:.8rem;cursor:pointer;transition:background .15s,color .15s}
+.page-btn:hover:not(:disabled){background:#1e293b;color:#e2e8f0}
+.page-btn:disabled{opacity:.4;cursor:not-allowed}
+.page-btn.page-active{background:#2563eb;border-color:#2563eb;color:#fff}
+.page-btn.page-ellipsis{border:none;background:transparent;cursor:default}
+.page-size-select{margin-left:.5rem;padding:.25rem .4rem;border:1px solid #475569;border-radius:6px;background:#0f172a;color:#e2e8f0;font-size:.8rem;outline:none}
+.page-size-select:focus{border-color:#3b82f6}
+.page-info{color:#64748b;font-size:.78rem;margin-left:.5rem}
 .stats{display:flex;align-items:center;justify-content:space-between;padding:.5rem 1rem;background:#0f172a;border-bottom:1px solid #334155;font-size:.78rem;color:#64748b}
 .stats .count{color:#94a3b8;font-weight:600}
 .level-editor{display:inline-flex;align-items:center;gap:.25rem}
@@ -89,7 +99,7 @@ tr.expanded .expand-icon{transform:rotate(90deg)}
 .msg-list-meta .reads{color:#059669;font-weight:600}
 .msg-list-empty{font-size:.82rem;color:#64748b;padding:.25rem 0}
 .hidden{display:none !important}
-@media (max-width:640px){body{padding:1rem .75rem}.header{flex-direction:column;align-items:stretch}.header .flex{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr))}.header .btn,.header .lang-toggle{width:100%;justify-content:center;min-height:40px}.tabs{display:grid;grid-template-columns:1fr 1fr}.tab{min-height:42px}.controls{flex-direction:column;align-items:stretch}.controls input{min-width:0;width:100%;min-height:44px}.btn{min-height:40px}.table-wrapper{padding:.5rem}table{display:block}thead{display:none}tbody{display:block}tbody tr{display:block;background:#0f172a;border:1px solid #334155;border-radius:10px;padding:.25rem 0;margin-bottom:.6rem}tbody tr:hover td,tbody tr:last-child td{background:transparent}tbody tr td{display:flex;align-items:center;justify-content:space-between;gap:.75rem;border-bottom:1px solid #1e293b;padding:.5rem .75rem;font-size:.8rem}tbody tr td:last-child{border-bottom:none}tbody tr td::before{content:attr(data-label);color:#64748b;font-weight:600;font-size:.72rem;flex-shrink:0}tbody tr td .flex{flex-wrap:nowrap}.uuid-col,.ts-col{white-space:normal;overflow-wrap:anywhere;text-align:right}.msg-col{max-width:none;white-space:normal;text-align:right;overflow-wrap:anywhere}.empty-row{border:1px dashed #334155;background:transparent !important}.empty-row td{justify-content:center;text-align:center;color:#64748b}.empty-row td::before{display:none}.level-input{font-size:1rem}.modal{max-width:94vw;width:94vw;padding:1.25rem}.modal .actions{flex-direction:column-reverse}.modal .actions .btn{width:100%;justify-content:center;min-height:44px}.modal-form input{min-height:44px}.toast-container{left:1rem;align-items:stretch}.toast{max-width:100%}.detail-row{border:1px dashed #334155;background:transparent !important;margin-bottom:.6rem;border-radius:10px}.detail-row td{display:block;border:none;padding:.25rem .5rem}.detail-row td::before{display:none}.detail-card{margin:.5rem .4rem;padding:.75rem .85rem}.detail-grid{grid-template-columns:1fr}.expand-btn{width:2rem;height:2rem;min-width:40px;min-height:40px;font-size:.95rem}.msg-list-item{min-height:44px}}
+@media (max-width:640px){body{padding:1rem .75rem}.header{flex-direction:column;align-items:stretch}.header .flex{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr))}.header .btn,.header .lang-toggle{width:100%;justify-content:center;min-height:40px}.tabs{display:grid;grid-template-columns:1fr 1fr}.tab{min-height:42px}.controls{flex-direction:column;align-items:stretch}.controls input{min-width:0;width:100%;min-height:44px}.btn{min-height:40px}.table-wrapper{padding:.5rem}table{display:block}thead{display:none}tbody{display:block}tbody tr{display:block;background:#0f172a;border:1px solid #334155;border-radius:10px;padding:.25rem 0;margin-bottom:.6rem}tbody tr:hover td,tbody tr:last-child td{background:transparent}tbody tr td{display:flex;align-items:center;justify-content:space-between;gap:.75rem;border-bottom:1px solid #1e293b;padding:.5rem .75rem;font-size:.8rem}tbody tr td:last-child{border-bottom:none}tbody tr td::before{content:attr(data-label);color:#64748b;font-weight:600;font-size:.72rem;flex-shrink:0}tbody tr td .flex{flex-wrap:nowrap}.uuid-col,.ts-col{white-space:normal;overflow-wrap:anywhere;text-align:right}.msg-col{max-width:none;white-space:normal;text-align:right;overflow-wrap:anywhere}.empty-row{border:1px dashed #334155;background:transparent !important}.empty-row td{justify-content:center;text-align:center;color:#64748b}.empty-row td::before{display:none}.level-input{font-size:1rem}.modal{max-width:94vw;width:94vw;padding:1.25rem}.modal .actions{flex-direction:column-reverse}.modal .actions .btn{width:100%;justify-content:center;min-height:44px}.modal-form input{min-height:44px}.toast-container{left:1rem;align-items:stretch}.toast{max-width:100%}.detail-row{border:1px dashed #334155;background:transparent !important;margin-bottom:.6rem;border-radius:10px}.detail-row td{display:block;border:none;padding:.25rem .5rem}.detail-row td::before{display:none}.detail-card{margin:.5rem .4rem;padding:.75rem .85rem}.detail-grid{grid-template-columns:1fr}.expand-btn{width:2rem;height:2rem;min-width:40px;min-height:40px;font-size:.95rem}.msg-list-item{min-height:44px}.pagination{gap:.25rem}.page-info{width:100%;text-align:center;margin-left:0;margin-top:.25rem}}
 </style>
 </head>
 <body>
@@ -114,6 +124,7 @@ tr.expanded .expand-icon{transform:rotate(90deg)}
   <div id="secUsers">
     <div class="controls">
       <button class="btn btn-primary" onclick="openAddUser()" data-i18n="addUser">Add User</button>
+      <input id="fUser" placeholder="Search by wxId..." oninput="onUserSearchInput()" data-i18n="fUserPlaceholder" data-i18n-placeholder/>
       <button class="btn btn-secondary btn-sm" onclick="expandAllUsers()" data-i18n="expandAll">Expand all</button>
       <button class="btn btn-secondary btn-sm" onclick="collapseAllUsers()" data-i18n="collapseAll">Collapse all</button>
     </div>
@@ -123,6 +134,7 @@ tr.expanded .expand-icon{transform:rotate(90deg)}
         <thead><tr><th style="width:2.4rem"></th><th>wxId</th><th data-i18n="level">Level</th><th data-i18n="registered">Registered</th><th data-i18n="actions">Actions</th></tr></thead>
         <tbody id="userTbody"></tbody>
       </table>
+      <div class="pagination" id="userPagination"></div>
     </div>
   </div>
 
@@ -249,6 +261,11 @@ const translations = {
     addUserFail: "创建用户失败",
     addUserEmptyWxid: "请填写 wxId",
     usersLabel: "个用户",
+    fUserPlaceholder: "按 wxId 搜索...",
+    pageOf: "第 {0} / {1} 页",
+    pageSizeLabel: "每页",
+    prevPage: "上一页",
+    nextPage: "下一页",
     messagesLabel: "条消息",
     level: "等级",
     registered: "注册时间",
@@ -326,6 +343,11 @@ const translations = {
     addUserFail: "Failed to create user",
     addUserEmptyWxid: "Enter a wxId",
     usersLabel: "users",
+    fUserPlaceholder: "Search by wxId...",
+    pageOf: "Page {0} / {1}",
+    pageSizeLabel: "Per page",
+    prevPage: "Prev",
+    nextPage: "Next",
     messagesLabel: "messages",
     level: "Level",
     registered: "Registered",
@@ -462,14 +484,87 @@ function showTab(name){
   else if (name === "msgs") loadMsgs();
   else loadLevels();
 }
+let userSearchTimer = null;
+let userPage = 1;
+let userPageSize = 20;
+let userTotalPages = 1;
+let userTotal = 0;
+
+function onUserSearchInput() {
+  clearTimeout(userSearchTimer);
+  userSearchTimer = setTimeout(() => {
+    userPage = 1;
+    loadUsers();
+  }, 300);
+}
+
+function goToUserPage(p) {
+  if (p < 1 || p > userTotalPages || p === userPage) return;
+  userPage = p;
+  loadUsers();
+}
+
+function changeUserPageSize(size) {
+  const n = parseInt(size, 10);
+  if (!Number.isFinite(n) || n < 1) return;
+  userPageSize = n;
+  userPage = 1;
+  loadUsers();
+}
+
+function renderUserPagination() {
+  const el = $("userPagination");
+  if (!el) return;
+  if (userTotal === 0) { el.innerHTML = ""; return; }
+
+  const buttons = [];
+  const prevDis = userPage <= 1 ? " disabled" : "";
+  buttons.push('<button class="page-btn" onclick="goToUserPage(' + (userPage - 1) + ')"' + prevDis + ' aria-label="' + escAttr(t("prevPage")) + '">&laquo;</button>');
+
+  // 页码窗口：始终显示第一页、当前页前后各 2 页、最后一页
+  const addPageBtn = (p, label, cls) => {
+    const dis = p === userPage ? " disabled" : "";
+    buttons.push('<button class="page-btn ' + (cls || "") + '" onclick="goToUserPage(' + p + ')"' + dis + ">" + label + "</button>");
+  };
+  const addEllipsis = () => buttons.push('<span class="page-btn page-ellipsis">&hellip;</span>');
+
+  const pages = new Set([1, userPage - 1, userPage, userPage + 1, userTotalPages]);
+  const sorted = [...pages].filter((p) => p >= 1 && p <= userTotalPages).sort((a, b) => a - b);
+  let prev = 0;
+  for (const p of sorted) {
+    if (p - prev > 1) addEllipsis();
+    addPageBtn(p, p, p === userPage ? "page-active" : "");
+    prev = p;
+  }
+
+  const nextDis = userPage >= userTotalPages ? " disabled" : "";
+  buttons.push('<button class="page-btn" onclick="goToUserPage(' + (userPage + 1) + ')"' + nextDis + ' aria-label="' + escAttr(t("nextPage")) + '">&raquo;</button>');
+
+  const sizeOptions = [10, 20, 50, 100]
+    .map((n) => '<option value="' + n + '"' + (n === userPageSize ? " selected" : "") + ">" + n + "</option>")
+    .join("");
+  const sizeSelect = '<span class="page-info">' + t("pageOf", userPage, userTotalPages) + '</span><span class="page-info">' + t("pageSizeLabel") + '</span><select class="page-size-select" onchange="changeUserPageSize(this.value)">' + sizeOptions + "</select>";
+
+  el.innerHTML = buttons.join("") + sizeSelect;
+}
+
 async function loadUsers() {
   try {
-    const res = await fetch("/admin/users");
+    const params = new URLSearchParams();
+    const q = $("fUser").value.trim();
+    if (q) params.set("q", q);
+    params.set("page", userPage);
+    params.set("pageSize", userPageSize);
+    const res = await fetch("/admin/users?" + params.toString());
     if (res.status === 401) { location.href = "/"; return; }
     if (!res.ok) { toast(t("loadUsersFail"), "error"); return; }
     const data = await res.json();
-    $("userCount").textContent = data.length;
-    $("userTbody").innerHTML = data
+    const rows = data.rows || [];
+    userTotal = data.total || 0;
+    userTotalPages = data.totalPages || 1;
+    if (userPage > userTotalPages) { userPage = 1; }
+    $("userCount").textContent = userTotal;
+    $("userTbody").innerHTML = rows
       .map((u) => {
         const detail =
           '<div class="detail-card">' +
@@ -503,6 +598,7 @@ async function loadUsers() {
         );
       })
       .join("");
+    renderUserPagination();
   } catch (e) { toast(t("networkError") + ": " + e.message, "error"); }
   setLabels();
 }
@@ -578,6 +674,12 @@ async function doDeleteUser(wxId) {
     const data = await res.json().catch(() => ({}));
     if (!res.ok) { toast(data.error || t("delUserFail"), "error"); return; }
     toast(t("userDeleted"), "success");
+    // 删除后若当前页可能变空，先回退一页再加载
+    if (userPage > 1) {
+      const checkRes = await fetch("/admin/users?page=" + userPage + "&pageSize=" + userPageSize);
+      const checkData = await checkRes.json().catch(() => ({}));
+      if (!checkData.rows || checkData.rows.length === 0) userPage = Math.max(1, userPage - 1);
+    }
     loadUsers();
   } catch (e) { toast(t("networkError"), "error"); }
 }

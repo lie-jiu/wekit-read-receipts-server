@@ -572,14 +572,32 @@ app.get("/admin", (c) => {
 app.get("/admin/users", (c) => {
   const denied = adminOr(c);
   if (denied) return denied;
+
+  // 分页参数
+  const pageSize = Math.min(Math.max(Number(c.req.query("pageSize") ?? 20), 1), 100);
+  const page = Math.max(Number(c.req.query("page") ?? 1), 1);
+  const offset = (page - 1) * pageSize;
+
+  // 按微信 ID 模糊搜索（支持精确匹配后回退）
+  const q = (c.req.query("q") ?? "").trim();
+  const where = q ? "WHERE u.wx_id LIKE ? ESCAPE '\\'" : "";
+  const likeParams = q ? [`%${escapeLike(q)}%`] : [];
+
+  const totalRow = sqlite
+    .query(`SELECT COUNT(*) AS n FROM users u ${where}`)
+    .get(...likeParams) as { n: number };
+  const total = totalRow.n;
+
   const rows = sqlite
     .query(
-      `SELECT wx_id AS wxId, level, created_at AS createdAt, message_count AS messageCount,
+      `SELECT u.wx_id AS wxId, u.level, u.created_at AS createdAt, u.message_count AS messageCount,
               (SELECT MAX(timestamp) FROM messages WHERE wx_id = u.wx_id) AS lastMsgAt,
               (SELECT COALESCE(SUM(count), 0) FROM registration_stats WHERE wx_id = u.wx_id) AS totalRegMsgs
-       FROM users u ORDER BY created_at DESC`,
+       FROM users u ${where}
+       ORDER BY u.created_at DESC
+       LIMIT ? OFFSET ?`,
     )
-    .all() as Array<{
+    .all(...likeParams, pageSize, offset) as Array<{
     wxId: string;
     level: number;
     createdAt: string;
@@ -587,7 +605,8 @@ app.get("/admin/users", (c) => {
     lastMsgAt: string | null;
     totalRegMsgs: number;
   }>;
-  return c.json(rows);
+
+  return c.json({ rows, total, page, pageSize, totalPages: Math.max(1, Math.ceil(total / pageSize)) });
 });
 
 app.post("/admin/users", async (c) => {
