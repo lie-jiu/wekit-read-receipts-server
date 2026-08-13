@@ -109,6 +109,10 @@ ALTER TABLE reads ADD COLUMN region_en TEXT NOT NULL DEFAULT '';
 ALTER TABLE reads ADD COLUMN city_en TEXT NOT NULL DEFAULT '';
 ALTER TABLE reads ADD COLUMN isp_en TEXT NOT NULL DEFAULT '';
 `,
+  /* v4：IP 定位按等级配额——users 增加累计定位次数（geo_count） */
+  `
+ALTER TABLE users ADD COLUMN geo_count INTEGER NOT NULL DEFAULT 0 CHECK (geo_count >= 0);
+`,
 ];
 
 export const sqlite = new Database(DB_PATH, { create: true });

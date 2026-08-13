@@ -10,6 +10,7 @@ import {
   SECURITY_HEADERS,
   isAdmin,
   loginDelayMs,
+  geoQuotaFor,
   quotaFor,
 } from "./config";
 import {
@@ -301,7 +302,15 @@ app.get("/", (c) => {
   if (!user) return c.redirect("/login");
   c.header("Content-Security-Policy", CSP.DASHBOARD);
   c.header("Content-Type", "text/html; charset=utf-8");
-  return c.body(htmlPage({ wxId: user.wxId, level: user.level, geo: ENABLE_GEO }));
+  return c.body(
+    htmlPage({
+      wxId: user.wxId,
+      level: user.level,
+      geo: ENABLE_GEO,
+      geoQuota: geoQuotaFor(user.level),
+      geoRemaining: Math.max(0, geoQuotaFor(user.level) - user.geoCount),
+    }),
+  );
 });
 
 app.get("/messages", (c) => {
@@ -388,6 +397,11 @@ app.post("/reads/:id/geo", async (c) => {
   const user = requireUser(c);
   if (!user) return c.json({ error: "unauthorized" }, 401);
   if (!ENABLE_GEO) return c.json({ error: "geo disabled" }, 403);
+  const quota = geoQuotaFor(user.level);
+  const used = user.geoCount;
+  if (quota <= 0 || used >= quota) {
+    return c.json({ error: "geo_quota_exceeded", remaining: 0, quota }, 429);
+  }
   const id = c.req.param("id");
   if (!isValidId(id)) return c.json({ error: "invalid id" }, 400);
   let body: { ip?: unknown };
@@ -416,14 +430,30 @@ app.post("/reads/:id/geo", async (c) => {
   const enMissing =
     row.country_en === "" && row.region_en === "" && row.city_en === "" && row.isp_en === "";
   if (located && !enMissing) {
-    return c.json(readRow({ ip, timestamp: "", user_agent: "", ...row }));
+    return c.json({
+      ...readRow({ ip, timestamp: "", user_agent: "", ...row }),
+      remaining: quota - used,
+      quota,
+    });
   }
 
   const info = await lookupIpLocation(ip);
+  const remaining = quota - used - 1;
+  sqlite.query("UPDATE users SET geo_count = geo_count + 1 WHERE wx_id = ?").run(user.wxId);
   if (!info) {
-    if (located) return c.json(readRow({ ip, timestamp: "", user_agent: "", ...row }));
+    if (located) {
+      return c.json({
+        ...readRow({ ip, timestamp: "", user_agent: "", ...row }),
+        remaining,
+        quota,
+      });
+    }
     return c.json(
-      readRow({ ...emptyReadRow, ip, timestamp: "", user_agent: "" }),
+      {
+        ...readRow({ ...emptyReadRow, ip, timestamp: "", user_agent: "" }),
+        remaining,
+        quota,
+      },
       502,
     );
   }
@@ -446,6 +476,8 @@ app.post("/reads/:id/geo", async (c) => {
     cityEn: en.city,
     ispEn: en.isp,
     located: true,
+    remaining,
+    quota,
   });
 });
 

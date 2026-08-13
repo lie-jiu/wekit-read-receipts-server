@@ -40,6 +40,17 @@ export function quotaFor(level: number): number {
   return 1000;
 }
 
+/** 等级定位配额：按需 IP 定位（/reads/:id/geo）累计可用次数，随等级递增 */
+export function geoQuotaFor(level: number): number {
+  if (level <= 0) return 0;
+  if (level === 1) return 50;
+  if (level === 2) return 100;
+  if (level === 3) return 200;
+  if (level <= 5) return 500;
+  if (level <= 8) return 1000;
+  return 2000;
+}
+
 export const MAX_CONTENT_LENGTH = 10_000;
 export const MAX_REGISTER_BATCH = 50;
 

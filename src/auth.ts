@@ -10,6 +10,7 @@ export type SessionUser = {
   wxId: string;
   level: number;
   messageCount: number;
+  geoCount: number;
   isAdmin: boolean;
 };
 
@@ -124,16 +125,17 @@ export function getSessionUser(c: Context): SessionUser | null {
   if (!token) return null;
   const row = sqlite
     .query(
-      `SELECT u.wx_id, u.level, u.message_count
+      `SELECT u.wx_id, u.level, u.message_count, u.geo_count
        FROM sessions s JOIN users u ON u.wx_id = s.wx_id
        WHERE s.token_hash = ? AND s.expires_at > ?`,
     )
-    .get(sha256HexSync(token), chinaNow()) as { wx_id: string; level: number; message_count: number } | undefined;
+    .get(sha256HexSync(token), chinaNow()) as { wx_id: string; level: number; message_count: number; geo_count: number } | undefined;
   if (!row) return null;
   return {
     wxId: row.wx_id,
     level: row.level,
     messageCount: row.message_count,
+    geoCount: row.geo_count,
     isAdmin: isAdmin(row.wx_id),
   };
 }

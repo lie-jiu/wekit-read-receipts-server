@@ -804,7 +804,7 @@ export function htmlPage(session) { return `<!doctype html>
     </div>
 
     <script>
-      const ME = ${JSON.stringify({ wxId: session.wxId, level: session.level, geo: session.geo === true })};
+      const ME = ${JSON.stringify({ wxId: session.wxId, level: session.level, geo: session.geo === true, geoQuota: session.geoQuota || 0, geoRemaining: session.geoRemaining || 0 })};
       const tbody = document.getElementById("tbody");
       const recordCount = document.getElementById("recordCount");
       const toastContainer = document.getElementById("toastContainer");
@@ -878,6 +878,8 @@ export function htmlPage(session) { return `<!doctype html>
           locateFailed: "定位失败",
           noGeo: "无法定位",
           ipv6NoGeo: "IPv6 不支持定位",
+          geoQuotaExhausted: "定位次数已用尽",
+          geoRemain: "定位剩余 {0} 次",
           noReads: "暂无读取记录",
           close: "关闭",
           readsFor: "「{0}」的已读记录",
@@ -935,6 +937,8 @@ export function htmlPage(session) { return `<!doctype html>
           locateFailed: "Locate failed",
           noGeo: "Unresolved",
           ipv6NoGeo: "IPv6 not supported",
+          geoQuotaExhausted: "Locate quota exhausted",
+          geoRemain: "Locate left {0}",
           noReads: "No reads yet",
           close: "Close",
           readsFor: 'Reads for: "{0}"',
@@ -1392,7 +1396,7 @@ export function htmlPage(session) { return `<!doctype html>
             const isV6 = r.ip.indexOf(":") !== -1;
             const cell = r.located
               ? '<span class="loc-text">' + esc(parts.join(" ") || t("noGeo")) + "</span>"
-              : ME.geo && !isV6
+              : ME.geo && !isV6 && ME.geoRemaining > 0
                 ? '<button class="btn btn-outline btn-sm" data-id="' +
                   detailForId +
                   '" data-ip="' +
@@ -1400,7 +1404,17 @@ export function htmlPage(session) { return `<!doctype html>
                   '" onclick="locateRead(this)">' +
                   esc(t("locate")) +
                   "</button>"
-                : '<span class="loc-text">' + esc(t(ME.geo && isV6 ? "ipv6NoGeo" : "noGeo")) + "</span>";
+                : '<span class="loc-text">' +
+                  esc(
+                    t(
+                      isV6
+                        ? "ipv6NoGeo"
+                        : ME.geo && ME.geoRemaining <= 0
+                          ? "geoQuotaExhausted"
+                          : "noGeo",
+                    ),
+                  ) +
+                  "</span>";
             return (
               "<tr>" +
               '<td class="ip-col">' +
@@ -1435,7 +1449,21 @@ export function htmlPage(session) { return `<!doctype html>
             return;
           }
           const data = await res.json();
+          if (data.error === "geo_quota_exceeded") {
+            ME.geoRemaining = 0;
+            updateGeoChip();
+            const span = document.createElement("span");
+            span.className = "loc-text";
+            span.textContent = t("geoQuotaExhausted");
+            btn.replaceWith(span);
+            toast(t("geoQuotaExhausted"), "error");
+            return;
+          }
           if (!res.ok) throw new Error(data.error || "HTTP " + res.status);
+          if (typeof data.remaining === "number") {
+            ME.geoRemaining = data.remaining;
+            updateGeoChip();
+          }
           const span = document.createElement("span");
           span.className = "loc-text";
           span.textContent = locParts(data).join(" ") || t("noGeo");
@@ -1458,8 +1486,11 @@ export function htmlPage(session) { return `<!doctype html>
       });
 
       /* ── init ── */
-      document.getElementById("userChip").textContent =
-        ME.wxId + " · Lv" + ME.level;
+      function updateGeoChip() {
+        document.getElementById("userChip").textContent =
+          ME.wxId + " · Lv" + ME.level + (ME.geo ? " · " + t("geoRemain", ME.geoRemaining) : "");
+      }
+      updateGeoChip();
       applyI18n();
       updateLbHeaders();
       syncLbButtons();
