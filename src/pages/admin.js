@@ -865,6 +865,8 @@ async function toggleLatestMsgs(btn) {
   }
   btn.disabled = true;
   try {
+    const wxId = btn.dataset.wxid;
+    if (!wxId) { toast(t("enterWxid"), "error"); return; }
     const res = await fetch("/admin/messages?wxId=" + encodeURIComponent(wxId) + "&limit=5");
     if (res.status === 401) { location.href = "/"; return; }
     if (!res.ok) { toast(t("loadMsgsFail"), "error"); return; }
