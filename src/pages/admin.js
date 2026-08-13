@@ -68,8 +68,28 @@ tr:hover td{background:#0f172a80}
 .modal .actions{display:flex;gap:.5rem;justify-content:flex-end}
 .modal-form input{width:100%;padding:.55rem .7rem;border:1px solid #475569;border-radius:6px;font-size:.9rem;background:#0f172a;color:#e2e8f0;outline:none;margin-bottom:.6rem;transition:border-color .15s}
 .modal-form input:focus{border-color:#3b82f6}
+.detail-row td{border-bottom:1px solid #334155;background:#0b1220;padding:.4rem 1rem}
+.detail-row td:last-child{border-bottom:1px solid #334155}
+.detail-card{margin:.5rem 0 .5rem 1.5rem;border:1px solid #334155;border-radius:10px;background:#111c33;padding:.85rem 1rem;animation:fade-in .15s ease-out}
+.detail-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.55rem 1.5rem}
+.detail-item{display:flex;flex-direction:column;gap:.15rem}
+.detail-label{font-size:.72rem;color:#64748b;font-weight:600;letter-spacing:.02em}
+.detail-value{font-size:.9rem;color:#e2e8f0;font-variant-numeric:tabular-nums;word-break:break-word}
+.detail-value .uuid-col{font-size:.82rem}
+.detail-actions{margin-top:.75rem;display:flex;gap:.5rem}
+.expand-btn{display:inline-flex;align-items:center;justify-content:center;width:1.6rem;height:1.6rem;border:none;border-radius:6px;background:transparent;color:#94a3b8;cursor:pointer;font-size:.8rem;transition:background .15s,color .15s,transform .15s;flex-shrink:0}
+.expand-btn:hover{background:#1e293b;color:#e2e8f0}
+.expand-btn:active{transform:scale(.92)}
+.expand-icon{display:inline-block;transition:transform .2s ease}
+tr.expanded .expand-icon{transform:rotate(90deg)}
+.msg-list{margin-top:.75rem;border-top:1px solid #1e293b;padding-top:.6rem;display:flex;flex-direction:column;gap:.4rem}
+.msg-list-item{display:flex;flex-direction:column;gap:.15rem;padding:.5rem .65rem;background:#0f172a;border:1px solid #1e293b;border-radius:8px}
+.msg-list-content{font-size:.85rem;color:#cbd5e1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.msg-list-meta{display:flex;gap:.75rem;font-size:.72rem;color:#64748b}
+.msg-list-meta .reads{color:#059669;font-weight:600}
+.msg-list-empty{font-size:.82rem;color:#64748b;padding:.25rem 0}
 .hidden{display:none !important}
-@media (max-width:640px){body{padding:1rem .75rem}.header{flex-direction:column;align-items:stretch}.header .flex{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr))}.header .btn,.header .lang-toggle{width:100%;justify-content:center;min-height:40px}.tabs{display:grid;grid-template-columns:1fr 1fr}.tab{min-height:42px}.controls{flex-direction:column;align-items:stretch}.controls input{min-width:0;width:100%;min-height:44px}.btn{min-height:40px}.table-wrapper{padding:.5rem}table{display:block}thead{display:none}tbody{display:block}tbody tr{display:block;background:#0f172a;border:1px solid #334155;border-radius:10px;padding:.25rem 0;margin-bottom:.6rem}tbody tr:hover td,tbody tr:last-child td{background:transparent}tbody tr td{display:flex;align-items:center;justify-content:space-between;gap:.75rem;border-bottom:1px solid #1e293b;padding:.5rem .75rem;font-size:.8rem}tbody tr td:last-child{border-bottom:none}tbody tr td::before{content:attr(data-label);color:#64748b;font-weight:600;font-size:.72rem;flex-shrink:0}tbody tr td .flex{flex-wrap:nowrap}.uuid-col,.ts-col{white-space:normal;overflow-wrap:anywhere;text-align:right}.msg-col{max-width:none;white-space:normal;text-align:right;overflow-wrap:anywhere}.empty-row{border:1px dashed #334155;background:transparent !important}.empty-row td{justify-content:center;text-align:center;color:#64748b}.empty-row td::before{display:none}.level-input{font-size:1rem}.modal{max-width:94vw;width:94vw;padding:1.25rem}.modal .actions{flex-direction:column-reverse}.modal .actions .btn{width:100%;justify-content:center;min-height:44px}.modal-form input{min-height:44px}.toast-container{left:1rem;align-items:stretch}.toast{max-width:100%}}
+@media (max-width:640px){body{padding:1rem .75rem}.header{flex-direction:column;align-items:stretch}.header .flex{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr))}.header .btn,.header .lang-toggle{width:100%;justify-content:center;min-height:40px}.tabs{display:grid;grid-template-columns:1fr 1fr}.tab{min-height:42px}.controls{flex-direction:column;align-items:stretch}.controls input{min-width:0;width:100%;min-height:44px}.btn{min-height:40px}.table-wrapper{padding:.5rem}table{display:block}thead{display:none}tbody{display:block}tbody tr{display:block;background:#0f172a;border:1px solid #334155;border-radius:10px;padding:.25rem 0;margin-bottom:.6rem}tbody tr:hover td,tbody tr:last-child td{background:transparent}tbody tr td{display:flex;align-items:center;justify-content:space-between;gap:.75rem;border-bottom:1px solid #1e293b;padding:.5rem .75rem;font-size:.8rem}tbody tr td:last-child{border-bottom:none}tbody tr td::before{content:attr(data-label);color:#64748b;font-weight:600;font-size:.72rem;flex-shrink:0}tbody tr td .flex{flex-wrap:nowrap}.uuid-col,.ts-col{white-space:normal;overflow-wrap:anywhere;text-align:right}.msg-col{max-width:none;white-space:normal;text-align:right;overflow-wrap:anywhere}.empty-row{border:1px dashed #334155;background:transparent !important}.empty-row td{justify-content:center;text-align:center;color:#64748b}.empty-row td::before{display:none}.level-input{font-size:1rem}.modal{max-width:94vw;width:94vw;padding:1.25rem}.modal .actions{flex-direction:column-reverse}.modal .actions .btn{width:100%;justify-content:center;min-height:44px}.modal-form input{min-height:44px}.toast-container{left:1rem;align-items:stretch}.toast{max-width:100%}.detail-row{border:1px dashed #334155;background:transparent !important;margin-bottom:.6rem;border-radius:10px}.detail-row td{display:block;border:none;padding:.25rem .5rem}.detail-row td::before{display:none}.detail-card{margin:.5rem .4rem;padding:.75rem .85rem}.detail-grid{grid-template-columns:1fr}.expand-btn{width:2rem;height:2rem;min-width:40px;min-height:40px;font-size:.95rem}.msg-list-item{min-height:44px}}
 </style>
 </head>
 <body>
@@ -94,11 +114,13 @@ tr:hover td{background:#0f172a80}
   <div id="secUsers">
     <div class="controls">
       <button class="btn btn-primary" onclick="openAddUser()" data-i18n="addUser">Add User</button>
+      <button class="btn btn-secondary btn-sm" onclick="expandAllUsers()" data-i18n="expandAll">Expand all</button>
+      <button class="btn btn-secondary btn-sm" onclick="collapseAllUsers()" data-i18n="collapseAll">Collapse all</button>
     </div>
     <div class="table-wrapper">
       <div class="stats"><span><span class="count" id="userCount">0</span> <span data-i18n="usersLabel">users</span></span></div>
       <table>
-        <thead><tr><th>wxId</th><th data-i18n="level">Level</th><th data-i18n="registered">Registered</th><th data-i18n="actions">Actions</th></tr></thead>
+        <thead><tr><th style="width:2.4rem"></th><th>wxId</th><th data-i18n="level">Level</th><th data-i18n="registered">Registered</th><th data-i18n="actions">Actions</th></tr></thead>
         <tbody id="userTbody"></tbody>
       </table>
     </div>
@@ -231,6 +253,18 @@ const translations = {
     level: "等级",
     registered: "注册时间",
     actions: "操作",
+    expandAll: "全部展开",
+    collapseAll: "全部收起",
+    expand: "展开",
+    collapse: "收起",
+    detailRegistered: "注册时间",
+    detailLastMsg: "最新消息时间",
+    detailLevel: "用户等级",
+    detailTotalReg: "累计注册消息数",
+    detailCurrentMsg: "当前保留消息数",
+    viewLatestMsgs: "查看最新消息",
+    hideLatestMsgs: "收起最新消息",
+    noLatestMsgs: "该用户暂无消息",
     message: "消息",
     reads: "已读",
     timestamp: "时间",
@@ -296,6 +330,18 @@ const translations = {
     level: "Level",
     registered: "Registered",
     actions: "Actions",
+    expandAll: "Expand all",
+    collapseAll: "Collapse all",
+    expand: "Expand",
+    collapse: "Collapse",
+    detailRegistered: "Registered",
+    detailLastMsg: "Latest message",
+    detailLevel: "User level",
+    detailTotalReg: "Total registered messages",
+    detailCurrentMsg: "Current stored messages",
+    viewLatestMsgs: "View latest messages",
+    hideLatestMsgs: "Hide latest messages",
+    noLatestMsgs: "No messages for this user",
     message: "Message",
     reads: "Reads",
     timestamp: "Timestamp",
@@ -357,7 +403,7 @@ function toggleLang() {
 /* 移动端卡片布局的列标签（跟随当前语言） */
 function setLabels() {
   const apply = (tbodyEl, labels) => {
-    tbodyEl.querySelectorAll("tr:not(.empty-row)").forEach((tr) => {
+    tbodyEl.querySelectorAll("tr:not(.empty-row):not(.detail-row)").forEach((tr) => {
       Array.from(tr.cells).forEach((td, i) => {
         if (labels[i]) td.setAttribute("data-label", labels[i]);
       });
@@ -425,8 +471,23 @@ async function loadUsers() {
     $("userCount").textContent = data.length;
     $("userTbody").innerHTML = data
       .map((u) => {
+        const detail =
+          '<div class="detail-card">' +
+            '<div class="detail-grid">' +
+              '<div class="detail-item"><span class="detail-label">' + t("detailRegistered") + '</span><span class="detail-value ts-col">' + esc(fmtTs(u.createdAt)) + '</span></div>' +
+              '<div class="detail-item"><span class="detail-label">' + t("detailLastMsg") + '</span><span class="detail-value ts-col">' + esc(u.lastMsgAt ? fmtTs(u.lastMsgAt) : "—") + '</span></div>' +
+              '<div class="detail-item"><span class="detail-label">' + t("detailLevel") + '</span><span class="detail-value">' + esc(u.level) + '</span></div>' +
+              '<div class="detail-item"><span class="detail-label">' + t("detailTotalReg") + '</span><span class="detail-value">' + esc(u.totalRegMsgs) + '</span></div>' +
+              '<div class="detail-item" style="grid-column:1/-1"><span class="detail-label">' + t("detailCurrentMsg") + '</span><span class="detail-value">' + esc(u.messageCount) + '</span></div>' +
+            '</div>' +
+            '<div class="detail-actions">' +
+              '<button type="button" class="btn btn-secondary btn-sm act-msgs" data-wxid="' + escAttr(u.wxId) + '">' + t("viewLatestMsgs") + '</button>' +
+            '</div>' +
+            '<div class="msg-list hidden" data-wxid="' + escAttr(u.wxId) + '"></div>' +
+          '</div>';
         return (
           "<tr>" +
+          '<td><button type="button" class="expand-btn" aria-label="' + escAttr(t("expand")) + '"><span class="expand-icon">&#9656;</span></button></td>' +
           '<td class="uuid-col">' + esc(u.wxId) + "</td>" +
           '<td><span class="level-editor" data-wxid="' + escAttr(u.wxId) + '">' +
           '<button type="button" class="btn btn-outline btn-sm level-minus" aria-label="Decrease level">−</button>' +
@@ -437,7 +498,8 @@ async function loadUsers() {
           '<td class="flex">' +
           '<button class="btn btn-outline btn-sm act-setpass" data-wxid="' + escAttr(u.wxId) + '">' + t("setPassword") + "</button>" +
           '<button class="btn btn-danger btn-sm act-del-user" data-wxid="' + escAttr(u.wxId) + '">' + t("delete") + "</button>" +
-          "</td></tr>"
+          "</td></tr>" +
+          '<tr class="detail-row hidden"><td colspan="5">' + detail + "</td></tr>"
         );
       })
       .join("");
@@ -661,6 +723,70 @@ async function saveLevels() {
     loadLevels();
   } catch (e) { toast(t("networkError"), "error"); }
 }
+function toggleUserRow(row) {
+  const detail = row.nextElementSibling;
+  if (!detail || !detail.classList.contains("detail-row")) return;
+  const open = detail.classList.toggle("hidden");
+  row.classList.toggle("expanded", !open);
+}
+function expandAllUsers() {
+  document.querySelectorAll("#userTbody > tr:not(.detail-row)").forEach((row) => {
+    const detail = row.nextElementSibling;
+    if (detail && detail.classList.contains("detail-row")) {
+      detail.classList.remove("hidden");
+      row.classList.add("expanded");
+    }
+  });
+}
+function collapseAllUsers() {
+  document.querySelectorAll("#userTbody > tr:not(.detail-row)").forEach((row) => {
+    const detail = row.nextElementSibling;
+    if (detail && detail.classList.contains("detail-row")) {
+      detail.classList.add("hidden");
+      row.classList.remove("expanded");
+    }
+  });
+}
+async function toggleLatestMsgs(btn) {
+  const card = btn.closest(".detail-card");
+  const list = card && card.querySelector(".msg-list");
+  if (!list) return;
+  if (!list.classList.contains("hidden")) {
+    list.classList.add("hidden");
+    btn.textContent = t("viewLatestMsgs");
+    return;
+  }
+  if (list.dataset.loaded === "1") {
+    list.classList.remove("hidden");
+    btn.textContent = t("hideLatestMsgs");
+    return;
+  }
+  btn.disabled = true;
+  try {
+    const res = await fetch("/admin/messages?wxId=" + encodeURIComponent(wxId) + "&limit=5");
+    if (res.status === 401) { location.href = "/"; return; }
+    if (!res.ok) { toast(t("loadMsgsFail"), "error"); return; }
+    const data = await res.json();
+    list.innerHTML = data.length
+      ? data
+          .map(
+            (r) =>
+              '<div class="msg-list-item">' +
+              '<div class="msg-list-content" title="' + escAttr(r.content) + '">' + esc(r.content) + "</div>" +
+              '<div class="msg-list-meta"><span class="reads">' + esc(r.reads) + " " + t("reads") + '</span><span class="ts-col">' + esc(fmtTs(r.timestamp)) + "</span></div>" +
+              "</div>",
+          )
+          .join("")
+      : '<div class="msg-list-empty">' + t("noLatestMsgs") + "</div>";
+    list.dataset.loaded = "1";
+    list.classList.remove("hidden");
+    btn.textContent = t("hideLatestMsgs");
+  } catch (e) {
+    toast(t("networkError") + ": " + e.message, "error");
+  } finally {
+    btn.disabled = false;
+  }
+}
 function initAdminHandlers() {
   const ut = $("userTbody");
   ut.addEventListener("click", (e) => {
@@ -676,6 +802,8 @@ function initAdminHandlers() {
       saveLevel(editor.dataset.wxid, v);
       return;
     }
+    if (btn.classList.contains("expand-btn")) { toggleUserRow(btn.closest("tr")); return; }
+    if (btn.classList.contains("act-msgs")) { toggleLatestMsgs(btn); return; }
     const wxid = btn.dataset.wxid;
     if (btn.classList.contains("act-setpass")) openSetPass(wxid);
     else if (btn.classList.contains("act-del-user")) askDeleteUser(wxid);

@@ -573,8 +573,20 @@ app.get("/admin/users", (c) => {
   const denied = adminOr(c);
   if (denied) return denied;
   const rows = sqlite
-    .query("SELECT wx_id AS wxId, level, created_at AS createdAt FROM users ORDER BY created_at DESC")
-    .all() as Array<{ wxId: string; level: number; createdAt: string }>;
+    .query(
+      `SELECT wx_id AS wxId, level, created_at AS createdAt, message_count AS messageCount,
+              (SELECT MAX(timestamp) FROM messages WHERE wx_id = u.wx_id) AS lastMsgAt,
+              (SELECT COALESCE(SUM(count), 0) FROM registration_stats WHERE wx_id = u.wx_id) AS totalRegMsgs
+       FROM users u ORDER BY created_at DESC`,
+    )
+    .all() as Array<{
+    wxId: string;
+    level: number;
+    createdAt: string;
+    messageCount: number;
+    lastMsgAt: string | null;
+    totalRegMsgs: number;
+  }>;
   return c.json(rows);
 });
 
