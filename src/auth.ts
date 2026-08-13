@@ -4,7 +4,7 @@ import { pbkdf2Sync, timingSafeEqual } from "node:crypto";
 import { isAdmin, SESSION_TTL_DAYS, SESSION_TTL_MS, TRUSTED_PROXY } from "./config";
 import { ipInCidr, peerIp } from "./rate-limit";
 import { sqlite } from "./db";
-import { chinaNow, sha256HexSync } from "./utils";
+import { chinaNow, sha256Hex } from "./utils";
 
 export type SessionUser = {
   wxId: string;
@@ -100,7 +100,7 @@ export function createSession(c: Context, wxId: string): void {
   const token = randomToken();
   sqlite
     .query("INSERT INTO sessions (token_hash, wx_id, created_at, expires_at) VALUES (?, ?, ?, ?)")
-    .run(sha256HexSync(token), wxId, chinaNow(), chinaNowPlus(SESSION_TTL_DAYS));
+    .run(sha256Hex(token), wxId, chinaNow(), chinaNowPlus(SESSION_TTL_DAYS));
   const { name, secure } = sessionCookie(c);
   setCookie(c, name, token, {
     httpOnly: true,
@@ -115,7 +115,7 @@ export function destroySession(c: Context): void {
   const { name } = sessionCookie(c);
   const token = getCookie(c, name);
   if (token) {
-    sqlite.query("DELETE FROM sessions WHERE token_hash = ?").run(sha256HexSync(token));
+    sqlite.query("DELETE FROM sessions WHERE token_hash = ?").run(sha256Hex(token));
   }
   deleteCookie(c, name, { path: "/" });
 }
@@ -129,7 +129,7 @@ export function getSessionUser(c: Context): SessionUser | null {
        FROM sessions s JOIN users u ON u.wx_id = s.wx_id
        WHERE s.token_hash = ? AND s.expires_at > ?`,
     )
-    .get(sha256HexSync(token), chinaNow()) as { wx_id: string; level: number; message_count: number; geo_count: number } | undefined;
+    .get(sha256Hex(token), chinaNow()) as { wx_id: string; level: number; message_count: number; geo_count: number } | undefined;
   if (!row) return null;
   return {
     wxId: row.wx_id,

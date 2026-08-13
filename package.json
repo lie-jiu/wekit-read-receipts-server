@@ -10,7 +10,6 @@
     "typescript": "^5"
   },
   "dependencies": {
-    "drizzle-orm": "0.45.2",
     "hono": "4.13.1"
   },
   "scripts": {

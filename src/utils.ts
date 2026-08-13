@@ -1,11 +1,16 @@
-import { sha256 } from "hono/utils/crypto";
-
 export type JsonObject = Record<string, unknown>;
 
 /** UTC+8 中国时间，格式 `YYYY-MM-DD HH:MM:SS`（数据库统一时间标准） */
+let _chinaNowCache: { sec: number; s: string } | null = null;
+
 export function chinaNow(): string {
-  const d = new Date(Date.now() + 8 * 3600 * 1000);
-  return d.toISOString().slice(0, 19).replace("T", " ");
+  const ms = Date.now();
+  const sec = Math.floor(ms / 1000);
+  if (_chinaNowCache && _chinaNowCache.sec === sec) return _chinaNowCache.s;
+  const d = new Date(ms + 8 * 3600 * 1000);
+  const s = d.toISOString().slice(0, 19).replace("T", " ");
+  _chinaNowCache = { sec, s };
+  return s;
 }
 
 /** 取 UTC+8 自然日 `YYYY-MM-DD` */
@@ -24,18 +29,20 @@ export function chinaMonthsAgo(months: number): string {
 /**
  * SHA-256(wxId + 0x00 + content + 0x00 + String(createTime)) 小写 hex。
  * 与客户端算法严格一致：createTime 必须原样十进制字符串拼接，不得数值化丢失精度。
+ * 使用 Bun.CryptoHasher 同步实现，避免 WebCrypto 异步开销。
  */
-export async function computeId(wxId: string, content: string, createTime: string): Promise<string> {
-  const md = await sha256(wxId + "\0" + content + "\0" + createTime);
-  return md;
+export function computeId(wxId: string, content: string, createTime: string): string {
+  return new Bun.CryptoHasher("sha256")
+    .update(wxId)
+    .update(new Uint8Array([0]))
+    .update(content)
+    .update(new Uint8Array([0]))
+    .update(createTime)
+    .digest("hex");
 }
 
-export function sha256Hex(input: string): Promise<string> {
-  return sha256(input);
-}
-
-/** 同步 SHA-256 hex（Bun 内置哈希，用于会话 token 等同步路径） */
-export function sha256HexSync(input: string): string {
+/** 同步 SHA-256 hex（Bun 内置哈希） */
+export function sha256Hex(input: string): string {
   return new Bun.CryptoHasher("sha256").update(input).digest("hex");
 }
 

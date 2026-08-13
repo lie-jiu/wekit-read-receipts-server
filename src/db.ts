@@ -1,5 +1,4 @@
 import { Database } from "bun:sqlite";
-import { drizzle } from "drizzle-orm/bun-sqlite";
 import { DB_PATH } from "./config";
 
 /** 64 位小写 hex 校验（id = SHA-256 hex） */
@@ -119,10 +118,30 @@ export const sqlite = new Database(DB_PATH, { create: true });
 
 sqlite.exec("PRAGMA journal_mode = WAL");
 sqlite.exec("PRAGMA synchronous = NORMAL");
-sqlite.exec("PRAGMA busy_timeout = 5000");
+sqlite.exec("PRAGMA busy_timeout = 10000");
 sqlite.exec("PRAGMA foreign_keys = ON");
+sqlite.exec("PRAGMA mmap_size = 268435456");
+sqlite.exec("PRAGMA cache_size = -65536");
+sqlite.exec("PRAGMA temp_store = MEMORY");
+sqlite.exec("PRAGMA wal_autocheckpoint = 1000");
 
-export const db = drizzle(sqlite);
+/** 预编译高频 statement（懒加载，确保 migrate() 完成后才 prepare） */
+let _stmt: {
+  insertRead: ReturnType<typeof sqlite.prepare>;
+  countReads: ReturnType<typeof sqlite.prepare>;
+} | null = null;
+
+export function stmt() {
+  if (!_stmt) {
+    _stmt = {
+      insertRead: sqlite.prepare(
+        "INSERT OR IGNORE INTO reads (id, ip, timestamp, user_agent) VALUES (?, ?, ?, ?)",
+      ),
+      countReads: sqlite.prepare("SELECT COUNT(DISTINCT ip) AS n FROM reads WHERE id = ?"),
+    };
+  }
+  return _stmt;
+}
 
 function currentVersion(): number {
   const row = sqlite.query("PRAGMA user_version").get() as { user_version: number };
@@ -130,11 +149,21 @@ function currentVersion(): number {
 }
 
 export function migrate(): void {
-  const current = currentVersion();
+  let current = currentVersion();
+  if (!Number.isInteger(current) || current < 0) {
+    console.error(`[migrate] 非法 user_version: ${current}，拒绝迁移`);
+    process.exit(1);
+  }
   for (let v = current; v < MIGRATIONS.length; v++) {
-    sqlite.transaction(() => {
-      sqlite.exec(MIGRATIONS[v]);
-      sqlite.exec(`PRAGMA user_version = ${v + 1}`);
-    })();
+    try {
+      sqlite.transaction(() => {
+        sqlite.exec(MIGRATIONS[v]!);
+        sqlite.exec(`PRAGMA user_version = ${v + 1}`);
+      })();
+      console.log(`[migrate] v${v + 1} 完成`);
+    } catch (e) {
+      console.error(`[migrate] v${v + 1} 失败:`, e);
+      throw e;
+    }
   }
 }

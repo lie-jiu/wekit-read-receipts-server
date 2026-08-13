@@ -33,7 +33,7 @@ import {
   requireUser,
   verifyPassword,
 } from "./auth";
-import { sqlite } from "./db";
+import { sqlite, stmt } from "./db";
 import { lookupIpLocation } from "./geo";
 import { clientIp, overLimit, rateLimit } from "./rate-limit";
 import { chinaDate, chinaNow, computeId, escapeLike, isValidId, isValidWxId, maskContent, maskWxId, timingSafeEqual } from "./utils";
@@ -105,14 +105,15 @@ app.use("*", async (c, next) => {
 
 app.get("/pixel", (c) => {
   const ip = clientIp(c);
-  overLimit("pixel", ip);
   const wxId = c.req.query("wxId") ?? "";
   const id = c.req.query("id") ?? "";
-  if (isValidId(id) && isValidWxId(wxId)) {
+  if (!overLimit("pixel", ip) && isValidId(id) && isValidWxId(wxId)) {
     const ua = (c.req.header("user-agent") ?? "").slice(0, 500);
-    sqlite
-      .query("INSERT OR IGNORE INTO reads (id, ip, timestamp, user_agent) VALUES (?, ?, ?, ?)")
-      .run(id, ip, chinaNow(), ua);
+    try {
+      stmt().insertRead.run(id, ip, chinaNow(), ua);
+    } catch {
+      // SQLITE_BUSY 等瞬态错误：静默降级，仍返回像素
+    }
   }
   c.header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
   c.header("Content-Type", "image/png");
@@ -125,9 +126,7 @@ app.get("/count", (c) => {
   if (!isValidId(id) || overLimit("count", clientIp(c))) {
     return c.json({ count: 0 });
   }
-  const row = sqlite
-    .query("SELECT COUNT(DISTINCT ip) AS n FROM reads WHERE id = ?")
-    .get(id) as { n: number };
+  const row = stmt().countReads.get(id) as { n: number };
   return c.json({ count: row.n });
 });
 
@@ -169,7 +168,7 @@ app.post("/register", async (c) => {
       | undefined;
     if (!user || user.level <= 0) return c.json({ error: "not registered" }, 403);
 
-    const id = await computeId(wxId, content, createTime);
+    const id = computeId(wxId, content, createTime);
     sqlite.transaction(() => {
       const now = chinaNow();
       const res = sqlite
