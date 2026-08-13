@@ -804,7 +804,7 @@ export function htmlPage(session) { return `<!doctype html>
     </div>
 
     <script>
-      const ME = ${JSON.stringify({ wxId: session.wxId, level: session.level, geo: session.geo === true, geoQuota: session.geoQuota || 0, geoRemaining: session.geoRemaining || 0 })};
+      const ME = ${JSON.stringify({ wxId: session.wxId, level: session.level, geo: session.geo === true, geoQuota: session.geoQuota || 0, geoRemaining: session.geoRemaining || 0, messageQuota: session.messageQuota || 0, retentionMonths: session.retentionMonths || 0 })};
       const tbody = document.getElementById("tbody");
       const recordCount = document.getElementById("recordCount");
       const toastContainer = document.getElementById("toastContainer");
@@ -883,7 +883,8 @@ export function htmlPage(session) { return `<!doctype html>
           noReads: "暂无读取记录",
           close: "关闭",
           readsFor: "「{0}」的已读记录",
-          quotaHint: "等级 {0}：最多保留 {0} 条消息，可追溯 {0} 个月。超出将自动删除最早的消息。",
+          quotaHint: "等级 {0}：最多保留 {1} 条消息，可追溯 {2} 个月。超出将自动删除最早的消息。",
+          unlimited: "不限",
         },
         en: {
           title: "Read Receipts",
@@ -943,7 +944,8 @@ export function htmlPage(session) { return `<!doctype html>
           close: "Close",
           readsFor: 'Reads for: "{0}"',
           quotaHint:
-            "Level {0}: keep up to {0} messages for {0} months. Registering more auto-removes the oldest.",
+            "Level {0}: keep up to {1} messages for {2} months. Registering more auto-removes the oldest.",
+          unlimited: "Unlimited",
         },
       };
 
@@ -968,7 +970,10 @@ export function htmlPage(session) { return `<!doctype html>
           }
         });
         const chip = document.getElementById("userChip");
-        if (chip) chip.title = t("quotaHint", ME.level);
+        if (chip) {
+          const ret = ME.retentionMonths > 0 ? ME.retentionMonths : t("unlimited");
+          chip.title = t("quotaHint", ME.level, ME.messageQuota, ret);
+        }
       }
 
       function toggleLang() {

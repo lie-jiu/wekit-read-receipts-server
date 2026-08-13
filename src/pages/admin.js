@@ -48,6 +48,11 @@ tr:hover td{background:#0f172a80}
 .level-input::-webkit-outer-spin-button,.level-input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
 .level-input:focus{border-color:#3b82f6}
 .toast-container{position:fixed;top:max(1rem,env(safe-area-inset-top));right:max(1rem,env(safe-area-inset-right));z-index:1000;display:flex;flex-direction:column;gap:.5rem}
+.levels-hint{font-size:.78rem;color:#64748b;line-height:1.5}
+.levels-hint b{color:#94a3b8}
+.level-formula{width:100%;min-width:220px;padding:.45rem .7rem;border:1px solid #475569;border-radius:6px;font-size:.85rem;background:#0f172a;color:#e2e8f0;outline:none}
+.level-formula:focus{border-color:#3b82f6}
+.lv-preview-col{text-align:right;font-variant-numeric:tabular-nums}
 .toast{display:flex;align-items:center;gap:.5rem;padding:.65rem 1rem;border-radius:8px;font-size:.85rem;font-weight:500;box-shadow:0 4px 12px rgba(0,0,0,.4);animation:toast-in .25s ease-out;max-width:360px}
 .toast-success{background:#065f46;color:#a7f3d0;border:1px solid #059669}
 .toast-error{background:#7f1d1d;color:#fecaca;border:1px solid #dc2626}
@@ -83,6 +88,7 @@ tr:hover td{background:#0f172a80}
   <div class="tabs">
     <button id="tabUsers" class="tab active" onclick="showTab('users')" data-i18n="tabUsers">Users</button>
     <button id="tabMsgs" class="tab" onclick="showTab('msgs')" data-i18n="tabMsgs">Messages</button>
+    <button id="tabLevels" class="tab" onclick="showTab('levels')" data-i18n="tabLevels">Levels</button>
   </div>
 
   <div id="secUsers">
@@ -111,6 +117,44 @@ tr:hover td{background:#0f172a80}
       <table>
         <thead><tr><th>wxId</th><th data-i18n="message">Message</th><th data-i18n="reads">Reads</th><th data-i18n="timestamp">Timestamp</th><th></th></tr></thead>
         <tbody id="msgTbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div id="secLevels" class="hidden">
+    <div class="controls">
+      <span class="levels-hint" data-i18n="levelsHint"></span>
+      <span class="sep">|</span>
+      <button class="btn btn-primary" onclick="saveLevels()" data-i18n="saveLevels">Save Level Benefits</button>
+    </div>
+    <div class="table-wrapper">
+      <table>
+        <tbody>
+          <tr>
+            <td class="uuid-col" data-i18n="benefitMessages">Messages</td>
+            <td><input id="formulaMessage" class="level-formula" type="text" data-i18n-placeholder data-i18n="formulaPlaceholder" placeholder="x" oninput="onFormulaInput('message')"/></td>
+          </tr>
+          <tr>
+            <td class="uuid-col" data-i18n="benefitGeo">Geo lookups</td>
+            <td><input id="formulaGeo" class="level-formula" type="text" data-i18n-placeholder data-i18n="formulaPlaceholder" placeholder="x" oninput="onFormulaInput('geo')"/></td>
+          </tr>
+          <tr>
+            <td class="uuid-col" data-i18n="benefitRetention">Retention (mo)</td>
+            <td><input id="formulaRetention" class="level-formula" type="text" data-i18n-placeholder data-i18n="formulaPlaceholder" placeholder="x" oninput="onFormulaInput('retentionMonths')"/></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="table-wrapper">
+      <div class="stats"><span data-i18n="levelsPreview">Preview (levels 1-20)</span></div>
+      <table>
+        <thead><tr>
+          <th data-i18n="level">Level</th>
+          <th class="lv-preview-col" data-i18n="benefitMessages">Messages</th>
+          <th class="lv-preview-col" data-i18n="benefitGeo">Geo lookups</th>
+          <th class="lv-preview-col" data-i18n="benefitRetention">Retention (mo)</th>
+        </tr></thead>
+        <tbody id="levelPreviewTbody"></tbody>
       </table>
     </div>
   </div>
@@ -164,6 +208,18 @@ const translations = {
     logout: "退出登录",
     tabUsers: "用户",
     tabMsgs: "消息",
+    tabLevels: "等级权益",
+    levelsHint: "公式中 x 代表用户等级，留空恢复默认公式 x。支持 + - * / % ^ 括号与 min/max/floor/ceil/round/abs/pow。",
+    formulaPlaceholder: "公式，如 x*2-1",
+    saveLevels: "保存等级权益",
+    levelsSaved: "已保存，重启服务后生效",
+    saveLevelsFail: "保存失败",
+    loadLevelsFail: "加载等级配置失败",
+    formulaInvalid: "公式无效",
+    levelsPreview: "等级 1-20 预览",
+    benefitMessages: "消息保留(条)",
+    benefitGeo: "IP定位(次)",
+    benefitRetention: "保留时长(月)",
     addUser: "新增用户",
     addUserTitle: "新增用户",
     addUserWxidPlaceholder: "wxId",
@@ -217,6 +273,18 @@ const translations = {
     logout: "Logout",
     tabUsers: "Users",
     tabMsgs: "Messages",
+    tabLevels: "Levels",
+    levelsHint: "Formula variable x = user level; empty reverts to default x. Supports + - * / % ^ () and min/max/floor/ceil/round/abs/pow.",
+    formulaPlaceholder: "Formula, e.g. x*2-1",
+    saveLevels: "Save Level Benefits",
+    levelsSaved: "Saved. Restart service to apply.",
+    saveLevelsFail: "Failed to save",
+    loadLevelsFail: "Failed to load level config",
+    formulaInvalid: "Invalid formula",
+    levelsPreview: "Preview (levels 1-20)",
+    benefitMessages: "Messages",
+    benefitGeo: "Geo lookups",
+    benefitRetention: "Retention (mo)",
     addUser: "Add User",
     addUserTitle: "Add User",
     addUserWxidPlaceholder: "wxId",
@@ -283,7 +351,8 @@ function toggleLang() {
   localStorage.setItem("lang", lang);
   applyI18n();
   if ($("tabUsers").classList.contains("active")) loadUsers();
-  else loadMsgs();
+  else if ($("tabMsgs").classList.contains("active")) loadMsgs();
+  else loadLevels();
 }
 /* 移动端卡片布局的列标签（跟随当前语言） */
 function setLabels() {
@@ -339,9 +408,13 @@ function showModal(title, body, onConfirm){
 function showTab(name){
   $("tabUsers").classList.toggle("active", name === "users");
   $("tabMsgs").classList.toggle("active", name === "msgs");
+  $("tabLevels").classList.toggle("active", name === "levels");
   $("secUsers").classList.toggle("hidden", name !== "users");
   $("secMsgs").classList.toggle("hidden", name !== "msgs");
-  if (name === "users") loadUsers(); else loadMsgs();
+  $("secLevels").classList.toggle("hidden", name !== "levels");
+  if (name === "users") loadUsers();
+  else if (name === "msgs") loadMsgs();
+  else loadLevels();
 }
 async function loadUsers() {
   try {
@@ -504,6 +577,89 @@ async function doClearUser(wxId) {
 async function logout() {
   try { await fetch("/auth/logout", { method: "POST" }); } catch {}
   location.href = "/";
+}
+
+/* ── 等级权益 ── */
+const levelPreviewTbody = $("levelPreviewTbody");
+const levelFormulaInputs = {
+  message: $("formulaMessage"),
+  geo: $("formulaGeo"),
+  retentionMonths: $("formulaRetention"),
+};
+let levelValues = { message: [], geo: [], retentionMonths: [] };
+let formulaPreviewTimer = null;
+
+function renderLevelTable() {
+  const rows = [];
+  for (let lv = 1; lv <= 20; lv++) {
+    rows.push(
+      "<tr>" +
+        "<td>" + lv + "</td>" +
+        '<td class="lv-preview-col">' + (levelValues.message[lv - 1] ?? "—") + "</td>" +
+        '<td class="lv-preview-col">' + (levelValues.geo[lv - 1] ?? "—") + "</td>" +
+        '<td class="lv-preview-col">' + (levelValues.retentionMonths[lv - 1] ?? "—") + "</td>" +
+        "</tr>",
+    );
+  }
+  levelPreviewTbody.innerHTML = rows.join("");
+  Array.from(levelPreviewTbody.querySelectorAll("tr")).forEach((tr) => {
+    const tds = tr.cells;
+    tds[0].setAttribute("data-label", t("level"));
+    tds[1].setAttribute("data-label", t("benefitMessages"));
+    tds[2].setAttribute("data-label", t("benefitGeo"));
+    tds[3].setAttribute("data-label", t("benefitRetention"));
+  });
+}
+
+async function loadLevels() {
+  try {
+    const res = await fetch("/admin/levels");
+    if (res.status === 401) { location.href = "/"; return; }
+    if (!res.ok) { toast(t("loadLevelsFail"), "error"); return; }
+    const data = await res.json();
+    levelFormulaInputs.message.value = data.message.formula;
+    levelFormulaInputs.geo.value = data.geo.formula;
+    levelFormulaInputs.retentionMonths.value = data.retentionMonths.formula;
+    levelValues.message = data.message.values;
+    levelValues.geo = data.geo.values;
+    levelValues.retentionMonths = data.retentionMonths.values;
+    renderLevelTable();
+  } catch (e) { toast(t("networkError"), "error"); }
+}
+
+function onFormulaInput(dim) {
+  clearTimeout(formulaPreviewTimer);
+  formulaPreviewTimer = setTimeout(() => previewDim(dim), 300);
+}
+
+async function previewDim(dim) {
+  const formula = levelFormulaInputs[dim].value.trim();
+  try {
+    const res = await fetch("/admin/levels/preview?formula=" + encodeURIComponent(formula));
+    const data = await res.json();
+    if (!data.valid) { toast(t("formulaInvalid") + ": " + data.error, "error"); return; }
+    levelValues[dim] = data.values;
+    renderLevelTable();
+  } catch (e) { toast(t("networkError"), "error"); }
+}
+
+async function saveLevels() {
+  const body = {
+    message: levelFormulaInputs.message.value,
+    geo: levelFormulaInputs.geo.value,
+    retentionMonths: levelFormulaInputs.retentionMonths.value,
+  };
+  try {
+    const res = await fetch("/admin/levels", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) { toast(data.error || t("saveLevelsFail"), "error"); return; }
+    toast(t("levelsSaved"), "success");
+    loadLevels();
+  } catch (e) { toast(t("networkError"), "error"); }
 }
 function initAdminHandlers() {
   const ut = $("userTbody");

@@ -12,7 +12,16 @@ import {
   loginDelayMs,
   geoQuotaFor,
   quotaFor,
+  retentionMonthsFor,
 } from "./config";
+import {
+  LEVEL_ENV_KEYS,
+  persistedLevelConfigs,
+  previewValues,
+  saveLevelFormulas,
+  validateFormula,
+} from "./levels";
+import { chinaMonthsAgo } from "./utils";
 import {
   audit,
   createSession,
@@ -183,6 +192,18 @@ app.post("/register", async (c) => {
         sqlite.query("DELETE FROM reads WHERE id = ?").run(m.id);
         sqlite.query("DELETE FROM messages WHERE id = ?").run(m.id);
       }
+
+      const months = retentionMonthsFor(user.level);
+      if (months > 0) {
+        const cutoff = chinaMonthsAgo(months);
+        const expired = sqlite
+          .query("SELECT id FROM messages WHERE wx_id = ? AND timestamp < ?")
+          .all(wxId, cutoff) as Array<{ id: string }>;
+        for (const m of expired) {
+          sqlite.query("DELETE FROM reads WHERE id = ?").run(m.id);
+          sqlite.query("DELETE FROM messages WHERE id = ?").run(m.id);
+        }
+      }
       sqlite
         .query("UPDATE users SET message_count = (SELECT COUNT(*) FROM messages WHERE wx_id = ?) WHERE wx_id = ?")
         .run(wxId, wxId);
@@ -309,6 +330,8 @@ app.get("/", (c) => {
       geo: ENABLE_GEO,
       geoQuota: geoQuotaFor(user.level),
       geoRemaining: Math.max(0, geoQuotaFor(user.level) - user.geoCount),
+      messageQuota: quotaFor(user.level),
+      retentionMonths: retentionMonthsFor(user.level),
     }),
   );
 });
@@ -700,6 +723,73 @@ app.delete("/admin/messages/:id", (c) => {
   })();
   audit(null, "admin_delete_message", id, clientIp(c));
   return c.json({ ok: true });
+});
+
+/* ---- 等级权益设置（公式存于 .env，重启后生效） ---- */
+
+const LEVEL_DIMS = ["message", "geo", "retentionMonths"] as const;
+
+function levelConfigJson(): Record<string, unknown> {
+  const cfg = persistedLevelConfigs();
+  const out: Record<string, unknown> = {};
+  for (const dim of LEVEL_DIMS) {
+    out[dim] = { formula: cfg[dim].formula, source: cfg[dim].source, values: cfg[dim].values.slice(1, 21) };
+  }
+  return out;
+}
+
+app.get("/admin/levels", (c) => {
+  const denied = adminOr(c);
+  if (denied) return denied;
+  return c.json(levelConfigJson());
+});
+
+app.get("/admin/levels/preview", (c) => {
+  const denied = adminOr(c);
+  if (denied) return denied;
+  const formula = (c.req.query("formula") ?? "").trim();
+  if (!formula) return c.json({ valid: false, error: "formula required" });
+  const error = validateFormula(formula);
+  if (error) return c.json({ valid: false, error });
+  return c.json({ valid: true, values: previewValues(formula) });
+});
+
+app.post("/admin/levels", async (c) => {
+  const user = requireAdmin(c);
+  if (!user) return c.json({ error: "forbidden" }, 403);
+  let body: Record<string, unknown>;
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: "invalid JSON" }, 400);
+  }
+  const updates: Record<string, string> = {};
+  let changed = false;
+  for (const dim of LEVEL_DIMS) {
+    const raw = body[dim];
+    if (raw === undefined) continue;
+    if (typeof raw !== "string") return c.json({ error: "invalid payload" }, 400);
+    const formula = raw.trim();
+    if (formula.length > 200) return c.json({ error: "formula too long" }, 400);
+    if (formula === "") {
+      updates[LEVEL_ENV_KEYS[dim]] = "";
+      changed = true;
+      continue;
+    }
+    const error = validateFormula(formula);
+    if (error) return c.json({ error: `公式无效：${error}` }, 400);
+    updates[LEVEL_ENV_KEYS[dim]] = formula;
+    changed = true;
+  }
+  if (!changed) return c.json({ error: "nothing to save" }, 400);
+  saveLevelFormulas(updates);
+  audit(
+    user.wxId,
+    "admin_set_level_formula",
+    Object.entries(updates).map(([k, v]) => `${k}=${v}`).join(" "),
+    clientIp(c),
+  );
+  return c.json({ ok: true, restart: true });
 });
 
 app.get("/admin/reads/:id", (c) => {

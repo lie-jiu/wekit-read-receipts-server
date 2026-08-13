@@ -11,6 +11,7 @@ import { fileURLToPath } from "node:url";
 import { sqlite, migrate } from "../src/db";
 import { hashPassword } from "../src/auth";
 import { isValidWxId } from "../src/utils";
+import { LEVEL_ENV_KEYS, validateFormula } from "../src/levels";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const ENV_FILE = join(ROOT, ".env");
@@ -317,10 +318,22 @@ function setEnv(key: string, value: string): void {
 }
 
 function clearEnv(key: string): void {
-  const env = loadEnv();
-  delete env[key];
-  saveEnv(env);
+  removeEnvKeys([key]);
   console.log(`已从 .env 移除 ${key}。`);
+}
+
+/** 从 .env 文件中移除指定键（saveEnv 只会新增/覆盖，不会删除既有行） */
+function removeEnvKeys(keys: string[]): void {
+  if (!existsSync(ENV_FILE)) return;
+  const lines = readFileSync(ENV_FILE, "utf8")
+    .split(/\r?\n/)
+    .filter((line) => {
+      const m = /^([A-Za-z_][A-Za-z0-9_]*)\s*=/.exec(line.trim());
+      const key = m?.[1];
+      return key === undefined || !keys.includes(key);
+    })
+    .filter((l) => l.trim() !== "");
+  writeFileSync(ENV_FILE, lines.length ? lines.join("\n") + "\n" : "");
 }
 
 /* ────────────── 用户管理 ────────────── */
@@ -402,6 +415,59 @@ async function userPass(wxId: string, password: string): Promise<void> {
   console.log(`已重置 ${wxId} 的密码（旧会话已失效）。`);
 }
 
+/* ────────────── 等级权益公式（.env） ────────────── */
+
+function levelsSet(pairs: string[]): void {
+  if (!pairs.length) {
+    console.error("用法: bun run manage levels set <dim>=<formula> [...]（dim: message|geo|retention，空公式恢复默认 x）");
+    process.exit(1);
+  }
+  const env = loadEnv();
+  const removed: string[] = [];
+  let changed = false;
+  for (const pair of pairs) {
+    const eq = pair.indexOf("=");
+    if (eq <= 0) {
+      console.error(`格式错误: ${pair}（应为 dim=formula）`);
+      process.exit(1);
+    }
+    const dimRaw = pair.slice(0, eq).trim();
+    const dim = dimRaw === "retention" ? "retentionMonths" : (dimRaw as keyof typeof LEVEL_ENV_KEYS);
+    const formula = pair.slice(eq + 1).trim();
+    const key = LEVEL_ENV_KEYS[dim];
+    if (!key) {
+      console.error(`未知维度: ${dimRaw}（应为 message|geo|retention）`);
+      process.exit(1);
+    }
+    if (formula === "") {
+      delete env[key];
+      removed.push(key);
+      console.log(`已移除 ${key}（回退默认公式 x）。`);
+    } else {
+      const err = validateFormula(formula);
+      if (err) {
+        console.error(`公式无效: ${err}`);
+        process.exit(1);
+      }
+      env[key] = formula;
+      console.log(`已设置 ${key}=${formula}。`);
+    }
+    changed = true;
+  }
+  if (changed) {
+    if (removed.length) removeEnvKeys(removed);
+    if (Object.keys(env).length) saveEnv(env);
+  }
+  console.log("重启服务后生效（bun run manage restart）。");
+}
+
+function levelsShow(): void {
+  const env = loadEnv();
+  for (const [dim, key] of Object.entries(LEVEL_ENV_KEYS)) {
+    console.log(`${key}=${env[key] ?? "x（默认）"}  # ${dim}`);
+  }
+}
+
 /* ────────────── 入口 ────────────── */
 
 const [cmd, ...args] = process.argv.slice(2);
@@ -419,6 +485,8 @@ const help = `wekit-read-receipts 管理脚本
   bun run manage invite set <code>            设置注册邀请码
   bun run manage invite clear                 取消邀请码
   bun run manage env <KEY>=<VALUE>            写任意环境变量（如 PORT=8080）
+  bun run manage levels set <dim>=<formula>   设置等级权益公式（dim: message|geo|retention，空公式恢复默认 x）
+  bun run manage levels show                  查看当前等级权益公式
 
 用户管理:
   bun run manage user add <wxId> <password> [level]
@@ -452,6 +520,11 @@ switch (cmd) {
       console.error("用法: bun run manage env <KEY>=<VALUE>");
       process.exit(1);
     }
+    break;
+  case "levels":
+    if (args[0] === "set") levelsSet(args.slice(1));
+    else if (args[0] === "show") levelsShow();
+    else { console.error(help); process.exit(1); }
     break;
   case "user":
     switch (args[0]) {

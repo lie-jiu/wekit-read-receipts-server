@@ -29,27 +29,8 @@ export const TRUSTED_PROXY: string[] = (process.env.TRUSTED_PROXY ?? "")
 export const SESSION_TTL_DAYS = 30;
 export const SESSION_TTL_MS = SESSION_TTL_DAYS * 24 * 3600 * 1000;
 
-/** 等级配额：level >= 100 时视为无上限（CHECK 约束限 0-99，故 99 为最高档） */
-export function quotaFor(level: number): number {
-  if (level <= 0) return 0;
-  if (level === 1) return 20;
-  if (level === 2) return 50;
-  if (level === 3) return 100;
-  if (level <= 5) return 250;
-  if (level <= 8) return 500;
-  return 1000;
-}
-
-/** 等级定位配额：按需 IP 定位（/reads/:id/geo）累计可用次数，随等级递增 */
-export function geoQuotaFor(level: number): number {
-  if (level <= 0) return 0;
-  if (level === 1) return 50;
-  if (level === 2) return 100;
-  if (level === 3) return 200;
-  if (level <= 5) return 500;
-  if (level <= 8) return 1000;
-  return 2000;
-}
+/** 等级权益：消息保留条数 / IP 定位次数 / 保留时长(月)，由公式配置（见 src/levels.ts） */
+export { quotaFor, geoQuotaFor, retentionMonthsFor } from "./levels";
 
 export const MAX_CONTENT_LENGTH = 10_000;
 export const MAX_REGISTER_BATCH = 50;

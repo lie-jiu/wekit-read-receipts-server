@@ -13,6 +13,14 @@ export function chinaDate(): string {
   return chinaNow().slice(0, 10);
 }
 
+/** UTC+8 时间往前推 months 个月（按公历月边界）；超大月数导致日期溢出时返回最早时间（视为不裁剪） */
+export function chinaMonthsAgo(months: number): string {
+  const d = new Date(Date.now() + 8 * 3600 * 1000);
+  d.setUTCMonth(d.getUTCMonth() - months);
+  if (Number.isNaN(d.getTime())) return "0000-00-00 00:00:00";
+  return d.toISOString().slice(0, 19).replace("T", " ");
+}
+
 /**
  * SHA-256(wxId + 0x00 + content + 0x00 + String(createTime)) 小写 hex。
  * 与客户端算法严格一致：createTime 必须原样十进制字符串拼接，不得数值化丢失精度。

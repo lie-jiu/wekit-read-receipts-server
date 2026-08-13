@@ -31,6 +31,9 @@ ADMIN=wxid_admin bun run dev              # 管理员权限来自 ADMIN 环境�
 | `INVITE_CODE` | 无 | 注册邀请码；未设置时注册直接通过 |
 | `TRUSTED_PROXY` | 空 | 信任的代理网段（CIDR，逗号分隔，如 `127.0.0.1/32,::1/128`）；**仅填真正直连服务的代理**，反代/CF Tunnel 场景必填，否则将信任伪造的 `X-Forwarded-For` |
 | `ENABLE_GEO` | `1` | 按需 IP 定位开关（`0`/`off`/`false` 关闭）：关闭后隐藏「定位」按钮并拒绝 geo 端点，打点路径始终零外部请求 |
+| `MESSAGE_QUOTA_FORMULA` | `x` | 等级消息保留条数公式（`x` = 等级）。未设置时默认 `x`（等级 1 保留 1 条），超出自动删除最早消息 |
+| `GEO_QUOTA_FORMULA` | `x` | 等级 IP 定位次数公式（/reads/:id/geo 累计配额）。未设置时默认 `x`（等级 1 共 1 次） |
+| `RETENTION_MONTHS_FORMULA` | `x` | 等级消息保留时长（月）公式，超出时限自动删除；结果 0 表示不限制。未设置时默认 `x`（等级 1 保留 1 个月） |
 
 ## 端点
 
@@ -52,23 +55,22 @@ ADMIN=wxid_admin bun run dev              # 管理员权限来自 ADMIN 环境�
 | `/reads/:id` | 单条消息读取明细（IP、UA、时间） |
 | `POST /reads/:id/geo` | 按需 IP 定位：为指定已读记录补全省市/运营商双语（幂等，成功缓存 24h；需登录，本人消息或管理员；已定位但缺英文时自动补齐；**次数按用户等级配额累计**） |
 | `/leaderboard` | 排行榜：注册数 / 读取数 / 消息数 × 日榜 / 总榜（wxId 脱敏） |
-| `/admin/*` | 管理后台：用户管理、等级调整、消息管理（`level 0` = 拉黑并清空该用户数据） |
+| `/admin/*` | 管理后台：用户管理、等级调整、等级权益公式、消息管理（`level 0` = 拉黑并清空该用户数据） |
 
 ## 配额与限流
 
-- **消息配额**（超出自动删除最早消息）：
+等级权益（消息保留条数、IP 定位次数、保留时长）由**公式**配置，`x` 代表用户等级，未设置时默认 `x`（权益值 = 等级）：
 
-  | level | 1 | 2 | 3 | 4–5 | 6–8 | 9+ |
-  |---|---|---|---|---|---|---|
-  | 保留条数 | 20 | 50 | 100 | 250 | 500 | 1000 |
+| 权益 | 环境变量 | 默认 | 说明 |
+|---|---|---|---|
+| 消息保留条数 | `MESSAGE_QUOTA_FORMULA` | `x` | 超出自动删除最早消息 |
+| IP 定位次数 | `GEO_QUOTA_FORMULA` | `x` | `/reads/:id/geo` 累计调用次数，耗尽返回 `429 geo_quota_exceeded`；已定位或 IPv6 的行不消耗 |
+| 保留时长（月） | `RETENTION_MONTHS_FORMULA` | `x` | 超时自动删除；结果 0 表示不限制 |
 
-- **IP 定位配额**（`/reads/:id/geo` 累计调用次数，随等级递增，耗尽后返回 `429 geo_quota_exceeded`；已定位或 IPv6 的行不消耗次数）：
+- **公式语法**：变量 `x`；运算符 `+ - * / % ^`；括号、一元正负号；函数 `floor / ceil / round / abs / min(a,b) / max(a,b) / pow(a,b)`。结果取整、负值归 0。示例：`x*2-1`（等级乘 2 减 1）、`min(x*100, 1000)`（等级×100，上限 1000）、`max(20, x*50)`
+- **修改方式**：管理后台「等级权益」页签可查看公式与 1-20 级预览、在线编辑（写 `.env`，重启生效）；或用命令 `bun run manage levels set message=x*2 geo=x*5 retention=x`（`manage levels show` 查看，空公式恢复默认 `x`）
 
-  | level | 1 | 2 | 3 | 4–5 | 6–8 | 9+ |
-  |---|---|---|---|---|---|---|
-  | 定位次数 | 50 | 100 | 200 | 500 | 1000 | 2000 |
-
-- **限流**（per-IP 固定窗口）：
+- **限流**（per-IP 固定窗口，非等级权益）：
 
   | 端点 | 限额 | 超出后 |
   |---|---|---|
@@ -224,6 +226,8 @@ bun run manage admin set <wxId[,wxId...]>   # 设置管理员
 bun run manage admin clear
 bun run manage invite set <code>            # 设置注册邀请码
 bun run manage invite clear
+bun run manage levels set <dim>=<formula>   # 等级权益公式（dim: message|geo|retention，空公式恢复默认 x）
+bun run manage levels show                  # 查看当前公式
 bun run manage env <KEY>=<VALUE>            # 任意环境变量，如 PORT=8080
 
 # 用户管理
