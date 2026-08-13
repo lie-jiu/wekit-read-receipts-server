@@ -877,6 +877,7 @@ export function htmlPage(session) { return `<!doctype html>
           locating: "定位中…",
           locateFailed: "定位失败",
           noGeo: "无法定位",
+          ipv6NoGeo: "IPv6 不支持定位",
           noReads: "暂无读取记录",
           close: "关闭",
           readsFor: "「{0}」的已读记录",
@@ -933,6 +934,7 @@ export function htmlPage(session) { return `<!doctype html>
           locating: "Locating…",
           locateFailed: "Locate failed",
           noGeo: "Unresolved",
+          ipv6NoGeo: "IPv6 not supported",
           noReads: "No reads yet",
           close: "Close",
           readsFor: 'Reads for: "{0}"',
@@ -1387,9 +1389,10 @@ export function htmlPage(session) { return `<!doctype html>
         detailTbody.innerHTML = detailReads
           .map((r) => {
             const parts = locParts(r);
+            const isV6 = r.ip.indexOf(":") !== -1;
             const cell = r.located
               ? '<span class="loc-text">' + esc(parts.join(" ") || t("noGeo")) + "</span>"
-              : ME.geo
+              : ME.geo && !isV6
                 ? '<button class="btn btn-outline btn-sm" data-id="' +
                   detailForId +
                   '" data-ip="' +
@@ -1397,7 +1400,7 @@ export function htmlPage(session) { return `<!doctype html>
                   '" onclick="locateRead(this)">' +
                   esc(t("locate")) +
                   "</button>"
-                : '<span class="loc-text">' + esc(t("noGeo")) + "</span>";
+                : '<span class="loc-text">' + esc(t(ME.geo && isV6 ? "ipv6NoGeo" : "noGeo")) + "</span>";
             return (
               "<tr>" +
               '<td class="ip-col">' +

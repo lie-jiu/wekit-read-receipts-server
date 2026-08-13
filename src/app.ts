@@ -398,6 +398,7 @@ app.post("/reads/:id/geo", async (c) => {
   }
   const ip = typeof body.ip === "string" ? body.ip : "";
   if (!ip || ip.length > 64) return c.json({ error: "invalid ip" }, 400);
+  if (ip.includes(":")) return c.json({ error: "ipv6 not supported" }, 400);
 
   const msg = sqlite.query("SELECT wx_id FROM messages WHERE id = ?").get(id) as { wx_id: string } | undefined;
   if (!msg) return c.json({ error: "not found" }, 404);

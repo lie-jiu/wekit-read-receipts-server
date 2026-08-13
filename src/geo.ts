@@ -179,6 +179,7 @@ function cacheSet(ip: string, info: GeoResult): void {
 /** 双语定位查询（含缓存与并发合并）。不可定位/全接口失败返回 null，绝不抛异常。 */
 export async function lookupIpLocation(ip: string): Promise<GeoResult> {
   if (isSkippable(ip)) return null;
+  if (ip.includes(":")) return null;
   const cached = cacheGet(ip);
   if (cached !== undefined) return cached;
   const running = inFlight.get(ip);
