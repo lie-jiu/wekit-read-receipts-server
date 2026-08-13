@@ -102,6 +102,13 @@ ALTER TABLE reads ADD COLUMN region TEXT NOT NULL DEFAULT '';
 ALTER TABLE reads ADD COLUMN city TEXT NOT NULL DEFAULT '';
 ALTER TABLE reads ADD COLUMN isp TEXT NOT NULL DEFAULT '';
 `,
+  /* v3：已读明细 i18n——定位信息双语（zh 已存于 v2 列，en 独立存储，前端随语言切换展示） */
+  `
+ALTER TABLE reads ADD COLUMN country_en TEXT NOT NULL DEFAULT '';
+ALTER TABLE reads ADD COLUMN region_en TEXT NOT NULL DEFAULT '';
+ALTER TABLE reads ADD COLUMN city_en TEXT NOT NULL DEFAULT '';
+ALTER TABLE reads ADD COLUMN isp_en TEXT NOT NULL DEFAULT '';
+`,
 ];
 
 export const sqlite = new Database(DB_PATH, { create: true });

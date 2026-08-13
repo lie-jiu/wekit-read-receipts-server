@@ -820,6 +820,8 @@ export function htmlPage(session) { return `<!doctype html>
       const detailPanel = document.getElementById("detailPanel");
       const detailFor = document.getElementById("detailFor");
       const detailTbody = document.getElementById("detailTbody");
+      let detailForId = null;
+      let detailReads = null;
 
       /* ── i18n ── */
       let lang = localStorage.getItem("lang") || "zh-CN";
@@ -969,6 +971,7 @@ export function htmlPage(session) { return `<!doctype html>
         applyI18n();
         updateLbHeaders();
         setLabels();
+        if (detailReads) renderDetail();
       }
 
       /* ── toast ── */
@@ -1327,6 +1330,8 @@ export function htmlPage(session) { return `<!doctype html>
 
       function closeDetail() {
         detailPanel.classList.add("hidden");
+        detailForId = null;
+        detailReads = null;
         if (selectedRow) {
           selectedRow.classList.remove("row-selected");
           selectedRow = null;
@@ -1335,6 +1340,8 @@ export function htmlPage(session) { return `<!doctype html>
 
       async function openDetail(id, content) {
         detailFor.textContent = t("readsFor", content);
+        detailForId = id;
+        detailReads = null;
         detailTbody.innerHTML =
           '<tr class="empty-row"><td colspan="3">' + esc(t("loading")) + "</td></tr>";
         detailPanel.classList.remove("hidden");
@@ -1354,40 +1361,58 @@ export function htmlPage(session) { return `<!doctype html>
               '<tr class="empty-row"><td colspan="3">' + esc(t("noReads")) + "</td></tr>";
             return;
           }
-          detailTbody.innerHTML = reads
-            .map((r) => {
-              const parts = [r.country, r.region, r.city, r.isp].filter(Boolean);
-              const cell = r.located
-                ? '<span class="loc-text">' + esc(parts.join(" ") || t("noGeo")) + "</span>"
-                : ME.geo
-                  ? '<button class="btn btn-outline btn-sm" data-id="' +
-                    id +
-                    '" data-ip="' +
-                    escAttr(r.ip) +
-                    '" onclick="locateRead(this)">' +
-                    esc(t("locate")) +
-                    "</button>"
-                  : '<span class="loc-text">' + esc(t("noGeo")) + "</span>";
-              return (
-                "<tr>" +
-                '<td class="ip-col">' +
-                esc(r.ip) +
-                "</td>" +
-                '<td class="loc-col">' +
-                cell +
-                "</td>" +
-                '<td class="ts-col">' +
-                esc(fmtTs(r.timestamp)) +
-                "</td>" +
-                "</tr>"
-              );
-            })
-            .join("");
+          detailReads = reads;
+          renderDetail();
         } catch (e) {
           detailTbody.innerHTML =
             '<tr class="empty-row"><td colspan="3">' + esc(t("networkError")) + "</td></tr>";
         }
         setLabels();
+      }
+
+      /** 按当前语言取定位字段（en 缺失时回退 zh） */
+      function locParts(r) {
+        const zh = lang === "zh-CN";
+        return [
+          zh ? r.country : r.countryEn,
+          zh ? r.region : r.regionEn,
+          zh ? r.city : r.cityEn,
+          zh ? r.isp : r.ispEn,
+        ].filter(Boolean);
+      }
+
+      /** 重渲染已加载的明细行（语言切换时复用） */
+      function renderDetail() {
+        if (!detailReads) return;
+        detailTbody.innerHTML = detailReads
+          .map((r) => {
+            const parts = locParts(r);
+            const cell = r.located
+              ? '<span class="loc-text">' + esc(parts.join(" ") || t("noGeo")) + "</span>"
+              : ME.geo
+                ? '<button class="btn btn-outline btn-sm" data-id="' +
+                  detailForId +
+                  '" data-ip="' +
+                  escAttr(r.ip) +
+                  '" onclick="locateRead(this)">' +
+                  esc(t("locate")) +
+                  "</button>"
+                : '<span class="loc-text">' + esc(t("noGeo")) + "</span>";
+            return (
+              "<tr>" +
+              '<td class="ip-col">' +
+              esc(r.ip) +
+              "</td>" +
+              '<td class="loc-col">' +
+              cell +
+              "</td>" +
+              '<td class="ts-col">' +
+              esc(fmtTs(r.timestamp)) +
+              "</td>" +
+              "</tr>"
+            );
+          })
+          .join("");
       }
 
       async function locateRead(btn) {
@@ -1410,9 +1435,7 @@ export function htmlPage(session) { return `<!doctype html>
           if (!res.ok) throw new Error(data.error || "HTTP " + res.status);
           const span = document.createElement("span");
           span.className = "loc-text";
-          span.textContent =
-            [data.country, data.region, data.city, data.isp].filter(Boolean).join(" ") ||
-            t("noGeo");
+          span.textContent = locParts(data).join(" ") || t("noGeo");
           btn.replaceWith(span);
         } catch (e) {
           btn.textContent = t("locateFailed");

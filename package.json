@@ -19,6 +19,7 @@
     "test": "bun test",
     "mkuser": "bun scripts/mkuser.ts",
     "manage": "bun scripts/manage.ts",
+    "backfill-isp": "bun run scripts/backfill-isp.ts",
     "migrate-d1": "bun scripts/migrate-d1.ts"
   }
 }

@@ -1,5 +1,10 @@
 /*
- * IP 定位（按需触发）：三免费接口自动降级，仅返回省市/运营商，不含经纬度。
+ * IP 定位（按需触发）：免费接口自动降级，仅返回省市/运营商，不含经纬度。
+ *
+ * 定位结果双语存储（zh/en），供前端 i18n 切换展示：
+ *   - zh：ip-api(?lang=zh-CN) → ipwho.is(?lang=zh-CN)
+ *   - en：ipwho.is(默认 en) → ipinfo.io(en)
+ * 两路并发查询，各接口失败逐级降级；单语言缺失时用另一语言兜底，保证不丢数据。
  *
  * 实现思路与 ISP 中英映射表借鉴自 read-receipt-tracker
  * (https://github.com/gaigebeckmanChristinaJames/read-receipt-tracker)，
@@ -34,27 +39,25 @@ export type GeoInfo = {
   isp: string;
 };
 
-const ISP_CN: Record<string, string> = {
-  "china mobile": "中国移动",
-  "china mobile communications": "中国移动",
-  "china unicom": "中国联通",
-  "china unicom communications": "中国联通",
-  "china telecom": "中国电信",
-  "china telecom backbone": "中国电信",
-  chinatelecom: "中国电信",
-  "china broadband": "中国广电",
-  "china education": "教育网",
-  "dr peng telecom": "鹏博士",
-  "great wall broadband": "长城宽带",
-  "beijing telecom": "北京电信",
-  "shanghai telecom": "上海电信",
-  "shanghai mobile": "上海移动",
-};
+/** 双语定位结果：zh/en 各一组，语言缺失时以另一语言填充。 */
+export type GeoResult = { zh: GeoInfo; en: GeoInfo } | null;
 
-function cnIsp(isp: string): string {
-  if (!isp) return "";
-  const key = isp.trim().toLowerCase();
-  return ISP_CN[key] ?? isp;
+const HAS_CJK = /[\u4e00-\u9fff]/;
+
+/** 运营商双语短名分类。命中返回 {cn, en} 短名；未命中 cn 留空、en 保留原始描述 */
+export function classifyIsp(isp: string): { cn: string; en: string } {
+  if (!isp) return { cn: "", en: "" };
+  const s = " " + isp.trim().toLowerCase().replace(/[^a-z0-9]/g, " ") + " ";
+  const has = (re: RegExp) => re.test(s);
+  if (has(/cmnet|cmcc|china mobile/)) return { cn: "中国移动", en: "China Mobile" };
+  if (has(/china unicom|unicom|china169|cnc group|netcom/)) return { cn: "中国联通", en: "China Unicom" };
+  if (has(/china telecom|chinatelecom/)) return { cn: "中国电信", en: "China Telecom" };
+  if (has(/china broadband|broadnet|中国广电/)) return { cn: "中国广电", en: "China Broadnet" };
+  if (has(/china education|ceret|cernet/)) return { cn: "教育网", en: "CERNET" };
+  if (has(/dr peng|bocl/)) return { cn: "鹏博士", en: "Dr. Peng" };
+  if (has(/great wall|gwbn/)) return { cn: "长城宽带", en: "Great Wall Broadband" };
+  if (HAS_CJK.test(isp)) return { cn: isp.trim(), en: "" };
+  return { cn: "", en: isp.trim() };
 }
 
 function isSkippable(ip: string): boolean {
@@ -77,9 +80,15 @@ async function fetchJson(url: string): Promise<Record<string, unknown>> {
   return (await res.json()) as Record<string, unknown>;
 }
 
+/** ipwho.is en 语言下省份名会转成拼音后缀（如 "Henan Sheng"），清理为常用英文省名 */
+function cleanEnRegion(region: string): string {
+  return region.trim().replace(/\s+(Sheng|Shi|Xianggang)$/i, "");
+}
+
 type Provider = (ip: string) => Promise<GeoInfo | null>;
 
-const PROVIDERS: Provider[] = [
+/** 中文来源：ip-api 支持 en/zh 双语言，仅 HTTP；ipwho.is 支持 lang=zh-CN */
+const ZH_PROVIDERS: Provider[] = [
   async (ip) => {
     const d = await fetchJson(
       `http://ip-api.com/json/${ip}?lang=zh-CN&fields=status,message,country,regionName,city,isp`,
@@ -89,7 +98,7 @@ const PROVIDERS: Provider[] = [
       country: String(d.country ?? ""),
       region: String(d.regionName ?? ""),
       city: String(d.city ?? ""),
-      isp: cnIsp(String(d.isp ?? "")),
+      isp: classifyIsp(String(d.isp ?? "")).cn,
     };
   },
   async (ip) => {
@@ -100,7 +109,22 @@ const PROVIDERS: Provider[] = [
       country: String(d.country ?? ""),
       region: String(d.region ?? ""),
       city: String(d.city ?? ""),
-      isp: cnIsp(String(conn.isp ?? "")),
+      isp: classifyIsp(String(conn.isp ?? "")).cn,
+    };
+  },
+];
+
+/** 英文来源：ipwho.is 默认 en；ipinfo.io 仅英文 */
+const EN_PROVIDERS: Provider[] = [
+  async (ip) => {
+    const d = await fetchJson(`https://ipwho.is/${ip}`);
+    if (!d.success) return null;
+    const conn = (d.connection ?? {}) as Record<string, unknown>;
+    return {
+      country: String(d.country ?? ""),
+      region: cleanEnRegion(String(d.region ?? "")),
+      city: String(d.city ?? ""),
+      isp: classifyIsp(String(conn.isp ?? "")).en,
     };
   },
   async (ip) => {
@@ -111,15 +135,27 @@ const PROVIDERS: Provider[] = [
       country: String(d.country ?? ""),
       region: String(d.region ?? ""),
       city: String(d.city ?? ""),
-      isp: cnIsp(org.split(" ").slice(1).join(" ")),
+      isp: classifyIsp(org.split(" ").slice(1).join(" ")).en,
     };
   },
 ];
 
-const cache = new Map<string, { info: GeoInfo | null; expiresAt: number }>();
-const inFlight = new Map<string, Promise<GeoInfo | null>>();
+async function resolve(ip: string, providers: Provider[]): Promise<GeoInfo | null> {
+  for (const provider of providers) {
+    try {
+      const info = await provider(ip);
+      if (info) return info;
+    } catch {
+      /* 静默降级到下一接口 */
+    }
+  }
+  return null;
+}
 
-function cacheGet(ip: string): GeoInfo | null | undefined {
+const cache = new Map<string, { info: GeoResult; expiresAt: number }>();
+const inFlight = new Map<string, Promise<GeoResult>>();
+
+function cacheGet(ip: string): GeoResult | undefined {
   const e = cache.get(ip);
   if (!e) return undefined;
   if (e.expiresAt <= Date.now()) {
@@ -129,7 +165,7 @@ function cacheGet(ip: string): GeoInfo | null | undefined {
   return e.info;
 }
 
-function cacheSet(ip: string, info: GeoInfo | null): void {
+function cacheSet(ip: string, info: GeoResult): void {
   cache.set(ip, {
     info,
     expiresAt: Date.now() + (info ? GEO_CACHE_SUCCESS_MS : GEO_CACHE_FAILURE_MS),
@@ -140,24 +176,22 @@ function cacheSet(ip: string, info: GeoInfo | null): void {
   }
 }
 
-/** 定位查询（含缓存与并发合并）。不可定位/全接口失败返回 null，绝不抛异常。 */
-export async function lookupIpLocation(ip: string): Promise<GeoInfo | null> {
+/** 双语定位查询（含缓存与并发合并）。不可定位/全接口失败返回 null，绝不抛异常。 */
+export async function lookupIpLocation(ip: string): Promise<GeoResult> {
   if (isSkippable(ip)) return null;
   const cached = cacheGet(ip);
   if (cached !== undefined) return cached;
   const running = inFlight.get(ip);
   if (running) return running;
 
-  const p = (async (): Promise<GeoInfo | null> => {
-    for (const provider of PROVIDERS) {
-      try {
-        const info = await provider(ip);
-        if (info) return info;
-      } catch {
-        /* 静默降级到下一接口 */
-      }
-    }
-    return null;
+  const p = (async (): Promise<GeoResult> => {
+    const [zh, en] = await Promise.all([
+      resolve(ip, ZH_PROVIDERS),
+      resolve(ip, EN_PROVIDERS),
+    ]);
+    if (!zh && !en) return null;
+    // 单语言缺失时以另一语言兜底，保证 zh/en 各有一组值
+    return { zh: (zh ?? en)!, en: (en ?? zh)! };
   })()
     .then((info) => {
       cacheSet(ip, info);

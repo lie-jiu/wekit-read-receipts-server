@@ -39,6 +39,10 @@ type ReadRow = {
   region: string;
   city: string;
   isp: string;
+  country_en: string;
+  region_en: string;
+  city_en: string;
+  isp_en: string;
 };
 
 function readRow(r: ReadRow) {
@@ -51,9 +55,24 @@ function readRow(r: ReadRow) {
     region: r.region,
     city: r.city,
     isp: r.isp,
+    countryEn: r.country_en,
+    regionEn: r.region_en,
+    cityEn: r.city_en,
+    ispEn: r.isp_en,
     located,
   };
 }
+
+const emptyReadRow: Omit<ReadRow, "ip" | "timestamp" | "user_agent"> = {
+  country: "",
+  region: "",
+  city: "",
+  isp: "",
+  country_en: "",
+  region_en: "",
+  city_en: "",
+  isp_en: "",
+};
 
 /** 兼容 JSON 与表单提交（登录/注册页复用 CF 版前端，发的是 x-www-form-urlencoded） */
 async function parseBody(c: Context): Promise<Record<string, unknown>> {
@@ -357,7 +376,7 @@ app.get("/reads/:id", (c) => {
   if (msg.wx_id !== user.wxId) return c.json({ error: "forbidden" }, 403);
   const rows = sqlite
     .query(
-      "SELECT ip, timestamp, user_agent, country, region, city, isp FROM reads WHERE id = ? ORDER BY timestamp DESC LIMIT 500",
+      "SELECT ip, timestamp, user_agent, country, region, city, isp, country_en, region_en, city_en, isp_en FROM reads WHERE id = ? ORDER BY timestamp DESC LIMIT 500",
     )
     .all(id) as ReadRow[];
   return c.json(rows.map(readRow));
@@ -385,19 +404,48 @@ app.post("/reads/:id/geo", async (c) => {
   if (msg.wx_id !== user.wxId && !user.isAdmin) return c.json({ error: "forbidden" }, 403);
 
   const row = sqlite
-    .query("SELECT country, region, city, isp FROM reads WHERE id = ? AND ip = ?")
-    .get(id, ip) as { country: string; region: string; city: string; isp: string } | undefined;
+    .query(
+      "SELECT country, region, city, isp, country_en, region_en, city_en, isp_en FROM reads WHERE id = ? AND ip = ?",
+    )
+    .get(id, ip) as
+    | { country: string; region: string; city: string; isp: string; country_en: string; region_en: string; city_en: string; isp_en: string }
+    | undefined;
   if (!row) return c.json({ error: "not found" }, 404);
-  if (row.country !== "" || row.region !== "" || row.city !== "" || row.isp !== "") {
-    return c.json({ ...readRow({ ip, timestamp: "", user_agent: "", ...row }), located: true });
+  const located = row.country !== "" || row.region !== "" || row.city !== "" || row.isp !== "";
+  const enMissing =
+    row.country_en === "" && row.region_en === "" && row.city_en === "" && row.isp_en === "";
+  if (located && !enMissing) {
+    return c.json(readRow({ ip, timestamp: "", user_agent: "", ...row }));
   }
 
   const info = await lookupIpLocation(ip);
-  if (!info) return c.json({ ...readRow({ ip, timestamp: "", user_agent: "", country: "", region: "", city: "", isp: "" }), located: false }, 502);
+  if (!info) {
+    if (located) return c.json(readRow({ ip, timestamp: "", user_agent: "", ...row }));
+    return c.json(
+      readRow({ ...emptyReadRow, ip, timestamp: "", user_agent: "" }),
+      502,
+    );
+  }
+  const zh = info.zh;
+  const en = info.en;
   sqlite
-    .query("UPDATE reads SET country = ?, region = ?, city = ?, isp = ? WHERE id = ? AND ip = ?")
-    .run(info.country, info.region, info.city, info.isp, id, ip);
-  return c.json({ ip, userAgent: "", country: info.country, region: info.region, city: info.city, isp: info.isp, located: true });
+    .query(
+      "UPDATE reads SET country = ?, region = ?, city = ?, isp = ?, country_en = ?, region_en = ?, city_en = ?, isp_en = ? WHERE id = ? AND ip = ?",
+    )
+    .run(zh.country, zh.region, zh.city, zh.isp, en.country, en.region, en.city, en.isp, id, ip);
+  return c.json({
+    ip,
+    userAgent: "",
+    country: zh.country,
+    region: zh.region,
+    city: zh.city,
+    isp: zh.isp,
+    countryEn: en.country,
+    regionEn: en.region,
+    cityEn: en.city,
+    ispEn: en.isp,
+    located: true,
+  });
 });
 
 const LEADERBOARD_TABLES: Record<string, string> = {
@@ -628,7 +676,7 @@ app.get("/admin/reads/:id", (c) => {
   if (!isValidId(id)) return c.json({ error: "invalid id" }, 400);
   const rows = sqlite
     .query(
-      "SELECT ip, timestamp, user_agent, country, region, city, isp FROM reads WHERE id = ? ORDER BY timestamp DESC LIMIT 1000",
+      "SELECT ip, timestamp, user_agent, country, region, city, isp, country_en, region_en, city_en, isp_en FROM reads WHERE id = ? ORDER BY timestamp DESC LIMIT 1000",
     )
     .all(id) as ReadRow[];
   return c.json({ id, count: rows.length, reads: rows.map(readRow) });
