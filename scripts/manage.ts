@@ -394,10 +394,7 @@ function userLevel(wxId: string, level: number): void {
     console.error(`用户 ${wxId} 不存在。`);
     process.exit(1);
   }
-  if (level === 0) {
-    sqlite.query("DELETE FROM sessions WHERE wx_id = ?").run(wxId);
-  }
-  console.log(`已设置 ${wxId} level=${level}（level 0 = 拉黑，其消息已清空/会话失效）。`);
+  console.log(`已设置 ${wxId} level=${level}（level 0 = 仅禁止注册新消息，数据保留）。`);
 }
 
 async function userPass(wxId: string, password: string): Promise<void> {
@@ -492,7 +489,7 @@ const help = `wekit-read-receipts 管理脚本
   bun run manage user add <wxId> <password> [level]
   bun run manage user list
   bun run manage user delete <wxId>
-  bun run manage user level <wxId> <level>    0 = 拉黑清空，1-99 按配额
+  bun run manage user level <wxId> <level>    0 = 仅禁止注册新消息，1-99 按配额
   bun run manage user pass <wxId> <password>  重置密码`;
 
 switch (cmd) {

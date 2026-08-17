@@ -6,7 +6,7 @@
  * 跳过：sessions（强制重新登录）、audit_logs（本地 schema 需 wx_id/ip，D1 无）
  *       read_stats / message_read_stats（服务启动时 backfillStats 自动重建）
  *
- * 时区：D1 存 UTC，本地存北京时间（UTC+8），SELECT 时统一 +8 小时转换
+ * 时区：D1 与本地均存 UTC，时间原样迁移，不做时区转换
  *
  * 用法:
  *   CF_ACCOUNT_ID=<账户ID> CF_D1_DATABASE_ID=<数据库ID> CF_API_TOKEN=<令牌> \
@@ -75,12 +75,12 @@ const count = (t: string): number =>
 migrate();
 console.log("本地 schema 就绪。");
 
-console.log("正在从 D1 拉取数据（UTC → 北京时间 +8h）…");
+console.log("正在从 D1 拉取数据（UTC 原样迁移）…");
 
 const [users, messages, reads, msgCounts] = await Promise.all([
-  fetchAll("SELECT wx_id, password_hash, level, datetime(created_at, '+8 hours') AS created_at FROM users"),
-  fetchAll("SELECT id, wx_id, content, datetime(timestamp, '+8 hours') AS timestamp FROM messages"),
-  fetchAll("SELECT id, ip, datetime(timestamp, '+8 hours') AS timestamp FROM reads"),
+  fetchAll("SELECT wx_id, password_hash, level, created_at FROM users"),
+  fetchAll("SELECT id, wx_id, content, timestamp FROM messages"),
+  fetchAll("SELECT id, ip, timestamp FROM reads"),
   d1Query("SELECT wx_id, COUNT(*) AS c FROM messages GROUP BY wx_id"),
 ]);
 
@@ -142,6 +142,6 @@ console.log("迁移完成：");
 console.log(`  users               = ${count("users")}（D1 源: ${users.length}）`);
 console.log(`  messages            = ${count("messages")}（D1 源: ${messages.length}）`);
 console.log(`  reads               = ${count("reads")}（D1 源: ${reads.length}）`);
-console.log(`  registration_stats  = ${count("registration_stats")}（本地按北京时间重算）`);
+console.log(`  registration_stats  = ${count("registration_stats")}（本地按 UTC 自然日重算）`);
 console.log(`  integrity_check     = ${integrity}`);
 console.log("read_stats / message_read_stats 无需迁移，服务启动时自动重建。");

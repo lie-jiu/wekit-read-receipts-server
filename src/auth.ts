@@ -4,20 +4,20 @@ import { pbkdf2Sync, timingSafeEqual } from "node:crypto";
 import { isAdmin, SESSION_TTL_DAYS, SESSION_TTL_MS, TRUSTED_PROXY } from "./config";
 import { ipInCidr, peerIp } from "./rate-limit";
 import { sqlite } from "./db";
-import { chinaNow, sha256Hex } from "./utils";
+import { sha256Hex, utcNow } from "./utils";
 
 export type SessionUser = {
   wxId: string;
   level: number;
   messageCount: number;
   geoCount: number;
-  /** 当日日期 YYYY-MM-DD（北京时间）：geo_count 的归属自然日，空串表示历史累计库未初始化 */
+  /** 当日日期 YYYY-MM-DD（UTC）：geo_count 的归属自然日，空串表示历史累计库未初始化 */
   geoDate: string;
   isAdmin: boolean;
 };
 
-function chinaNowPlus(days: number): string {
-  const d = new Date(Date.now() + 8 * 3600 * 1000 + days * 24 * 3600 * 1000);
+function utcNowPlus(days: number): string {
+  const d = new Date(Date.now() + days * 24 * 3600 * 1000);
   return d.toISOString().slice(0, 19).replace("T", " ");
 }
 
@@ -29,7 +29,7 @@ function randomToken(): string {
 export function audit(wxId: string | null, action: string, detail: string | null, ip: string | null): void {
   sqlite
     .query("INSERT INTO audit_logs (wx_id, action, detail, ip, timestamp) VALUES (?, ?, ?, ?, ?)")
-    .run(wxId, action, detail, ip, chinaNow());
+    .run(wxId, action, detail, ip, utcNow());
 }
 
 /**
@@ -66,7 +66,6 @@ export async function login(wxId: string, password: string): Promise<boolean> {
     .query("SELECT password_hash, level FROM users WHERE wx_id = ?")
     .get(wxId) as { password_hash: string; level: number } | undefined;
   if (!row) return false;
-  if (row.level <= 0) return false;
   return verifyPassword(password, row.password_hash);
 }
 
@@ -102,7 +101,7 @@ export function createSession(c: Context, wxId: string): void {
   const token = randomToken();
   sqlite
     .query("INSERT INTO sessions (token_hash, wx_id, created_at, expires_at) VALUES (?, ?, ?, ?)")
-    .run(sha256Hex(token), wxId, chinaNow(), chinaNowPlus(SESSION_TTL_DAYS));
+    .run(sha256Hex(token), wxId, utcNow(), utcNowPlus(SESSION_TTL_DAYS));
   const { name, secure } = sessionCookie(c);
   setCookie(c, name, token, {
     httpOnly: true,
@@ -131,7 +130,7 @@ export function getSessionUser(c: Context): SessionUser | null {
        FROM sessions s JOIN users u ON u.wx_id = s.wx_id
        WHERE s.token_hash = ? AND s.expires_at > ?`,
     )
-    .get(sha256Hex(token), chinaNow()) as { wx_id: string; level: number; message_count: number; geo_count: number; geo_date: string } | undefined;
+    .get(sha256Hex(token), utcNow()) as { wx_id: string; level: number; message_count: number; geo_count: number; geo_date: string } | undefined;
   if (!row) return null;
   return {
     wxId: row.wx_id,

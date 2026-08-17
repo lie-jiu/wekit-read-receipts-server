@@ -1,6 +1,6 @@
 import { sqlite, migrate } from "../src/db";
 import { hashPassword } from "../src/auth";
-import { chinaNow } from "../src/utils";
+import { utcNow } from "../src/utils";
 
 const [wxId, password, levelArg] = process.argv.slice(2);
 const level = levelArg === undefined ? 1 : Number(levelArg);
@@ -13,5 +13,5 @@ if (!wxId || !password || password.length < 8 || !Number.isInteger(level) || lev
 migrate();
 sqlite
   .query("INSERT INTO users (wx_id, password_hash, level, message_count, created_at) VALUES (?, ?, ?, 0, ?)")
-  .run(wxId, await hashPassword(password), level, chinaNow());
+  .run(wxId, await hashPassword(password), level, utcNow());
 console.log(`已创建/重置用户 ${wxId} (level=${level})`);

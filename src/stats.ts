@@ -55,7 +55,7 @@ export function backfillStats(): number {
 /** 每日清理：过期会话、>30 天审计、7 天前孤儿 reads、FTS rebuild */
 export function dailyCleanup(): void {
   const daysAgo = (days: number): string => {
-    const d = new Date(Date.now() + 8 * 3600 * 1000 - days * 24 * 3600 * 1000);
+    const d = new Date(Date.now() - days * 24 * 3600 * 1000);
     return d.toISOString().slice(0, 19).replace("T", " ");
   };
 
@@ -66,7 +66,7 @@ export function dailyCleanup(): void {
       .query("DELETE FROM reads WHERE timestamp < ? AND id NOT IN (SELECT id FROM messages)")
       .run(daysAgo(7));
     sqlite.query("INSERT INTO messages_fts(messages_fts) VALUES ('rebuild')").run();
-    // 每日 0 点（北京时间）刷新 IP 定位配额：兜底清零（请求路径另有惰性跨天归零）
+    // 每日 0 点（UTC）刷新 IP 定位配额：兜底清零（请求路径另有惰性跨天归零）
     sqlite.query("UPDATE users SET geo_count = 0").run();
   })();
 }

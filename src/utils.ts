@@ -1,26 +1,25 @@
 export type JsonObject = Record<string, unknown>;
 
-/** UTC+8 中国时间，格式 `YYYY-MM-DD HH:MM:SS`（数据库统一时间标准） */
-let _chinaNowCache: { sec: number; s: string } | null = null;
+/** UTC 时间，格式 `YYYY-MM-DD HH:MM:SS`（数据库统一时间标准） */
+let _utcNowCache: { sec: number; s: string } | null = null;
 
-export function chinaNow(): string {
+export function utcNow(): string {
   const ms = Date.now();
   const sec = Math.floor(ms / 1000);
-  if (_chinaNowCache && _chinaNowCache.sec === sec) return _chinaNowCache.s;
-  const d = new Date(ms + 8 * 3600 * 1000);
-  const s = d.toISOString().slice(0, 19).replace("T", " ");
-  _chinaNowCache = { sec, s };
+  if (_utcNowCache && _utcNowCache.sec === sec) return _utcNowCache.s;
+  const s = new Date(ms).toISOString().slice(0, 19).replace("T", " ");
+  _utcNowCache = { sec, s };
   return s;
 }
 
-/** 取 UTC+8 自然日 `YYYY-MM-DD` */
-export function chinaDate(): string {
-  return chinaNow().slice(0, 10);
+/** 取 UTC 自然日 `YYYY-MM-DD` */
+export function utcDate(): string {
+  return utcNow().slice(0, 10);
 }
 
-/** UTC+8 时间往前推 months 个月（按公历月边界）；超大月数导致日期溢出时返回最早时间（视为不裁剪） */
-export function chinaMonthsAgo(months: number): string {
-  const d = new Date(Date.now() + 8 * 3600 * 1000);
+/** UTC 时间往前推 months 个月（按公历月边界）；超大月数导致日期溢出时返回最早时间（视为不裁剪） */
+export function utcMonthsAgo(months: number): string {
+  const d = new Date(Date.now());
   d.setUTCMonth(d.getUTCMonth() - months);
   if (Number.isNaN(d.getTime())) return "0000-00-00 00:00:00";
   return d.toISOString().slice(0, 19).replace("T", " ");
@@ -80,7 +79,7 @@ export function maskContent(content: string): string {
   return s.slice(0, 2) + "***" + s.slice(-2);
 }
 
-/** 时间展示：`YYYY-MM-DD HH:MM:SS` 已是 UTC+8，直接截取分钟 */
+/** 时间展示：`YYYY-MM-DD HH:MM:SS` 已是 UTC，直接截取分钟 */
 export function formatTime(t: string): string {
   return t.length >= 16 ? t.slice(0, 16) : t;
 }

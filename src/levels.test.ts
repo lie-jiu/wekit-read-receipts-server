@@ -7,7 +7,7 @@ import {
   retentionMonthsFor,
   validateFormula,
 } from "./levels";
-import { chinaMonthsAgo } from "./utils";
+import { utcMonthsAgo } from "./utils";
 
 describe("公式求值", () => {
   test("默认公式 x：权益值 = 等级", () => {
@@ -96,9 +96,9 @@ describe("极限情况", () => {
     expect(computeValues("x*0.1")[3]).toBe(0);
   });
 
-  test("chinaMonthsAgo 超大月数不抛异常且退化为不裁剪", () => {
-    expect(() => chinaMonthsAgo(Number.MAX_SAFE_INTEGER)).not.toThrow();
-    expect(chinaMonthsAgo(Number.MAX_SAFE_INTEGER)).toBe("0000-00-00 00:00:00");
-    expect(chinaMonthsAgo(1).slice(0, 4)).not.toBe("0000");
+  test("utcMonthsAgo 超大月数不抛异常且退化为不裁剪", () => {
+    expect(() => utcMonthsAgo(Number.MAX_SAFE_INTEGER)).not.toThrow();
+    expect(utcMonthsAgo(Number.MAX_SAFE_INTEGER)).toBe("0000-00-00 00:00:00");
+    expect(utcMonthsAgo(1).slice(0, 4)).not.toBe("0000");
   });
 });

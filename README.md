@@ -29,7 +29,7 @@
 - **双语 IP 定位**：按需触发，中文 ip-api → ipwho.is，英文 ipwho.is → ipinfo.io，两路并发、失败逐级降级
 - **等级权益公式**：消息保留条数 / IP 定位次数 / 保留时长均由表达式配置，`x` 代表等级
 - **FTS5 全文搜索**：trigram 分词，支持消息内容快速检索
-- **管理后台**：用户管理、等级调整、权益公式在线编辑、消息管理（`level 0` = 拉黑并清空）
+- **管理后台**：用户管理、等级调整、权益公式在线编辑、消息管理（`level 0` = 仅禁止注册新消息）
 - **多形态部署**：反向代理 / 公网直连 / Cloudflare Tunnel，内置 HTTPS 支持
 - **跨平台自启**：Linux systemd、Windows 启动文件夹 + 隐藏窗口、无 systemd 回退 nohup
 - **定时任务**：每 10 分钟增量回填统计表，每日清理过期会话、审计日志、孤儿 reads
@@ -78,7 +78,7 @@ ADMIN=wxid_admin bun run dev              # 管理员权限来自 ADMIN 环境�
 | `/messages`、`DELETE /messages` | 本人消息列表 / 清空 |
 | `/reads/:id` | 单条消息读取明细（IP、UA、时间） |
 | `POST /reads/:id/geo` | 按需 IP 定位：补全省市/运营商双语（幂等，缓存 24h；需登录，本人或管理员；按等级配额累计） |
-| `/leaderboard` | 排行榜：`?metric=reg\|read\|msg` × `?time=day`（均按北京时间；wxId 脱敏），无效 `time` 返回 400 |
+| `/leaderboard` | 排行榜：`?metric=reg\|read\|msg` × `?time=day`（均按 UTC 自然日；wxId 脱敏），无效 `time` 返回 400 |
 | `/admin/*` | 管理后台：用户管理、等级调整、权益公式、消息管理 |
 
 ## 环境变量
@@ -94,7 +94,7 @@ ADMIN=wxid_admin bun run dev              # 管理员权限来自 ADMIN 环境�
 | `TRUSTED_PROXY` | 空 | 信任的代理网段（CIDR，逗号分隔）；**仅填真正直连服务的代理**，反代/CF Tunnel 场景必填，否则信任伪造的 `X-Forwarded-For` |
 | `ENABLE_GEO` | `1` | 按需 IP 定位开关（`0`/`off`/`false` 关闭）：隐藏「定位」按钮并拒绝 geo 端点，打点路径始终零外部请求 |
 | `MESSAGE_QUOTA_FORMULA` | `x` | 等级消息保留条数公式（`x` = 等级），超出自动删除最早消息 |
-| `GEO_QUOTA_FORMULA` | `x` | 等级 IP 定位次数公式（每日配额），耗尽返回 `429`，每日 0 点（北京时间）刷新 |
+| `GEO_QUOTA_FORMULA` | `x` | 等级 IP 定位次数公式（每日配额），耗尽返回 `429`，每日 0 点（UTC）刷新 |
 | `RETENTION_MONTHS_FORMULA` | `x` | 等级消息保留时长（月），结果 0 表示不限制 |
 
 <details>
@@ -107,7 +107,7 @@ ADMIN=wxid_admin bun run dev              # 管理员权限来自 ADMIN 环境�
 | 权益 | 环境变量 | 默认 | 说明 |
 |---|---|---|---|
 | 消息保留条数 | `MESSAGE_QUOTA_FORMULA` | `x` | 超出自动删除最早消息 |
-| IP 定位次数 | `GEO_QUOTA_FORMULA` | `x` | `/reads/:id/geo` 当日调用次数（每日 0 点北京时间刷新），耗尽返回 `429 geo_quota_exceeded`；已定位或 IPv6 的行不消耗 |
+| IP 定位次数 | `GEO_QUOTA_FORMULA` | `x` | `/reads/:id/geo` 当日调用次数（每日 0 点（UTC）刷新），耗尽返回 `429 geo_quota_exceeded`；已定位或 IPv6 的行不消耗 |
 | 保留时长（月） | `RETENTION_MONTHS_FORMULA` | `x` | 超时自动删除；结果 0 表示不限制 |
 
 - **公式语法**：变量 `x`；运算符 `+ - * / % ^`；括号、一元正负号；函数 `floor / ceil / round / abs / min(a,b) / max(a,b) / pow(a,b)`。结果取整、负值归 0。示例：`x*2-1`、`min(x*100, 1000)`、`max(20, x*50)`
@@ -128,7 +128,7 @@ ADMIN=wxid_admin bun run dev              # 管理员权限来自 ADMIN 环境�
 <details>
 <summary><b>数据与维护</b></summary>
 
-- 时间一律 UTC+8；消息 id = `SHA-256(wxId + \x00 + content + \x00 + createTime)`，createTime 为客户端 13 位毫秒十进制字符串，绝不数值化/截断
+- 时间统一以 UTC 存储（`YYYY-MM-DD HH:MM:SS`）；Web 中文界面显示北京时间（UTC+8），英文界面显示 UTC；消息 id = `SHA-256(wxId + \x00 + content + \x00 + createTime)`，createTime 为客户端 13 位毫秒十进制字符串，绝不数值化/截断
 - 已读明细默认记录 `ip`、`user_agent`、时间；**定位为按需触发**——在已读详情中点「定位」按钮才调用免费接口补全省市/运营商（不含经纬度），结果仅本人/管理员可见，`ENABLE_GEO=0` 可整体关闭
 - 定位结果**双语存储**：中文取自 ip-api(zh) → ipwho.is(zh)，英文取自 ipwho.is(en) → ipinfo.io，两路并发、失败逐级降级；已读明细的「地区+运营商」随页面语言切换展示（英文缺失时回退中文）
 - 运营商显示为双语短名（如 中国移动 / China Mobile），国外 ISP 仅在英文视图显示原文
@@ -238,9 +238,9 @@ sudo bun run manage install
 
 将 D1 中的历史数据迁移到本服务（`scripts/migrate-d1.ts`，经 D1 REST API 分页拉取）：
 
-- **迁移范围**：`users`（含 message_count 重算）、`messages`、`reads`（丢弃 D1 的 wx_id 列）、`registration_stats`（本地按北京时间重算）
+- **迁移范围**：`users`（含 message_count 重算）、`messages`、`reads`（丢弃 D1 的 wx_id 列）、`registration_stats`（本地按 UTC 自然日重算）
 - **跳过**：`sessions`（用户需重新登录）、`audit_logs`（D1 无 wx_id/ip）、`read_stats` / `message_read_stats`（服务启动时自动重建）
-- **时区**：D1 存储 UTC，本服务存储北京时间（UTC+8），迁移时自动转换
+- **时区**：D1 存储 UTC，本服务同样存储 UTC，迁移时无需转换
 
 <details>
 <summary><b>迁移步骤</b></summary>
@@ -303,7 +303,7 @@ bun run manage env <KEY>=<VALUE>            # 任意环境变量，如 PORT=8080
 bun run manage user add <wxId> <password> [level]
 bun run manage user list
 bun run manage user delete <wxId>
-bun run manage user level <wxId> <level>    # 0 = 拉黑清空
+bun run manage user level <wxId> <level>    # 0 = 仅禁止注册新消息
 bun run manage user pass <wxId> <password>  # 重置密码
 ```
 

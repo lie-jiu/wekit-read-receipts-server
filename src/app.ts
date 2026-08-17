@@ -21,7 +21,7 @@ import {
   saveLevelFormulas,
   validateFormula,
 } from "./levels";
-import { chinaMonthsAgo } from "./utils";
+import { utcMonthsAgo } from "./utils";
 import {
   audit,
   createSession,
@@ -37,7 +37,7 @@ import type { SessionUser } from "./auth";
 import { sqlite, stmt } from "./db";
 import { lookupIpLocation } from "./geo";
 import { clientIp, overLimit, rateLimit } from "./rate-limit";
-import { chinaDate, chinaNow, computeId, escapeLike, isValidId, isValidWxId, maskContent, maskWxId, timingSafeEqual } from "./utils";
+import { computeId, escapeLike, isValidId, isValidWxId, maskContent, maskWxId, timingSafeEqual, utcDate, utcNow } from "./utils";
 import { LOGIN_HTML, adminPage, htmlPage, leaderboardPage, readDetailsPage } from "./pages";
 
 const app = new Hono();
@@ -111,7 +111,7 @@ app.get("/pixel", (c) => {
   if (!overLimit("pixel", ip) && isValidId(id) && isValidWxId(wxId)) {
     const ua = (c.req.header("user-agent") ?? "").slice(0, 500);
     try {
-      stmt().insertRead.run(id, ip, chinaNow(), ua);
+      stmt().insertRead.run(id, ip, utcNow(), ua);
     } catch {
       // SQLITE_BUSY 等瞬态错误：静默降级，仍返回像素
     }
@@ -171,7 +171,7 @@ app.post("/register", async (c) => {
 
     const id = computeId(wxId, content, createTime);
     sqlite.transaction(() => {
-      const now = chinaNow();
+      const now = utcNow();
       const res = sqlite
         .query("INSERT OR IGNORE INTO messages (id, wx_id, content, timestamp) VALUES (?, ?, ?, ?)")
         .run(id, wxId, content, now);
@@ -182,7 +182,7 @@ app.post("/register", async (c) => {
         .query(
           "INSERT INTO registration_stats (date, wx_id, count) VALUES (?, ?, 1) ON CONFLICT (date, wx_id) DO UPDATE SET count = count + 1",
         )
-        .run(chinaDate(), wxId);
+        .run(utcDate(), wxId);
 
       const quota = quotaFor(user.level);
       const excess = sqlite
@@ -195,7 +195,7 @@ app.post("/register", async (c) => {
 
       const months = retentionMonthsFor(user.level);
       if (months > 0) {
-        const cutoff = chinaMonthsAgo(months);
+        const cutoff = utcMonthsAgo(months);
         const expired = sqlite
           .query("SELECT id FROM messages WHERE wx_id = ? AND timestamp < ?")
           .all(wxId, cutoff) as Array<{ id: string }>;
@@ -244,7 +244,7 @@ app.post("/auth/register", async (c) => {
 
   sqlite
     .query("INSERT INTO users (wx_id, password_hash, level, message_count, created_at) VALUES (?, ?, 1, 0, ?)")
-    .run(wxId, await hashPassword(password), chinaNow());
+    .run(wxId, await hashPassword(password), utcNow());
   createSession(c, wxId);
   audit(wxId, "register", null, ip);
   return c.json({ ok: true });
@@ -466,9 +466,9 @@ app.get("/reads/:id/data", (c) => {
   });
 });
 
-/** 当日 IP 定位已用次数：geo_date 与今日（北京时间）不一致则视为 0（惰性跨天归零） */
+/** 当日 IP 定位已用次数：geo_date 与今日（UTC）不一致则视为 0（惰性跨天归零） */
 function geoUsedToday(user: SessionUser): number {
-  return user.geoDate === chinaDate() ? user.geoCount : 0;
+  return user.geoDate === utcDate() ? user.geoCount : 0;
 }
 
 /** 按需 IP 定位：为指定已读记录补全省市/运营商（幂等，成功结果缓存 24h） */
@@ -521,7 +521,7 @@ app.post("/reads/:id/geo", async (c) => {
   const remaining = quota - used - 1;
   sqlite
     .query("UPDATE users SET geo_count = geo_count + 1, geo_date = ? WHERE wx_id = ?")
-    .run(chinaDate(), user.wxId);
+    .run(utcDate(), user.wxId);
   if (!info) {
     if (located) {
       return c.json({
@@ -582,7 +582,7 @@ app.get("/leaderboard", (c) => {
   // 注册/已读榜：统计表（按 wx_id 聚合）；消息榜：按消息实时聚合（统计表无消息维度）
   if (metric === "msg") {
     const dayCond = scope === "day" ? "AND r.timestamp >= ? " : "";
-    const params: Array<string> = scope === "day" ? [chinaDate() + " 00:00:00"] : [];
+    const params: Array<string> = scope === "day" ? [utcDate() + " 00:00:00"] : [];
     const rows = sqlite
       .query(
         `SELECT m.id, m.wx_id, m.content, COUNT(DISTINCT r.ip) AS total
@@ -603,7 +603,7 @@ app.get("/leaderboard", (c) => {
 
   const table = LEADERBOARD_TABLES[metric];
   const where = scope === "day" ? " WHERE date = ?" : "";
-  const params: Array<string> = scope === "day" ? [chinaDate()] : [];
+  const params: Array<string> = scope === "day" ? [utcDate()] : [];
   const rows = sqlite
     .query(`SELECT wx_id, SUM(count) AS total FROM ${table}${where} GROUP BY wx_id ORDER BY total DESC LIMIT 10`)
     .all(...params) as Array<{ wx_id: string; total: number }>;
@@ -695,7 +695,7 @@ app.post("/admin/users", async (c) => {
   if (sqlite.query("SELECT 1 FROM users WHERE wx_id = ?").get(wxId)) return c.json({ error: "exists" }, 409);
   sqlite
     .query("INSERT INTO users (wx_id, password_hash, level, message_count, created_at) VALUES (?, ?, ?, 0, ?)")
-    .run(wxId, await hashPassword(password), level, chinaNow());
+    .run(wxId, await hashPassword(password), level, utcNow());
   audit(wxId, "admin_create_user", null, clientIp(c));
   return c.json({ ok: true });
 });
@@ -715,16 +715,7 @@ app.post("/admin/level", async (c) => {
     return c.json({ error: "invalid payload" }, 400);
   }
   if (isAdmin(wxId) && level === 0) return c.json({ error: "protected account" }, 403);
-  if (level === 0) {
-    sqlite.transaction(() => {
-      sqlite.query("DELETE FROM reads WHERE id IN (SELECT id FROM messages WHERE wx_id = ?)").run(wxId);
-      sqlite.query("DELETE FROM messages WHERE wx_id = ?").run(wxId);
-      sqlite.query("DELETE FROM sessions WHERE wx_id = ?").run(wxId);
-      sqlite.query("UPDATE users SET level = 0, message_count = 0 WHERE wx_id = ?").run(wxId);
-    })();
-  } else {
-    sqlite.query("UPDATE users SET level = ? WHERE wx_id = ?").run(level, wxId);
-  }
+  sqlite.query("UPDATE users SET level = ? WHERE wx_id = ?").run(level, wxId);
   audit(wxId, "admin_set_level", String(level), clientIp(c));
   return c.json({ ok: true });
 });

@@ -912,6 +912,7 @@ export function htmlPage(session) { return `<!doctype html>
         localStorage.setItem("lang", lang);
         applyI18n();
         setLabels();
+        loadAll();
       }
 
       /* ── toast ── */
@@ -1117,14 +1118,15 @@ export function htmlPage(session) { return `<!doctype html>
           .replace(/'/g, "&#39;");
       }
 
-      /* 服务端时间戳为 UTC "YYYY-MM-DD HH:MM:SS"，统一转换为中国时区（UTC+8）显示 */
+      /* 服务端时间戳为 UTC "YYYY-MM-DD HH:MM:SS"；中文界面显示北京时间(+8)，英文界面显示 UTC */
       function fmtTs(s) {
-        const m = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})$/.exec(
+        const m = /^(\\d{4})-(\\d{2})-(\\d{2}) (\\d{2}):(\\d{2}):(\\d{2})$/.exec(
           String(s || "")
         );
         if (!m) return String(s || "");
+        const offset = lang === "zh-CN" ? 8 : 0;
         const d = new Date(
-          Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]) + 8 * 3600 * 1000
+          Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]) + offset * 3600 * 1000
         );
         const p = (n) => String(n).padStart(2, "0");
         return \`\${d.getUTCFullYear()}-\${p(d.getUTCMonth() + 1)}-\${p(d.getUTCDate())} \${p(
@@ -2461,6 +2463,7 @@ export function readDetailsPage(session, meta) {
         applyI18n();
         setLabels();
         renderPageInfo();
+        loadData();
       }
 
       /* ── toast ── */
@@ -2492,14 +2495,15 @@ export function readDetailsPage(session, meta) {
           .replace(/'/g, "&#39;");
       }
 
-      /* 服务端时间戳为 UTC "YYYY-MM-DD HH:MM:SS"，统一转换为中国时区（UTC+8）显示 */
+      /* 服务端时间戳为 UTC "YYYY-MM-DD HH:MM:SS"；中文界面显示北京时间(+8)，英文界面显示 UTC */
       function fmtTs(s) {
         const m = /^(\\d{4})-(\\d{2})-(\\d{2}) (\\d{2}):(\\d{2}):(\\d{2})$/.exec(
           String(s || "")
         );
         if (!m) return String(s || "");
+        const offset = lang === "zh-CN" ? 8 : 0;
         const d = new Date(
-          Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]) + 8 * 3600 * 1000
+          Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]) + offset * 3600 * 1000
         );
         const p = (n) => String(n).padStart(2, "0");
         return \`\${d.getUTCFullYear()}-\${p(d.getUTCMonth() + 1)}-\${p(d.getUTCDate())} \${p(
