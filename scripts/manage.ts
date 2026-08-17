@@ -500,7 +500,15 @@ switch (cmd) {
   case "uninstall": uninstall(); break;
   case "start": serviceStart(); break;
   case "stop": serviceStop(); break;
-  case "restart": serviceStop(); serviceStart(); break;
+  case "restart":
+    if (isSystemd) {
+      run("systemctl", ["restart", UNIT_NAME]);
+      console.log("已发送重启指令（systemctl restart）。");
+    } else {
+      serviceStop();
+      serviceStart();
+    }
+    break;
   case "status": await status(); break;
   case "admin":
     if (args[0] === "set" && args[1]) setEnv("ADMIN", args[1]);
