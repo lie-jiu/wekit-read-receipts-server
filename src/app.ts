@@ -38,7 +38,7 @@ import { sqlite, stmt } from "./db";
 import { lookupIpLocation } from "./geo";
 import { clientIp, overLimit, rateLimit } from "./rate-limit";
 import { chinaDate, chinaNow, computeId, escapeLike, isValidId, isValidWxId, maskContent, maskWxId, timingSafeEqual } from "./utils";
-import { LOGIN_HTML, adminPage, htmlPage, leaderboardPage } from "./pages";
+import { LOGIN_HTML, adminPage, htmlPage, leaderboardPage, readDetailsPage } from "./pages";
 
 const app = new Hono();
 
@@ -398,20 +398,72 @@ app.delete("/messages/:wxId", (c) => {
   return c.json({ ok: true });
 });
 
-app.get("/reads/:id", (c) => {
+/** 校验已读详情的访问归属：返回消息记录（含 content），非法时给出对应错误响应 */
+function readsMessageOr(c: Context, id: string): Response | null {
+  if (!isValidId(id)) return c.json({ error: "invalid id" }, 400);
+  const msg = sqlite
+    .query("SELECT wx_id, content FROM messages WHERE id = ?")
+    .get(id) as { wx_id: string; content: string } | undefined;
+  if (!msg) return c.json({ error: "not found" }, 404);
   const user = requireUser(c);
   if (!user) return c.json({ error: "unauthorized" }, 401);
+  if (msg.wx_id !== user.wxId) return c.json({ error: "forbidden" }, 403);
+  return null;
+}
+
+app.get("/reads/:id", (c) => {
+  const user = getSessionUser(c);
+  if (!user) return c.redirect("/login");
   const id = c.req.param("id");
-  if (!isValidId(id)) return c.json({ error: "invalid id" }, 400);
-  const msg = sqlite.query("SELECT wx_id FROM messages WHERE id = ?").get(id) as { wx_id: string } | undefined;
+  const msg = sqlite
+    .query("SELECT wx_id, content FROM messages WHERE id = ?")
+    .get(id) as { wx_id: string; content: string } | undefined;
   if (!msg) return c.json({ error: "not found" }, 404);
   if (msg.wx_id !== user.wxId) return c.json({ error: "forbidden" }, 403);
+  c.header("Content-Security-Policy", CSP.DASHBOARD);
+  c.header("Content-Type", "text/html; charset=utf-8");
+  return c.body(
+    readDetailsPage(
+      {
+        wxId: user.wxId,
+        level: user.level,
+        geo: ENABLE_GEO,
+        geoQuota: geoQuotaFor(user.level),
+        geoRemaining: Math.max(0, geoQuotaFor(user.level) - geoUsedToday(user)),
+      },
+      { id, content: msg.content },
+    ),
+  );
+});
+
+/** 已读详情分页 JSON 接口：默认每页 50 条，上限 200（与 /messages 一致） */
+app.get("/reads/:id/data", (c) => {
+  const id = c.req.param("id");
+  const denied = readsMessageOr(c, id);
+  if (denied) return denied;
+  const user = requireUser(c)!;
+  const page = Math.max(Number(c.req.query("page") ?? 1), 1);
+  const pageSize = Math.min(Math.max(Number(c.req.query("pageSize") ?? 50), 1), 200);
+  const offset = (page - 1) * pageSize;
+  const { total } = sqlite
+    .query("SELECT COUNT(*) AS total FROM reads WHERE id = ?")
+    .get(id) as { total: number };
   const rows = sqlite
     .query(
-      "SELECT ip, timestamp, user_agent, country, region, city, isp, country_en, region_en, city_en, isp_en FROM reads WHERE id = ? ORDER BY timestamp DESC LIMIT 500",
+      "SELECT ip, timestamp, user_agent, country, region, city, isp, country_en, region_en, city_en, isp_en FROM reads WHERE id = ? ORDER BY timestamp DESC LIMIT ? OFFSET ?",
     )
-    .all(id) as ReadRow[];
-  return c.json(rows.map(readRow));
+    .all(id, pageSize, offset) as ReadRow[];
+  const msg = sqlite
+    .query("SELECT content FROM messages WHERE id = ?")
+    .get(id) as { content: string };
+  return c.json({
+    id,
+    content: msg.content,
+    total,
+    page,
+    pageSize,
+    reads: rows.map(readRow),
+  });
 });
 
 /** 当日 IP 定位已用次数：geo_date 与今日（北京时间）不一致则视为 0（惰性跨天归零） */
