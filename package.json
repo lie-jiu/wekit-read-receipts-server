@@ -16,6 +16,7 @@
     "dev": "bun --watch index.ts",
     "start": "bun index.ts",
     "test": "bun test",
+    "typecheck": "tsc --noEmit",
     "mkuser": "bun scripts/mkuser.ts",
     "manage": "bun scripts/manage.ts",
     "backfill-isp": "bun run scripts/backfill-isp.ts",

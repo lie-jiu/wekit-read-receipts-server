@@ -43,8 +43,7 @@
 | 运行时 | Bun 1.3+ | 内置 `bun:sqlite`，单二进制部署 |
 | 框架 | Hono 4.13 | 轻量 Web 框架 |
 | 数据库 | SQLite (WAL) | schema 由手写原生 SQL + `PRAGMA user_version` 版本化迁移维护 |
-| ORM | Drizzle ORM | 仅作薄封装 |
-| 依赖 | `hono`、`drizzle-orm` | 极简依赖树 |
+| 依赖 | `hono` | 极简依赖树 |
 
 ## 快速开始
 
@@ -78,7 +77,7 @@ ADMIN=wxid_admin bun run dev              # 管理员权限来自 ADMIN 环境�
 | `/messages`、`DELETE /messages` | 本人消息列表 / 清空 |
 | `/reads/:id` | 单条消息读取明细（IP、UA、时间） |
 | `POST /reads/:id/geo` | 按需 IP 定位：补全省市/运营商双语（幂等，缓存 24h；需登录，本人或管理员；按等级配额累计） |
-| `/leaderboard` | 排行榜：`?metric=reg\|read\|msg` × `?time=day`（均按 UTC 自然日；wxId 脱敏），无效 `time` 返回 400 |
+| `/leaderboard` | 排行榜：`?metric=reg\|read\|msg` × `?scope=day\|total`（均按 UTC 自然日；wxId 脱敏），无效参数返回 400 |
 | `/admin/*` | 管理后台：用户管理、等级调整、权益公式、消息管理 |
 
 ## 环境变量

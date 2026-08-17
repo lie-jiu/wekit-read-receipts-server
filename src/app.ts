@@ -97,10 +97,20 @@ async function parseBody(c: Context): Promise<Record<string, unknown>> {
   return await c.req.json();
 }
 
+/** 分页/条数钳制：NaN 与越界归到 [min, max]（默认 1..200），负数不会变成 SQLite 的「不限」 */
+function clampLimit(v: number, min = 1, max = 200): number {
+  const n = Math.floor(v);
+  if (!Number.isFinite(n)) return min;
+  return Math.min(max, Math.max(min, n));
+}
+
 app.use("*", async (c, next) => {
   for (const [k, v] of Object.entries(SECURITY_HEADERS)) c.header(k, v);
   await next();
 });
+
+/* /auth/* 限流须在 /auth/status 之前注册，保证所有认证端点统一受 5/分 限制 */
+app.use("/auth/*", rateLimit("auth"));
 
 /* ---- 公开端点 ---- */
 
@@ -217,8 +227,6 @@ app.post("/register", async (c) => {
 
 /* ---- 认证 ---- */
 
-app.use("/auth/*", rateLimit("auth"));
-
 app.post("/auth/register", async (c) => {
   const ip = clientIp(c);
   let body: { wxId?: unknown; password?: unknown; inviteCode?: unknown; invite?: unknown };
@@ -299,6 +307,8 @@ app.post("/auth/password", async (c) => {
     return c.json({ error: "invalid credentials" }, 401);
   }
   sqlite.query("UPDATE users SET password_hash = ? WHERE wx_id = ?").run(await hashPassword(newPassword), user.wxId);
+  // 密码变更后失效该用户全部旧会话（含其它设备），防止已泄露旧会话继续有效
+  sqlite.query("DELETE FROM sessions WHERE wx_id = ?").run(user.wxId);
   audit(user.wxId, "password_change", null, clientIp(c));
   return c.json({ ok: true });
 });
@@ -341,8 +351,8 @@ app.get("/messages", (c) => {
   if (denied) return denied;
   const user = getSessionUser(c)!;
   const q = (c.req.query("q") ?? "").trim();
-  const limit = Math.min(Number(c.req.query("limit") ?? 50), 200);
-  const offset = Math.max(Number(c.req.query("offset") ?? 0), 0);
+  const limit = clampLimit(Number(c.req.query("limit") ?? 50));
+  const offset = Math.max(Math.floor(Number(c.req.query("offset") ?? 0)) || 0, 0);
 
   const base = (cond: string): string =>
     `SELECT m.id, m.content, m.timestamp, (SELECT COUNT(DISTINCT r.ip) FROM reads r WHERE r.id = m.id) AS read_count
@@ -442,8 +452,8 @@ app.get("/reads/:id/data", (c) => {
   const denied = readsMessageOr(c, id);
   if (denied) return denied;
   const user = requireUser(c)!;
-  const page = Math.max(Number(c.req.query("page") ?? 1), 1);
-  const pageSize = Math.min(Math.max(Number(c.req.query("pageSize") ?? 50), 1), 200);
+  const page = Math.max(Math.floor(Number(c.req.query("page") ?? 1)) || 1, 1);
+  const pageSize = clampLimit(Number(c.req.query("pageSize") ?? 50), 1, 200);
   const offset = (page - 1) * pageSize;
   const { total } = sqlite
     .query("SELECT COUNT(*) AS total FROM reads WHERE id = ?")
@@ -642,8 +652,8 @@ app.get("/admin/users", (c) => {
   if (denied) return denied;
 
   // 分页参数
-  const pageSize = Math.min(Math.max(Number(c.req.query("pageSize") ?? 20), 1), 100);
-  const page = Math.max(Number(c.req.query("page") ?? 1), 1);
+  const pageSize = clampLimit(Number(c.req.query("pageSize") ?? 20), 1, 100);
+  const page = Math.max(Math.floor(Number(c.req.query("page") ?? 1)) || 1, 1);
   const offset = (page - 1) * pageSize;
 
   // 按微信 ID 模糊搜索（支持精确匹配后回退）
@@ -735,6 +745,8 @@ app.post("/admin/password", async (c) => {
     return c.json({ error: "invalid payload" }, 400);
   }
   sqlite.query("UPDATE users SET password_hash = ? WHERE wx_id = ?").run(await hashPassword(password), wxId);
+  // 重置密码后失效该用户全部会话（与 manage user pass 行为一致）
+  sqlite.query("DELETE FROM sessions WHERE wx_id = ?").run(wxId);
   audit(wxId, "admin_set_password", null, clientIp(c));
   return c.json({ ok: true });
 });
@@ -759,7 +771,7 @@ app.get("/admin/messages", (c) => {
   if (denied) return denied;
   const q = (c.req.query("q") ?? "").trim();
   const fwx = (c.req.query("wxId") ?? "").trim();
-  const limit = Math.min(Number(c.req.query("limit") ?? 50), 200);
+  const limit = clampLimit(Number(c.req.query("limit") ?? 50));
   const conds: Array<string> = [];
   const params: Array<string> = [];
   if (fwx) {

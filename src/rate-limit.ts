@@ -31,12 +31,15 @@ export function ipInCidr(ip: string, cidr: string): boolean {
   const a = toBytes(ip);
   const b = toBytes(net);
   if (!a || !b || a.length !== b.length) return false;
-  const bits = a.length * 8;
-  const p = Math.min(prefix, bits);
-  for (let i = 0; i < p; i++) {
-    if (((a[i >> 3] >> (7 - (i & 7))) & 1) !== ((b[i >> 3] >> (7 - (i & 7))) & 1)) return false;
-  }
-  return true;
+      const bits = a.length * 8;
+      const p = Math.min(prefix, bits);
+      for (let i = 0; i < p; i++) {
+        const ab = a[i >> 3];
+        const bb = b[i >> 3];
+        if (ab === undefined || bb === undefined) return false;
+        if (((ab >> (7 - (i & 7))) & 1) !== ((bb >> (7 - (i & 7))) & 1)) return false;
+      }
+      return true;
 }
 
 type IpResolver = (c: Context) => string | null;

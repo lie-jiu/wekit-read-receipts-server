@@ -36,7 +36,8 @@ function loadEnv(): Record<string, string> {
   if (existsSync(ENV_FILE)) {
     for (const line of readFileSync(ENV_FILE, "utf8").split(/\r?\n/)) {
       const m = /^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/.exec(line.trim());
-      if (m) out[m[1]] = m[2];
+      const key = m?.[1];
+      if (key !== undefined) out[key] = m?.[2] ?? "";
     }
   }
   return out;
@@ -48,9 +49,10 @@ function saveEnv(env: Record<string, string>): void {
   if (existsSync(ENV_FILE)) {
     for (const line of readFileSync(ENV_FILE, "utf8").split(/\r?\n/)) {
       const m = /^([A-Za-z_][A-Za-z0-9_]*)\s*=/.exec(line.trim());
-      if (m && m[1] in env) {
-        lines.push(`${m[1]}=${env[m[1]]}`);
-        seen.add(m[1]);
+      const key = m?.[1];
+      if (key !== undefined && key in env) {
+        lines.push(`${key}=${env[key]}`);
+        seen.add(key);
       } else {
         lines.push(line);
       }

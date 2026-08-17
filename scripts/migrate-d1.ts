@@ -136,7 +136,8 @@ try {
 }
 sqlite.exec("PRAGMA foreign_keys = ON");
 
-const integrity = (sqlite.query("PRAGMA integrity_check").all() as { integrity_check: string }[])[0].integrity_check;
+const integrityRows = sqlite.query("PRAGMA integrity_check").all() as { integrity_check: string }[];
+const integrity = integrityRows[0]?.integrity_check ?? "unknown";
 
 console.log("迁移完成：");
 console.log(`  users               = ${count("users")}（D1 源: ${users.length}）`);

@@ -78,12 +78,3 @@ export function maskContent(content: string): string {
   if (s.length < 5) return s;
   return s.slice(0, 2) + "***" + s.slice(-2);
 }
-
-/** 时间展示：`YYYY-MM-DD HH:MM:SS` 已是 UTC，直接截取分钟 */
-export function formatTime(t: string): string {
-  return t.length >= 16 ? t.slice(0, 16) : t;
-}
-
-export function maskIp(ip: string): string {
-  return ip.replace(/:\d+$/, ":*").replace(/(\.\d+)$/, ".*");
-}

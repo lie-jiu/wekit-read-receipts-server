@@ -16,8 +16,8 @@ export function getCursor(): string {
  */
 export function backfillStats(): number {
   const cursor = getCursor();
-  const maxRow = sqlite.query("SELECT MAX(timestamp) m FROM reads").get() as { m: string | null };
-  if (!maxRow.m || maxRow.m <= cursor) return 0;
+  const firstMax = sqlite.query("SELECT MAX(timestamp) m FROM reads").get() as { m: string | null };
+  if (!firstMax.m || firstMax.m <= cursor) return 0;
 
   return sqlite.transaction(() => {
     sqlite
@@ -45,9 +45,12 @@ export function backfillStats(): number {
       )
       .run(cursor);
 
+    // 事务内（写入锁）重新取 MAX 作为游标，避免事务执行期间新写入的 reads
+    // 被本次统计但游标未推进，下次运行重复累计
+    const maxRow = sqlite.query("SELECT MAX(timestamp) m FROM reads").get() as { m: string | null };
     sqlite
       .query("INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value")
-      .run(CURSOR_KEY, maxRow.m);
+      .run(CURSOR_KEY, maxRow.m ?? cursor);
     return 0;
   })();
 }
