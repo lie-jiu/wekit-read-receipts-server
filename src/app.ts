@@ -38,7 +38,7 @@ import { sqlite, stmt } from "./db";
 import { lookupIpLocation } from "./geo";
 import { clientIp, overLimit, rateLimit } from "./rate-limit";
 import { chinaDate, chinaNow, computeId, escapeLike, isValidId, isValidWxId, maskContent, maskWxId, timingSafeEqual } from "./utils";
-import { LOGIN_HTML, adminPage, htmlPage } from "./pages";
+import { LOGIN_HTML, adminPage, htmlPage, leaderboardPage } from "./pages";
 
 const app = new Hono();
 
@@ -557,6 +557,14 @@ app.get("/leaderboard", (c) => {
     .all(...params) as Array<{ wx_id: string; total: number }>;
 
   return c.json(rows.map((r) => ({ wxId: maskWxId(r.wx_id), count: r.total, me: r.wx_id === me.wxId })));
+});
+
+app.get("/rank", (c) => {
+  const user = getSessionUser(c);
+  if (!user) return c.redirect("/login");
+  c.header("Content-Security-Policy", CSP.DASHBOARD);
+  c.header("Content-Type", "text/html; charset=utf-8");
+  return c.body(leaderboardPage({ wxId: user.wxId, level: user.level }));
 });
 
 /* ---- 管理员 ---- */
