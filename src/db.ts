@@ -112,6 +112,12 @@ ALTER TABLE reads ADD COLUMN isp_en TEXT NOT NULL DEFAULT '';
   `
 ALTER TABLE users ADD COLUMN geo_count INTEGER NOT NULL DEFAULT 0 CHECK (geo_count >= 0);
 `,
+  /* v5：IP 定位配额按日刷新——users 增加当日日期列（geo_date）。
+   * geo_count 语义由「历史累计」改为「当日已用次数」：
+   * 请求时若 geo_date 非今日则视为当日已用 0 次（惰性归零），每日任务兜底清零。 */
+  `
+ALTER TABLE users ADD COLUMN geo_date TEXT NOT NULL DEFAULT '';
+`,
 ];
 
 export const sqlite = new Database(DB_PATH, { create: true });

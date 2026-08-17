@@ -66,5 +66,7 @@ export function dailyCleanup(): void {
       .query("DELETE FROM reads WHERE timestamp < ? AND id NOT IN (SELECT id FROM messages)")
       .run(daysAgo(7));
     sqlite.query("INSERT INTO messages_fts(messages_fts) VALUES ('rebuild')").run();
+    // 每日 0 点（北京时间）刷新 IP 定位配额：兜底清零（请求路径另有惰性跨天归零）
+    sqlite.query("UPDATE users SET geo_count = 0").run();
   })();
 }

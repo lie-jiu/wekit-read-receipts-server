@@ -11,6 +11,8 @@ export type SessionUser = {
   level: number;
   messageCount: number;
   geoCount: number;
+  /** 当日日期 YYYY-MM-DD（北京时间）：geo_count 的归属自然日，空串表示历史累计库未初始化 */
+  geoDate: string;
   isAdmin: boolean;
 };
 
@@ -125,17 +127,18 @@ export function getSessionUser(c: Context): SessionUser | null {
   if (!token) return null;
   const row = sqlite
     .query(
-      `SELECT u.wx_id, u.level, u.message_count, u.geo_count
+      `SELECT u.wx_id, u.level, u.message_count, u.geo_count, u.geo_date
        FROM sessions s JOIN users u ON u.wx_id = s.wx_id
        WHERE s.token_hash = ? AND s.expires_at > ?`,
     )
-    .get(sha256Hex(token), chinaNow()) as { wx_id: string; level: number; message_count: number; geo_count: number } | undefined;
+    .get(sha256Hex(token), chinaNow()) as { wx_id: string; level: number; message_count: number; geo_count: number; geo_date: string } | undefined;
   if (!row) return null;
   return {
     wxId: row.wx_id,
     level: row.level,
     messageCount: row.message_count,
     geoCount: row.geo_count,
+    geoDate: row.geo_date,
     isAdmin: isAdmin(row.wx_id),
   };
 }

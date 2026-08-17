@@ -94,7 +94,7 @@ ADMIN=wxid_admin bun run dev              # 管理员权限来自 ADMIN 环境�
 | `TRUSTED_PROXY` | 空 | 信任的代理网段（CIDR，逗号分隔）；**仅填真正直连服务的代理**，反代/CF Tunnel 场景必填，否则信任伪造的 `X-Forwarded-For` |
 | `ENABLE_GEO` | `1` | 按需 IP 定位开关（`0`/`off`/`false` 关闭）：隐藏「定位」按钮并拒绝 geo 端点，打点路径始终零外部请求 |
 | `MESSAGE_QUOTA_FORMULA` | `x` | 等级消息保留条数公式（`x` = 等级），超出自动删除最早消息 |
-| `GEO_QUOTA_FORMULA` | `x` | 等级 IP 定位次数公式（累计配额），耗尽返回 `429` |
+| `GEO_QUOTA_FORMULA` | `x` | 等级 IP 定位次数公式（每日配额），耗尽返回 `429`，每日 0 点（北京时间）刷新 |
 | `RETENTION_MONTHS_FORMULA` | `x` | 等级消息保留时长（月），结果 0 表示不限制 |
 
 <details>
@@ -107,7 +107,7 @@ ADMIN=wxid_admin bun run dev              # 管理员权限来自 ADMIN 环境�
 | 权益 | 环境变量 | 默认 | 说明 |
 |---|---|---|---|
 | 消息保留条数 | `MESSAGE_QUOTA_FORMULA` | `x` | 超出自动删除最早消息 |
-| IP 定位次数 | `GEO_QUOTA_FORMULA` | `x` | `/reads/:id/geo` 累计调用次数，耗尽返回 `429 geo_quota_exceeded`；已定位或 IPv6 的行不消耗 |
+| IP 定位次数 | `GEO_QUOTA_FORMULA` | `x` | `/reads/:id/geo` 当日调用次数（每日 0 点北京时间刷新），耗尽返回 `429 geo_quota_exceeded`；已定位或 IPv6 的行不消耗 |
 | 保留时长（月） | `RETENTION_MONTHS_FORMULA` | `x` | 超时自动删除；结果 0 表示不限制 |
 
 - **公式语法**：变量 `x`；运算符 `+ - * / % ^`；括号、一元正负号；函数 `floor / ceil / round / abs / min(a,b) / max(a,b) / pow(a,b)`。结果取整、负值归 0。示例：`x*2-1`、`min(x*100, 1000)`、`max(20, x*50)`

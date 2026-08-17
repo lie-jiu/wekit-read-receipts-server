@@ -33,6 +33,7 @@ import {
   requireUser,
   verifyPassword,
 } from "./auth";
+import type { SessionUser } from "./auth";
 import { sqlite, stmt } from "./db";
 import { lookupIpLocation } from "./geo";
 import { clientIp, overLimit, rateLimit } from "./rate-limit";
@@ -328,7 +329,7 @@ app.get("/", (c) => {
       level: user.level,
       geo: ENABLE_GEO,
       geoQuota: geoQuotaFor(user.level),
-      geoRemaining: Math.max(0, geoQuotaFor(user.level) - user.geoCount),
+      geoRemaining: Math.max(0, geoQuotaFor(user.level) - geoUsedToday(user)),
       messageQuota: quotaFor(user.level),
       retentionMonths: retentionMonthsFor(user.level),
     }),
@@ -413,6 +414,11 @@ app.get("/reads/:id", (c) => {
   return c.json(rows.map(readRow));
 });
 
+/** 当日 IP 定位已用次数：geo_date 与今日（北京时间）不一致则视为 0（惰性跨天归零） */
+function geoUsedToday(user: SessionUser): number {
+  return user.geoDate === chinaDate() ? user.geoCount : 0;
+}
+
 /** 按需 IP 定位：为指定已读记录补全省市/运营商（幂等，成功结果缓存 24h） */
 app.use("/reads/:id/geo", rateLimit("geo"));
 app.post("/reads/:id/geo", async (c) => {
@@ -420,7 +426,7 @@ app.post("/reads/:id/geo", async (c) => {
   if (!user) return c.json({ error: "unauthorized" }, 401);
   if (!ENABLE_GEO) return c.json({ error: "geo disabled" }, 403);
   const quota = geoQuotaFor(user.level);
-  const used = user.geoCount;
+  const used = geoUsedToday(user);
   if (quota <= 0 || used >= quota) {
     return c.json({ error: "geo_quota_exceeded", remaining: 0, quota }, 429);
   }
@@ -461,7 +467,9 @@ app.post("/reads/:id/geo", async (c) => {
 
   const info = await lookupIpLocation(ip);
   const remaining = quota - used - 1;
-  sqlite.query("UPDATE users SET geo_count = geo_count + 1 WHERE wx_id = ?").run(user.wxId);
+  sqlite
+    .query("UPDATE users SET geo_count = geo_count + 1, geo_date = ? WHERE wx_id = ?")
+    .run(chinaDate(), user.wxId);
   if (!info) {
     if (located) {
       return c.json({
