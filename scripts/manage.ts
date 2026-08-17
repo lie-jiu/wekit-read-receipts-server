@@ -74,7 +74,8 @@ function systemctlRun(action: string): { ok: boolean; out: string; err: string }
   if (process.getuid?.() === 0) {
     return run("systemctl", [action, UNIT_NAME]);
   }
-  const hasSudo = run("command", ["-v", "sudo"]).ok;
+  // 非 root：检查 sudo 是否存在（which 是独立可执行文件，command 为 shell 内建故不可用）
+  const hasSudo = run("which", ["sudo"]).ok;
   if (!hasSudo) {
     console.error(`systemctl ${action} 需要 root 权限，但系统未安装 sudo。请用 root 执行，或安装 sudo 后重试。`);
     process.exit(1);
