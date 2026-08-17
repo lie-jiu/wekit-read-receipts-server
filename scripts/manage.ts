@@ -69,6 +69,24 @@ function run(cmd: string, args: string[]): { ok: boolean; out: string; err: stri
   return { ok: r.exitCode === 0, out: r.stdout.toString(), err: r.stderr.toString() };
 }
 
+/** 带 sudo 前缀的 systemctl 调用：非 root 自动加 sudo，失败时打印明确错误而非假成功 */
+function systemctlRun(action: string): { ok: boolean; out: string; err: string } {
+  if (process.getuid?.() === 0) {
+    return run("systemctl", [action, UNIT_NAME]);
+  }
+  const hasSudo = run("command", ["-v", "sudo"]).ok;
+  if (!hasSudo) {
+    console.error(`systemctl ${action} 需要 root 权限，但系统未安装 sudo。请用 root 执行，或安装 sudo 后重试。`);
+    process.exit(1);
+  }
+  const r = run("sudo", ["systemctl", action, UNIT_NAME]);
+  if (!r.ok) {
+    console.error(`sudo systemctl ${action} 失败:\n${r.err || r.out}`.trim());
+    process.exit(1);
+  }
+  return r;
+}
+
 async function portOpen(port: number): Promise<boolean> {
   if (isWin) {
     try {
@@ -221,7 +239,7 @@ function serviceStart(): void {
     return;
   }
   if (isSystemd) {
-    run("systemctl", ["start", UNIT_NAME]);
+    systemctlRun("start");
     console.log("已发送启动指令（systemctl start）。");
     return;
   }
@@ -263,7 +281,7 @@ function serviceStop(): void {
     return;
   }
   if (isSystemd) {
-    run("systemctl", ["stop", UNIT_NAME]);
+    systemctlRun("stop");
     console.log("已发送停止指令（systemctl stop）。");
     return;
   }
@@ -499,7 +517,7 @@ switch (cmd) {
   case "stop": serviceStop(); break;
   case "restart":
     if (isSystemd) {
-      run("systemctl", ["restart", UNIT_NAME]);
+      systemctlRun("restart");
       console.log("已发送重启指令（systemctl restart）。");
     } else {
       serviceStop();
