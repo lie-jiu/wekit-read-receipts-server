@@ -4,13 +4,14 @@
   "type": "module",
   "private": true,
   "devDependencies": {
-    "@types/bun": "latest"
+    "@types/bun": "latest",
+    "typescript": "^7"
   },
   "peerDependencies": {
-    "typescript": "^5"
+    "typescript": "^7"
   },
   "dependencies": {
-    "hono": "4.13.1"
+    "hono": "4.13.2"
   },
   "scripts": {
     "dev": "bun --watch index.ts",
