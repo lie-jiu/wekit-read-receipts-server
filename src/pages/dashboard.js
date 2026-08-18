@@ -1,3 +1,5 @@
+import { safeJson } from "../utils";
+
 export function htmlPage(session) { return `<!doctype html>
 <html lang="en">
   <head>
@@ -740,7 +742,7 @@ export function htmlPage(session) { return `<!doctype html>
     </div>
 
     <script>
-      const ME = ${JSON.stringify({ wxId: session.wxId, level: session.level, geo: session.geo === true, geoQuota: session.geoQuota || 0, geoRemaining: session.geoRemaining || 0, messageQuota: session.messageQuota || 0, retentionMonths: session.retentionMonths || 0 })};
+      const ME = ${safeJson({ wxId: session.wxId, level: session.level, geo: session.geo === true, geoQuota: session.geoQuota || 0, geoRemaining: session.geoRemaining || 0, messageQuota: session.messageQuota || 0, retentionMonths: session.retentionMonths || 0 })};
       const tbody = document.getElementById("tbody");
       const recordCount = document.getElementById("recordCount");
       const toastContainer = document.getElementById("toastContainer");
@@ -1624,7 +1626,7 @@ export function leaderboardPage(session) { return `<!doctype html>
     <div id="toastContainer" class="toast-container"></div>
 
     <script>
-      const ME = ${JSON.stringify({ wxId: session.wxId, level: session.level })};
+      const ME = ${safeJson({ wxId: session.wxId, level: session.level })};
       const lbTbody = document.getElementById("lbTbody");
       const lbCol2 = document.getElementById("lbCol2");
       const lbCol3 = document.getElementById("lbCol3");
@@ -2366,14 +2368,14 @@ export function readDetailsPage(session, meta) {
     <div id="toastContainer" class="toast-container"></div>
 
     <script>
-      const ME = ${JSON.stringify({
+      const ME = ${safeJson({
         wxId: session.wxId,
         level: session.level,
         geo: session.geo === true,
         geoQuota: session.geoQuota || 0,
         geoRemaining: session.geoRemaining || 0,
       })};
-      const DETAIL = ${JSON.stringify({ id: meta.id, content: meta.content })};
+      const DETAIL = ${safeJson({ id: meta.id, content: meta.content })};
       const readTbody = document.getElementById("readTbody");
       const readCount = document.getElementById("readCount");
       const pageInfoEl = document.getElementById("pageInfo");

@@ -36,7 +36,7 @@ import {
 import type { SessionUser } from "./auth";
 import { sqlite, stmt } from "./db";
 import { lookupIpLocation } from "./geo";
-import { clientIp, overLimit, rateLimit } from "./rate-limit";
+import { clientIp, overLimit, overLimitWxId, rateLimit } from "./rate-limit";
 import { computeId, escapeLike, isValidId, isValidWxId, maskContent, maskWxId, timingSafeEqual, utcDate, utcNow } from "./utils";
 import { LOGIN_HTML, adminPage, htmlPage, leaderboardPage, readDetailsPage } from "./pages";
 
@@ -172,6 +172,12 @@ app.post("/register", async (c) => {
       !/^\d{1,16}$/.test(createTime)
     ) {
       return c.json({ error: "invalid payload" }, 400);
+    }
+
+    // 公开端点按 wxId 限流：缓解未授权批量伪造消息（客户端协议无鉴权，不可变）
+    if (overLimitWxId(wxId)) {
+      audit(wxId, "register_wxid_limited", null, ip);
+      return c.json({ error: "rate limited" }, 429);
     }
 
     const user = sqlite.query("SELECT level FROM users WHERE wx_id = ?").get(wxId) as
@@ -501,8 +507,11 @@ app.post("/reads/:id/geo", async (c) => {
     return c.json({ error: "invalid JSON" }, 400);
   }
   const ip = typeof body.ip === "string" ? body.ip : "";
-  if (!ip || ip.length > 64) return c.json({ error: "invalid ip" }, 400);
-  if (ip.includes(":")) return c.json({ error: "ipv6 not supported" }, 400);
+  // 严格 IPv4 校验：四段 0-255，阻断路径注入（URL 拼接）与任意字符串外呼
+  const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(ip);
+  if (!m || m.slice(1).some((o) => Number(o) > 255)) {
+    return c.json({ error: "invalid ip" }, 400);
+  }
 
   const msg = sqlite.query("SELECT wx_id FROM messages WHERE id = ?").get(id) as { wx_id: string } | undefined;
   if (!msg) return c.json({ error: "not found" }, 404);
@@ -527,11 +536,23 @@ app.post("/reads/:id/geo", async (c) => {
     });
   }
 
+  // 原子占额（合并跨天惰性归零）：在 WHERE 内原子判断，消除「检查→外呼→累加」的 TOCTOU 竞态。
+  // 外呼失败也占额（与旧语义一致）：失败结果有 1h 失败缓存，避免用户无成本反复触发外呼。
+  const today = utcDate();
+  const claim = sqlite
+    .query(
+      "UPDATE users SET geo_count = geo_count + 1, geo_date = ? WHERE wx_id = ? AND (geo_date != ? OR geo_count < ?)",
+    )
+    .run(today, user.wxId, today, quota);
+  if (claim.changes === 0) {
+    return c.json({ error: "geo_quota_exceeded", remaining: 0, quota }, 429);
+  }
+  const newCount = (
+    sqlite.query("SELECT geo_count FROM users WHERE wx_id = ?").get(user.wxId) as { geo_count: number }
+  ).geo_count;
+
   const info = await lookupIpLocation(ip);
-  const remaining = quota - used - 1;
-  sqlite
-    .query("UPDATE users SET geo_count = geo_count + 1, geo_date = ? WHERE wx_id = ?")
-    .run(utcDate(), user.wxId);
+  const remaining = quota - newCount;
   if (!info) {
     if (located) {
       return c.json({
@@ -804,6 +825,10 @@ app.delete("/admin/messages", (c) => {
     })();
     audit(wxId, "admin_wipe_user", null, clientIp(c));
   } else {
+    // 全库删除为不可逆高危操作：要求显式二次确认，防止误触 / CSRF / 被劫持会话一键清库
+    if ((c.req.query("confirm") ?? "") !== "DELETE ALL") {
+      return c.json({ error: "confirm=DELETE ALL required to wipe all messages" }, 400);
+    }
     sqlite.transaction(() => {
       sqlite.query("DELETE FROM reads").run();
       sqlite.query("DELETE FROM messages").run();

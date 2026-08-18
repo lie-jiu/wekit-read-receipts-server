@@ -29,14 +29,29 @@ export const TRUSTED_PROXY: string[] = (process.env.TRUSTED_PROXY ?? "")
 export const SESSION_TTL_DAYS = 30;
 export const SESSION_TTL_MS = SESSION_TTL_DAYS * 24 * 3600 * 1000;
 
+/** PBKDF2 迭代次数上限：拒绝被污染/恶意构造的哈希（超大 iter 会同步阻塞事件循环） */
+export const PBKDF2_MAX_ITER = Number(process.env.PBKDF2_MAX_ITER ?? 1_000_000);
+
+/** 审计日志保留天数（0 = 不清理，长期留存） */
+export const AUDIT_RETENTION_DAYS = Number(process.env.AUDIT_RETENTION_DAYS ?? 30);
+
 /** 等级权益：消息保留条数 / IP 定位次数 / 保留时长(月)，由公式配置（见 src/levels.ts） */
 export { quotaFor, geoQuotaFor, retentionMonthsFor } from "./levels";
 
 export const MAX_CONTENT_LENGTH = 10_000;
 export const MAX_REGISTER_BATCH = 50;
 
+/**
+ * /register 为未授权端点（客户端协议不可变），按 wxId 限流缓解批量伪造消息。
+ * 正常客户端逐条 POST、量小，不会触及；定向慢速注入无法完全阻断（协议无鉴权的固有缺陷）。
+ */
+export const REGISTER_PER_WXID_PER_MIN = Number(process.env.REGISTER_PER_WXID_PER_MIN ?? 30);
+export const REGISTER_PER_WXID_PER_DAY = Number(process.env.REGISTER_PER_WXID_PER_DAY ?? 500);
+
 /** 按需 IP 定位开关：0/off/false 关闭后隐藏定位按钮并拒绝 geo 端点 */
 export const ENABLE_GEO = !["0", "off", "false", "no"].includes((process.env.ENABLE_GEO ?? "1").trim().toLowerCase());
+/** 是否允许明文本地化接口（ip-api.com 仅 HTTP）；默认关闭，中文源缺失时由英文兜底 */
+export const GEO_ALLOW_HTTP = !["0", "off", "false", "no"].includes((process.env.GEO_ALLOW_HTTP ?? "0").trim().toLowerCase());
 /** 定位外呼超时（每个接口）与缓存 TTL：成功 24h / 失败 1h */
 export const GEO_TIMEOUT_MS = 3000;
 export const GEO_CACHE_SUCCESS_MS = 24 * 3600 * 1000;

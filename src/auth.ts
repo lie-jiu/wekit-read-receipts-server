@@ -1,7 +1,7 @@
 import type { Context } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { pbkdf2Sync, timingSafeEqual } from "node:crypto";
-import { isAdmin, SESSION_TTL_DAYS, SESSION_TTL_MS, TRUSTED_PROXY } from "./config";
+import { isAdmin, PBKDF2_MAX_ITER, SESSION_TTL_DAYS, SESSION_TTL_MS, TRUSTED_PROXY } from "./config";
 import { ipInCidr, peerIp } from "./rate-limit";
 import { sqlite } from "./db";
 import { sha256Hex, utcNow } from "./utils";
@@ -44,9 +44,13 @@ export async function verifyPassword(password: string, stored: string): Promise<
     if (
       !Number.isInteger(iterations) ||
       iterations < 1000 ||
+      iterations > PBKDF2_MAX_ITER ||
       !/^[0-9a-f]+$/i.test(saltHex) ||
       !/^[0-9a-f]+$/i.test(expected)
     ) {
+      if (Number.isInteger(iterations) && iterations > PBKDF2_MAX_ITER) {
+        console.error(`[auth] PBKDF2 迭代次数 ${iterations} 超出上限 ${PBKDF2_MAX_ITER}，拒绝验证`);
+      }
       return false;
     }
     const derived = pbkdf2Sync(password, Buffer.from(saltHex, "hex"), iterations, 32, "sha256").toString("hex");

@@ -1,5 +1,10 @@
 import type { Context, Next } from "hono";
-import { RATE_LIMITS, TRUSTED_PROXY } from "./config";
+import {
+  RATE_LIMITS,
+  REGISTER_PER_WXID_PER_DAY,
+  REGISTER_PER_WXID_PER_MIN,
+  TRUSTED_PROXY,
+} from "./config";
 
 export type Bucket = keyof typeof RATE_LIMITS;
 
@@ -55,6 +60,33 @@ function normalizeIp(ip: string): string {
   return ip.startsWith("::ffff:") ? ip.slice(7) : ip;
 }
 
+/** IPv4/IPv6 格式校验（宽松）：阻断 XFF 注入任意字符串进入限流 key / 审计 IP / reads.ip */
+export function isValidIp(ip: string): boolean {
+  if (!ip) return false;
+  if (ip.includes(".")) {
+    const p = ip.split(".");
+    return p.length === 4 && p.every((x) => /^\d{1,3}$/.test(x) && Number(x) <= 255);
+  }
+  if (ip.includes(":")) {
+    const segs = ip.split(":").filter(Boolean);
+    return segs.length > 0 && segs.every((x) => /^[0-9a-fA-F]{1,4}$/.test(x));
+  }
+  return false;
+}
+
+/** 从 X-Forwarded-For 解析真实客户端 IP（受信代理场景）：从右往左取第一个不在 trusted 网段的值 */
+export function resolveXffIp(xff: string, trusted: string[]): string | null {
+  const parts = xff
+    .split(",")
+    .map((s) => normalizeIp(s.trim()))
+    .filter((s) => s && isValidIp(s));
+  for (let i = parts.length - 1; i >= 0; i--) {
+    const ip = parts[i]!;
+    if (!trusted.some((cidr) => ipInCidr(ip, cidr))) return ip;
+  }
+  return parts.length > 0 ? parts[parts.length - 1]! : null;
+}
+
 /** 直连方地址（Bun server.requestIP + ::ffff: 归一化），不信任任何代理头 */
 export function peerIp(c: Context): string {
   const env = c.env as { requestIP?: (req: Request) => { address: string } | null };
@@ -64,7 +96,7 @@ export function peerIp(c: Context): string {
 export function clientIp(c: Context): string {
   if (ipResolver) {
     const ip = ipResolver(c);
-    if (ip) return ip;
+    if (ip && isValidIp(ip)) return ip;
   }
   const peer = peerIp(c);
   if (TRUSTED_PROXY.length === 0) return peer;
@@ -73,32 +105,44 @@ export function clientIp(c: Context): string {
   const cf = c.req.header("cf-connecting-ip");
   if (cf) {
     const ip = normalizeIp(cf.trim());
-    if (ip) return ip;
+    if (ip && isValidIp(ip)) return ip;
   }
+  // X-Forwarded-For：从右往左取第一个「不在」受信代理网段内的值，
+  // 防止反代处于追加模式（nginx $proxy_add_x_forwarded_for）时客户端伪造首值绕过限流。
   const xff = c.req.header("x-forwarded-for");
   if (xff) {
-    const first = normalizeIp(xff.split(",")[0]?.trim() ?? "");
-    if (first) return first;
+    const resolved = resolveXffIp(xff, TRUSTED_PROXY);
+    if (resolved) return resolved;
   }
   return peer;
 }
 
-/** 计数并判断是否超限。fail-open 档位超限仍返回 true（由路由决定降级响应） */
-export function overLimit(bucket: Bucket, ip: string): boolean {
-  const cfg = RATE_LIMITS[bucket];
-  const key = `${bucket}:${ip}`;
+/** 固定窗口计数并判断是否超限（超过 limit 返回 true）。windows Map 超过阈值时清理过期项。 */
+function hit(key: string, limit: number, windowMs: number): boolean {
   const now = Date.now();
   let w = windows.get(key);
-  if (!w || now - w.start >= cfg.windowMs) {
+  if (!w || now - w.start >= windowMs) {
     w = { start: now, count: 0 };
     windows.set(key, w);
   }
   w.count++;
   if (windows.size > 10_000) {
-    const cutoff = now - cfg.windowMs;
-    for (const [k, v] of windows) if (v.start < cutoff) windows.delete(k);
+    for (const [k, v] of windows) if (now - v.start >= windowMs) windows.delete(k);
   }
-  return w.count > cfg.limit;
+  return w.count > limit;
+}
+
+/** 计数并判断是否超限。fail-open 档位超限仍返回 true（由路由决定降级响应） */
+export function overLimit(bucket: Bucket, ip: string): boolean {
+  const cfg = RATE_LIMITS[bucket];
+  return hit(`${bucket}:${ip}`, cfg.limit, cfg.windowMs);
+}
+
+/** 公开 /register 端点按 wxId 限流：分钟 + 天双窗口（缓解未授权批量伪造消息） */
+export function overLimitWxId(wxId: string): boolean {
+  const minOver = hit(`regWxMin:${wxId}`, REGISTER_PER_WXID_PER_MIN, 60_000);
+  const dayOver = hit(`regWxDay:${wxId}`, REGISTER_PER_WXID_PER_DAY, 24 * 3600 * 1000);
+  return minOver || dayOver;
 }
 
 /** fail-closed 档位的中间件（auth / admin） */

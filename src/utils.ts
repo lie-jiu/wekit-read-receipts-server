@@ -78,3 +78,17 @@ export function maskContent(content: string): string {
   if (s.length < 5) return s;
   return s.slice(0, 2) + "***" + s.slice(-2);
 }
+
+/**
+ * 内联 <script> 安全序列化：JSON.stringify 不转义 `</script>`、`<!--`、U+2028/U+2029，
+ * 攻击者可控字符串拼入内联脚本时可逃逸出字符串字面量。将 `<`/`>`/`&` 转义为 JS 等价
+ * Unicode 序列（\u003c/\u003e/\u0026），在 JS 字符串内语义不变，但可阻断 HTML 解析层面的逃逸。
+ */
+export function safeJson(v: unknown): string {
+  return JSON.stringify(v)
+    .replace(/</g, "\\u003c")
+    .replace(/>/g, "\\u003e")
+    .replace(/&/g, "\\u0026")
+    .replace(/\u2028/g, "\\u2028")
+    .replace(/\u2029/g, "\\u2029");
+}

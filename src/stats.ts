@@ -1,4 +1,5 @@
 import { sqlite } from "./db";
+import { AUDIT_RETENTION_DAYS } from "./config";
 
 const CURSOR_KEY = "stats_cursor";
 const EPOCH = "0000-00-00 00:00:00";
@@ -64,7 +65,9 @@ export function dailyCleanup(): void {
 
   sqlite.transaction(() => {
     sqlite.query("DELETE FROM sessions WHERE expires_at <= ?").run(daysAgo(0));
-    sqlite.query("DELETE FROM audit_logs WHERE timestamp < ?").run(daysAgo(30));
+    if (AUDIT_RETENTION_DAYS > 0) {
+      sqlite.query("DELETE FROM audit_logs WHERE timestamp < ?").run(daysAgo(AUDIT_RETENTION_DAYS));
+    }
     sqlite
       .query("DELETE FROM reads WHERE timestamp < ? AND id NOT IN (SELECT id FROM messages)")
       .run(daysAgo(7));

@@ -1,3 +1,5 @@
+import { safeJson } from "../utils";
+
 export function adminPage(session) { return `<!doctype html>
 <html lang="en">
 <head>
@@ -240,7 +242,7 @@ tr.expanded .expand-icon{transform:rotate(90deg)}
 </div>
 
 <script>
-const ME = ${JSON.stringify({ wxId: session.wxId })};
+const ME = ${safeJson({ wxId: session.wxId })};
 const $ = (id) => document.getElementById(id);
 let lang = localStorage.getItem("lang") || "zh-CN";
 const translations = {

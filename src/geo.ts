@@ -30,7 +30,7 @@
  *   SOFTWARE.
  */
 
-import { GEO_CACHE_FAILURE_MS, GEO_CACHE_MAX, GEO_CACHE_SUCCESS_MS, GEO_TIMEOUT_MS } from "./config";
+import { GEO_ALLOW_HTTP, GEO_CACHE_FAILURE_MS, GEO_CACHE_MAX, GEO_CACHE_SUCCESS_MS, GEO_TIMEOUT_MS } from "./config";
 
 export type GeoInfo = {
   country: string;
@@ -87,22 +87,10 @@ function cleanEnRegion(region: string): string {
 
 type Provider = (ip: string) => Promise<GeoInfo | null>;
 
-/** 中文来源：ip-api 支持 en/zh 双语言，仅 HTTP；ipwho.is 支持 lang=zh-CN */
+/** 中文来源：优先 HTTPS 的 ipwho.is；ip-api（仅 HTTP）作为可选的明文降级（默认关闭） */
 const ZH_PROVIDERS: Provider[] = [
   async (ip) => {
-    const d = await fetchJson(
-      `http://ip-api.com/json/${ip}?lang=zh-CN&fields=status,message,country,regionName,city,isp`,
-    );
-    if (d.status !== "success") return null;
-    return {
-      country: String(d.country ?? ""),
-      region: String(d.regionName ?? ""),
-      city: String(d.city ?? ""),
-      isp: classifyIsp(String(d.isp ?? "")).cn,
-    };
-  },
-  async (ip) => {
-    const d = await fetchJson(`https://ipwho.is/${ip}?lang=zh-CN`);
+    const d = await fetchJson(`https://ipwho.is/${encodeURIComponent(ip)}?lang=zh-CN`);
     if (!d.success) return null;
     const conn = (d.connection ?? {}) as Record<string, unknown>;
     return {
@@ -112,12 +100,28 @@ const ZH_PROVIDERS: Provider[] = [
       isp: classifyIsp(String(conn.isp ?? "")).cn,
     };
   },
+  ...(GEO_ALLOW_HTTP
+    ? ([
+        async (ip) => {
+          const d = await fetchJson(
+            `http://ip-api.com/json/${encodeURIComponent(ip)}?lang=zh-CN&fields=status,message,country,regionName,city,isp`,
+          );
+          if (d.status !== "success") return null;
+          return {
+            country: String(d.country ?? ""),
+            region: String(d.regionName ?? ""),
+            city: String(d.city ?? ""),
+            isp: classifyIsp(String(d.isp ?? "")).cn,
+          };
+        },
+      ] satisfies Provider[])
+    : []),
 ];
 
 /** 英文来源：ipwho.is 默认 en；ipinfo.io 仅英文 */
 const EN_PROVIDERS: Provider[] = [
   async (ip) => {
-    const d = await fetchJson(`https://ipwho.is/${ip}`);
+    const d = await fetchJson(`https://ipwho.is/${encodeURIComponent(ip)}`);
     if (!d.success) return null;
     const conn = (d.connection ?? {}) as Record<string, unknown>;
     return {
@@ -128,7 +132,7 @@ const EN_PROVIDERS: Provider[] = [
     };
   },
   async (ip) => {
-    const d = await fetchJson(`https://ipinfo.io/${ip}/json`);
+    const d = await fetchJson(`https://ipinfo.io/${encodeURIComponent(ip)}/json`);
     if (!d.country) return null;
     const org = String(d.org ?? "");
     return {

@@ -34,7 +34,9 @@
 - **跨平台自启**：Linux systemd、Windows 启动文件夹 + 隐藏窗口、无 systemd 回退 nohup
 - **定时任务**：每 10 分钟增量回填统计表，每日清理过期会话、审计日志、孤儿 reads
 - **安全会话**：30 天会话，HTTPS 下 `__Host-session` + Secure，HTTP 直连自动降级
-- **可信代理**：CIDR 精确信任，公网直连绝不设置，防止 IP 伪造
+- **可信代理**：CIDR 精确信任，公网直连绝不设置，防止 IP 伪造；`X-Forwarded-For` 自右向左取值，抵御反代「追加」模式下的首值伪造
+- **注入防护**：内联脚本数据经安全序列化（阻断 `</script>` 逃逸），前端渲染统一转义，SQL 全参数化
+- **限流**：per-IP 固定窗口 + `/register` per-wxId 双窗口（分钟/天）
 
 ## 技术栈
 
@@ -66,7 +68,7 @@ ADMIN=wxid_admin bun run dev              # 管理员权限来自 ADMIN 环境�
 |---|---|
 | `GET /pixel?wxId=&id=` | 1×1 透明 PNG，`INSERT OR IGNORE` 打点；`Cache-Control: no-store` |
 | `GET /count?wxId=&id=` | 恒返回 `{"count":n}`，n = `COUNT(DISTINCT ip)`；无效 id 返回 `{"count":0}` |
-| `POST /register` | 批量上报（单条或 ≤50 条），未注册 wxId 返回 403 |
+| `POST /register` | 批量上报（单条或 ≤50 条），未注册 wxId 返回 403；另有 per-wxId 限流（分钟/天） |
 
 ### Web 管理（登录后使用）
 
@@ -90,11 +92,16 @@ ADMIN=wxid_admin bun run dev              # 管理员权限来自 ADMIN 环境�
 | `DB_PATH` | `./data.db` | SQLite 文件路径 |
 | `ADMIN` | 无 | 管理员 wxId（逗号分隔多个），此类账号受保护：不可删除、不可降级 |
 | `INVITE_CODE` | 无 | 注册邀请码；未设置时注册直接通过 |
-| `TRUSTED_PROXY` | 空 | 信任的代理网段（CIDR，逗号分隔）；**仅填真正直连服务的代理**，反代/CF Tunnel 场景必填，否则信任伪造的 `X-Forwarded-For` |
+| `TRUSTED_PROXY` | 空 | 信任的代理网段（CIDR，逗号分隔）；**仅填真正直连服务的代理**，反代/CF Tunnel 场景必填。命中时从 `X-Forwarded-For` 自右向左取首个非受信代理 IP（抵御反代「追加」模式下的首值伪造），否则信任伪造头 |
 | `ENABLE_GEO` | `1` | 按需 IP 定位开关（`0`/`off`/`false` 关闭）：隐藏「定位」按钮并拒绝 geo 端点，打点路径始终零外部请求 |
+| `GEO_ALLOW_HTTP` | `0` | 是否允许明文本地化接口 ip-api.com（仅 HTTP）；默认关闭，中文定位缺失时由英文兜底 |
 | `MESSAGE_QUOTA_FORMULA` | `x` | 等级消息保留条数公式（`x` = 等级），超出自动删除最早消息 |
 | `GEO_QUOTA_FORMULA` | `x` | 等级 IP 定位次数公式（每日配额），耗尽返回 `429`，每日 0 点（UTC）刷新 |
 | `RETENTION_MONTHS_FORMULA` | `x` | 等级消息保留时长（月），结果 0 表示不限制 |
+| `REGISTER_PER_WXID_PER_MIN` | `30` | `/register` 单个 wxId 每分钟注册条数上限（公开端点，无鉴权） |
+| `REGISTER_PER_WXID_PER_DAY` | `500` | `/register` 单个 wxId 每天注册条数上限 |
+| `PBKDF2_MAX_ITER` | `1000000` | PBKDF2 哈希迭代次数上限（拒绝被污染/恶意构造的超大 iter，防登录 DoS） |
+| `AUDIT_RETENTION_DAYS` | `30` | 审计日志保留天数（`0` = 不清理，长期留存） |
 
 <details>
 <summary><b>配额与限流详情</b></summary>
@@ -118,7 +125,7 @@ ADMIN=wxid_admin bun run dev              # 管理员权限来自 ADMIN 环境�
 |---|---|---|
 | `/pixel` | 200/分 | fail-open（不拦截打点） |
 | `/count` | 60/分 | fail-open |
-| `/register` | 30/分 | fail-open |
+| `/register` | 30/分（per-IP，fail-open）+ 30/分·500/天（per-wxId） | fail-open / per-wxId 超限返回 429 |
 | `/auth/*` | 5/分 | fail-closed（拒绝） |
 | `/admin/*` | 30/分 | fail-closed（拒绝） |
 
@@ -133,7 +140,7 @@ ADMIN=wxid_admin bun run dev              # 管理员权限来自 ADMIN 环境�
 - 运营商显示为双语短名（如 中国移动 / China Mobile），国外 ISP 仅在英文视图显示原文
 - 存量数据的运营商短名可通过 `bun run backfill-isp` 一次性补齐；已定位但缺英文的行会在下次点「定位」时自动重查补齐
 - `reads` 表无外键、无 wxId，删用户/删消息由服务端在同一事务内清理对应 reads；残留孤儿 reads 由每日任务清理（保留 7 天）
-- 定时任务：每 10 分钟游标增量回填统计表；每日清理过期会话、30 天前审计日志、孤儿 reads 并重建 FTS
+- 定时任务：每 10 分钟游标增量回填统计表；每日清理过期会话、`AUDIT_RETENTION_DAYS`（默认 30）天前审计日志、孤儿 reads 并重建 FTS
 
 </details>
 
@@ -145,7 +152,7 @@ ADMIN=wxid_admin bun run dev              # 管理员权限来自 ADMIN 环境�
 
 | 形态 | BIND_HOST | TRUSTED_PROXY | 真实 IP 来源 | HTTPS |
 |---|---|---|---|---|
-| A. 公网服务器 + 反代（推荐） | 默认 | `127.0.0.1/32`（同机） | `X-Forwarded-For` 首项 | 反代终止（自动证书） |
+| A. 公网服务器 + 反代（推荐） | 默认 | `127.0.0.1/32`（同机） | `X-Forwarded-For`（自右向左首个非受信 IP） | 反代终止（自动证书） |
 | B. 公网服务器直连 | `0.0.0.0` | **不设** | 直连公网 IP | 内置 TLS / 裸 HTTP |
 | C. 无公网 IP + Cloudflare Tunnel | 默认 / `0.0.0.0` | `127.0.0.1/32`（同机） | `CF-Connecting-IP` | CF 终止 |
 
