@@ -64,7 +64,8 @@ function blockSetFor(id: string, ownerWxId: string | null): Set<string> {
   return set;
 }
 
-/** 已读详情分页 JSON 接口：默认每页 50 条，上限 200（与 /messages 一致） */
+/** 已读详情分页 JSON 接口：默认每页 50 条，上限 200（与 /messages 一致）。
+ * 黑名单 IP 行在后端直接过滤，API 响应不返回其任何数据（仅返回 blockedCount 数字）。 */
 readsApp.get("/reads/:id/data", (c) => {
   const id = c.req.param("id");
   const denied = readsMessageOr(c, id);
@@ -76,16 +77,12 @@ readsApp.get("/reads/:id/data", (c) => {
   const { total } = sqlite
     .query("SELECT COUNT(*) AS total FROM reads WHERE id = ?")
     .get(id) as { total: number };
-  const rows = sqlite
-    .query(
-      "SELECT ip, timestamp, user_agent, country, region, city, isp, country_en, region_en, city_en, isp_en FROM reads WHERE id = ? ORDER BY timestamp DESC LIMIT ? OFFSET ?",
-    )
-    .all(id, pageSize, offset) as ReadRow[];
   const msg = sqlite
     .query("SELECT content, wx_id FROM messages WHERE id = ?")
     .get(id) as { content: string; wx_id: string };
   // 账户黑名单仅在查看者为消息 owner 时参与判定（本接口仅 owner 可达，msg.wx_id 即 owner）
-  const blockedSet = blockSetFor(id, msg.wx_id === user.wxId ? user.wxId : null);
+  const ownerWxId = msg.wx_id === user.wxId ? user.wxId : null;
+  const blockedSet = blockSetFor(id, ownerWxId);
   // blockedCount 基于全量 reads 计算，不能用分页行数推算
   let blockedCount = 0;
   for (const r of sqlite
@@ -93,14 +90,26 @@ readsApp.get("/reads/:id/data", (c) => {
     .all(id) as Array<{ ip: string }>) {
     if (blockedSet.has(r.ip)) blockedCount++;
   }
+  // SQL 层过滤黑名单行：分页基于可见行数，命中行不出现在响应中
+  const rows = sqlite
+    .query(
+      `SELECT ip, timestamp, user_agent, country, region, city, isp, country_en, region_en, city_en, isp_en
+       FROM reads WHERE id = ?
+         AND ip NOT IN (SELECT ip FROM ip_block_global)
+         AND ip NOT IN (SELECT ip FROM ip_block_message WHERE id = ?)
+         ${ownerWxId ? "AND ip NOT IN (SELECT ip FROM ip_block_account WHERE wx_id = ?)" : ""}
+       ORDER BY timestamp DESC LIMIT ? OFFSET ?`,
+    )
+    .all(...(ownerWxId ? [id, id, ownerWxId, pageSize, offset] : [id, id, pageSize, offset])) as ReadRow[];
   return c.json({
     id,
     content: msg.content,
     total,
     blockedCount,
+    visibleTotal: total - blockedCount,
     page,
     pageSize,
-    reads: rows.map((r) => ({ ...readRow(r), blocked: blockedSet.has(r.ip) })),
+    reads: rows.map(readRow),
   });
 });
 
@@ -177,6 +186,10 @@ readsApp.post("/reads/:id/geo", async (c) => {
   const msg = sqlite.query("SELECT wx_id FROM messages WHERE id = ?").get(id) as { wx_id: string } | undefined;
   if (!msg) return c.json({ error: "not found" }, 404);
   if (msg.wx_id !== user.wxId && !user.isAdmin) return c.json({ error: "forbidden" }, 403);
+  // 黑名单 IP 的定位数据同样不返回（与 /data 过滤策略一致）
+  if (blockSetFor(id, msg.wx_id === user.wxId ? user.wxId : null).has(ip)) {
+    return c.json({ error: "not found" }, 404);
+  }
 
   const row = sqlite
     .query(

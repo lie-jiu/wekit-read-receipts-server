@@ -2567,14 +2567,12 @@ export function readDetailsPage(session, meta) {
 
       /* ── render ── */
       function renderRows(reads) {
-        /* 命中黑名单（全局/本消息/账户）的行前端隐藏：数据保留，仅不渲染 */
-        const visible = (reads || []).filter((r) => !r.blocked);
-        if (!visible.length) {
+        if (!reads || !reads.length) {
           readTbody.innerHTML =
             '<tr class="empty-row"><td colspan="3">' + esc(t("noReads")) + "</td></tr>";
           return;
         }
-        readTbody.innerHTML = visible
+        readTbody.innerHTML = reads
           .map((r) => {
             const parts = locParts(r);
             const isV6 = r.ip.indexOf(":") !== -1;
@@ -2667,9 +2665,10 @@ export function readDetailsPage(session, meta) {
             return;
           }
           const data = await res.json();
-          total = data.total;
+          // readCount 显示真实总数；分页基于后端过滤后的可见行数（黑名单行 API 已不返回）
+          readCount.textContent = data.total;
+          total = typeof data.visibleTotal === "number" ? data.visibleTotal : data.total;
           if (data.page) page = data.page;
-          readCount.textContent = total;
           renderRows(data.reads);
           renderBlockedInfo(data.blockedCount || 0);
           renderPageInfo();
