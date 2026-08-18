@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { CSP, isAdmin } from "../config";
 import { audit, hashPassword, requireAdmin } from "../auth";
 import { sqlite } from "../db";
-import { clientIp } from "../rate-limit";
+import { clientIp, isValidIp } from "../rate-limit";
 import {
   LEVEL_ENV_KEYS,
   persistedLevelConfigs,
@@ -293,4 +293,45 @@ adminApp.get("/admin/reads/:id", (c) => {
     )
     .all(id) as ReadRow[];
   return c.json({ id, count: rows.length, reads: rows.map(readRow) });
+});
+
+/* ── 全局 IP 黑名单（仅管理员；唯一全局入口，仅支持自定义 IP，无 action:current） ── */
+
+adminApp.get("/admin/ip-block", (c) => {
+  const denied = adminOr(c);
+  if (denied) return denied;
+  const rows = sqlite
+    .query("SELECT ip, created_at FROM ip_block_global ORDER BY created_at DESC LIMIT 1000")
+    .all() as Array<{ ip: string; created_at: string }>;
+  return c.json({ count: rows.length, ips: rows.map((r) => ({ ip: r.ip, createdAt: r.created_at })) });
+});
+
+adminApp.post("/admin/ip-block", async (c) => {
+  const denied = adminOr(c);
+  if (denied) return denied;
+  let body: { ip?: unknown };
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: "invalid JSON" }, 400);
+  }
+  const ip = typeof body.ip === "string" ? body.ip : "";
+  if (!isValidIp(ip)) return c.json({ error: "invalid ip" }, 400);
+  const res = sqlite
+    .query("INSERT OR IGNORE INTO ip_block_global (ip, created_at) VALUES (?, ?)")
+    .run(ip, utcNow());
+  if (res.changes === 0) return c.json({ error: "exists" }, 409);
+  audit(requireAdmin(c)!.wxId, "global_block_add", ip, clientIp(c));
+  return c.json({ ok: true, ip });
+});
+
+adminApp.delete("/admin/ip-block", (c) => {
+  const denied = adminOr(c);
+  if (denied) return denied;
+  const ip = c.req.query("ip") ?? "";
+  if (!isValidIp(ip)) return c.json({ error: "invalid ip" }, 400);
+  const res = sqlite.query("DELETE FROM ip_block_global WHERE ip = ?").run(ip);
+  if (res.changes === 0) return c.json({ error: "not found" }, 404);
+  audit(requireAdmin(c)!.wxId, "global_block_remove", ip, clientIp(c));
+  return c.json({ ok: true });
 });

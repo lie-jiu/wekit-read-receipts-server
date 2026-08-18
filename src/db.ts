@@ -118,6 +118,29 @@ ALTER TABLE users ADD COLUMN geo_count INTEGER NOT NULL DEFAULT 0 CHECK (geo_cou
   `
 ALTER TABLE users ADD COLUMN geo_date TEXT NOT NULL DEFAULT '';
 `,
+  /* v6：IP 黑名单——全局（管理员）/ 单条消息 / 账户三类，仅前端隐藏已读行，不删除 reads 记录。
+   * 消息/账户表分别外键级联删除，随 messages/users 清理。 */
+  `
+CREATE TABLE ip_block_global (
+  ip TEXT PRIMARY KEY CHECK (length(ip) BETWEEN 1 AND 64),
+  created_at TEXT NOT NULL
+) STRICT;
+
+CREATE TABLE ip_block_message (
+  id TEXT NOT NULL CHECK (${HEX_CHECK}),
+  ip TEXT NOT NULL CHECK (length(ip) BETWEEN 1 AND 64),
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (id, ip),
+  FOREIGN KEY (id) REFERENCES messages(id) ON DELETE CASCADE
+) STRICT;
+
+CREATE TABLE ip_block_account (
+  wx_id TEXT NOT NULL REFERENCES users(wx_id) ON DELETE CASCADE,
+  ip TEXT NOT NULL CHECK (length(ip) BETWEEN 1 AND 64),
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (wx_id, ip)
+) STRICT;
+`,
 ];
 
 export const sqlite = new Database(DB_PATH, { create: true });

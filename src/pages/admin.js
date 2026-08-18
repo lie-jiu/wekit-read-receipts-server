@@ -124,6 +124,7 @@ tr.expanded .expand-icon{transform:rotate(90deg)}
     <button id="tabUsers" class="tab active" onclick="showTab('users')" data-i18n="tabUsers">Users</button>
     <button id="tabMsgs" class="tab" onclick="showTab('msgs')" data-i18n="tabMsgs">Messages</button>
     <button id="tabLevels" class="tab" onclick="showTab('levels')" data-i18n="tabLevels">Levels</button>
+    <button id="tabBlock" class="tab" onclick="showTab('block')" data-i18n="tabBlock">IP Blacklist</button>
   </div>
 
   <div id="secUsers">
@@ -198,6 +199,19 @@ tr.expanded .expand-icon{transform:rotate(90deg)}
       </table>
     </div>
   </div>
+  <div id="secBlock" class="hidden">
+    <div class="controls">
+      <input id="fGlobalIp" placeholder="Add IP to global blacklist..." onkeydown="if(event.key==='Enter')addGlobalIp()" data-i18n="fGlobalIpPlaceholder" data-i18n-placeholder/>
+      <button class="btn btn-primary" onclick="addGlobalIp()" data-i18n="addIp">Add</button>
+    </div>
+    <div class="table-wrapper">
+      <div class="stats"><span><span class="count" id="globalIpCount">0</span> <span data-i18n="globalIpLabel">IPs</span></span><span data-i18n="globalBlacklistHint"></span></div>
+      <table>
+        <thead><tr><th data-i18n="ipAddressCol">IP Address</th><th data-i18n="addedAt">Added At</th><th data-i18n="actions">Actions</th></tr></thead>
+        <tbody id="globalIpTbody"></tbody>
+      </table>
+    </div>
+  </div>
 </div>
 
 <a class="repo-footer" href="https://github.com/lie-jiu/wekit-read-receipts-server" target="_blank" rel="noopener noreferrer" aria-label="GitHub repository">
@@ -254,6 +268,21 @@ const translations = {
     tabUsers: "用户",
     tabMsgs: "消息",
     tabLevels: "等级权益",
+    tabBlock: "全局 IP 黑名单",
+    globalBlacklistHint: "命中即对所有用户的所有消息的已读详情生效（仅前端隐藏，记录保留）",
+    fGlobalIpPlaceholder: "输入要拉黑的 IP，如 203.0.113.7",
+    addIp: "添加",
+    globalIpLabel: "个 IP",
+    ipAddressCol: "IP 地址",
+    addedAt: "添加时间",
+    noBlacklistIps: "黑名单为空",
+    invalidIp: "IP 格式无效",
+    ipExists: "该 IP 已在黑名单中",
+    ipAdded: "已加入黑名单",
+    ipRemoved: "已移除",
+    addIpFail: "添加失败",
+    removeIpFail: "移除失败",
+    loadIpFail: "加载黑名单失败",
     levelsHint: "公式中 x 代表用户等级，留空恢复默认公式 x。支持 + - * / % ^ 括号与 min/max/floor/ceil/round/abs/pow。",
     formulaPlaceholder: "公式，如 x*2-1",
     saveLevels: "保存等级权益",
@@ -336,6 +365,21 @@ const translations = {
     tabUsers: "Users",
     tabMsgs: "Messages",
     tabLevels: "Levels",
+    tabBlock: "IP Blacklist",
+    globalBlacklistHint: "Applies to read details of all messages of all users (frontend hidden only, records kept)",
+    fGlobalIpPlaceholder: "Enter an IP to blacklist, e.g. 203.0.113.7",
+    addIp: "Add",
+    globalIpLabel: "IPs",
+    ipAddressCol: "IP Address",
+    addedAt: "Added At",
+    noBlacklistIps: "Blacklist is empty",
+    invalidIp: "Invalid IP format",
+    ipExists: "IP already blacklisted",
+    ipAdded: "Added to blacklist",
+    ipRemoved: "Removed",
+    addIpFail: "Failed to add",
+    removeIpFail: "Failed to remove",
+    loadIpFail: "Failed to load blacklist",
     levelsHint: "Formula variable x = user level; empty reverts to default x. Supports + - * / % ^ () and min/max/floor/ceil/round/abs/pow.",
     formulaPlaceholder: "Formula, e.g. x*2-1",
     saveLevels: "Save Level Benefits",
@@ -431,6 +475,7 @@ function toggleLang() {
   applyI18n();
   if ($("tabUsers").classList.contains("active")) loadUsers();
   else if ($("tabMsgs").classList.contains("active")) loadMsgs();
+  else if ($("tabBlock").classList.contains("active")) loadGlobalIps();
   else loadLevels();
 }
 /* 移动端卡片布局的列标签（跟随当前语言） */
@@ -444,6 +489,7 @@ function setLabels() {
   };
   apply($("userTbody"), ["wxId", t("level"), t("registered"), t("actions")]);
   apply($("msgTbody"), ["wxId", t("message"), t("reads"), t("timestamp"), t("actions")]);
+  apply($("globalIpTbody"), [t("ipAddressCol"), t("addedAt"), t("actions")]);
 }
 applyI18n();
 const toastContainer = $("toastContainer");
@@ -489,11 +535,14 @@ function showTab(name){
   $("tabUsers").classList.toggle("active", name === "users");
   $("tabMsgs").classList.toggle("active", name === "msgs");
   $("tabLevels").classList.toggle("active", name === "levels");
+  $("tabBlock").classList.toggle("active", name === "block");
   $("secUsers").classList.toggle("hidden", name !== "users");
   $("secMsgs").classList.toggle("hidden", name !== "msgs");
   $("secLevels").classList.toggle("hidden", name !== "levels");
+  $("secBlock").classList.toggle("hidden", name !== "block");
   if (name === "users") loadUsers();
   else if (name === "msgs") loadMsgs();
+  else if (name === "block") loadGlobalIps();
   else loadLevels();
 }
 let userSearchTimer = null;
@@ -827,6 +876,55 @@ async function logout() {
   location.href = "/";
 }
 
+/* ── 全局 IP 黑名单（仅管理员；仅自定义 IP，无一键拉黑） ── */
+async function loadGlobalIps() {
+  try {
+    const res = await fetch("/admin/ip-block");
+    if (res.status === 401) { location.href = "/"; return; }
+    if (!res.ok) { toast(t("loadIpFail"), "error"); return; }
+    const data = await res.json();
+    $("globalIpCount").textContent = data.count || 0;
+    $("globalIpTbody").innerHTML = data.ips.length
+      ? data.ips
+          .map(
+            (r) =>
+              "<tr>" +
+              '<td class="uuid-col">' + esc(r.ip) + "</td>" +
+              '<td class="ts-col">' + esc(fmtTs(r.createdAt)) + "</td>" +
+              '<td><button class="btn btn-danger btn-sm act-del-ip" data-ip="' + escAttr(r.ip) + '">' + t("delete") + "</button></td>" +
+              "</tr>",
+          )
+          .join("")
+      : '<tr class="empty-row"><td colspan="3">' + t("noBlacklistIps") + "</td></tr>";
+  } catch (e) { toast(t("networkError") + ": " + e.message, "error"); }
+  setLabels();
+}
+async function addGlobalIp() {
+  const input = $("fGlobalIp");
+  const ip = input.value.trim();
+  try {
+    const res = await fetch("/admin/ip-block", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ip }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) { toast(res.status === 400 ? t("invalidIp") : data.error === "exists" ? t("ipExists") : data.error || t("addIpFail"), "error"); return; }
+    toast(t("ipAdded"), "success");
+    input.value = "";
+    loadGlobalIps();
+  } catch (e) { toast(t("networkError"), "error"); }
+}
+async function removeGlobalIp(ip) {
+  try {
+    const res = await fetch("/admin/ip-block?ip=" + encodeURIComponent(ip), { method: "DELETE" });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) { toast(data.error || t("removeIpFail"), "error"); return; }
+    toast(t("ipRemoved"), "success");
+    loadGlobalIps();
+  } catch (e) { toast(t("networkError"), "error"); }
+}
+
 /* ── 等级权益 ── */
 const levelPreviewTbody = $("levelPreviewTbody");
 const levelFormulaInputs = {
@@ -1012,6 +1110,12 @@ function initAdminHandlers() {
     const btn = e.target.closest(".act-del-msg");
     if (!btn) return;
     askDeleteMsg(btn.dataset.id);
+  });
+  const gt = $("globalIpTbody");
+  gt.addEventListener("click", (e) => {
+    const btn = e.target.closest(".act-del-ip");
+    if (!btn) return;
+    removeGlobalIp(btn.dataset.ip);
   });
 }
 showTab("users");

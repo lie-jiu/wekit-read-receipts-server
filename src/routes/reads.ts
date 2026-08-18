@@ -1,9 +1,10 @@
 import { Hono } from "hono";
 import { CSP, ENABLE_GEO, geoQuotaFor } from "../config";
-import { getSessionUser, requireUser } from "../auth";
+import { audit, getSessionUser, requireUser } from "../auth";
 import { sqlite } from "../db";
 import { lookupIpLocation } from "../geo";
-import { isValidId, utcDate } from "../utils";
+import { clientIp, isValidIp } from "../rate-limit";
+import { isValidId, utcDate, utcNow } from "../utils";
 import {
   clampLimit,
   emptyReadRow,
@@ -42,6 +43,27 @@ readsApp.get("/reads/:id", (c) => {
   );
 });
 
+/** 黑名单并集：全局 ∪ 本消息 ∪ 账户(owner)。返回 Set（内存 O(n) 标记，无逐行 SQL） */
+function blockSetFor(id: string, ownerWxId: string | null): Set<string> {
+  const set = new Set<string>();
+  for (const r of sqlite.query("SELECT ip FROM ip_block_global").all() as Array<{ ip: string }>) {
+    set.add(r.ip);
+  }
+  for (const r of sqlite
+    .query("SELECT ip FROM ip_block_message WHERE id = ?")
+    .all(id) as Array<{ ip: string }>) {
+    set.add(r.ip);
+  }
+  if (ownerWxId) {
+    for (const r of sqlite
+      .query("SELECT ip FROM ip_block_account WHERE wx_id = ?")
+      .all(ownerWxId) as Array<{ ip: string }>) {
+      set.add(r.ip);
+    }
+  }
+  return set;
+}
+
 /** 已读详情分页 JSON 接口：默认每页 50 条，上限 200（与 /messages 一致） */
 readsApp.get("/reads/:id/data", (c) => {
   const id = c.req.param("id");
@@ -60,16 +82,71 @@ readsApp.get("/reads/:id/data", (c) => {
     )
     .all(id, pageSize, offset) as ReadRow[];
   const msg = sqlite
-    .query("SELECT content FROM messages WHERE id = ?")
-    .get(id) as { content: string };
+    .query("SELECT content, wx_id FROM messages WHERE id = ?")
+    .get(id) as { content: string; wx_id: string };
+  // 账户黑名单仅在查看者为消息 owner 时参与判定（本接口仅 owner 可达，msg.wx_id 即 owner）
+  const blockedSet = blockSetFor(id, msg.wx_id === user.wxId ? user.wxId : null);
+  // blockedCount 基于全量 reads 计算，不能用分页行数推算
+  let blockedCount = 0;
+  for (const r of sqlite
+    .query("SELECT ip FROM reads WHERE id = ?")
+    .all(id) as Array<{ ip: string }>) {
+    if (blockedSet.has(r.ip)) blockedCount++;
+  }
   return c.json({
     id,
     content: msg.content,
     total,
+    blockedCount,
     page,
     pageSize,
-    reads: rows.map(readRow),
+    reads: rows.map((r) => ({ ...readRow(r), blocked: blockedSet.has(r.ip) })),
   });
+});
+
+/* ── 单条消息 IP 黑名单（消息所有者；仅此维度支持一键拉黑当前访问 IP） ── */
+
+readsApp.get("/reads/:id/block", (c) => {
+  const id = c.req.param("id");
+  const denied = readsMessageOr(c, id);
+  if (denied) return denied;
+  const rows = sqlite
+    .query("SELECT ip, created_at FROM ip_block_message WHERE id = ? ORDER BY created_at DESC")
+    .all(id) as Array<{ ip: string; created_at: string }>;
+  return c.json({ id, count: rows.length, ips: rows.map((r) => ({ ip: r.ip, createdAt: r.created_at })) });
+});
+
+readsApp.post("/reads/:id/block", async (c) => {
+  const id = c.req.param("id");
+  const denied = readsMessageOr(c, id);
+  if (denied) return denied;
+  let body: { ip?: unknown; action?: unknown };
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: "invalid JSON" }, 400);
+  }
+  // 仅消息维度支持 action:"current"（一键拉黑当前访问 IP）
+  const ip = body.action === "current" ? clientIp(c) : typeof body.ip === "string" ? body.ip : "";
+  if (!isValidIp(ip)) return c.json({ error: "invalid ip" }, 400);
+  const res = sqlite
+    .query("INSERT OR IGNORE INTO ip_block_message (id, ip, created_at) VALUES (?, ?, ?)")
+    .run(id, ip, utcNow());
+  if (res.changes === 0) return c.json({ error: "exists" }, 409);
+  audit(requireUser(c)!.wxId, "message_block_add", `${id} ${ip}`, clientIp(c));
+  return c.json({ ok: true, ip });
+});
+
+readsApp.delete("/reads/:id/block", (c) => {
+  const id = c.req.param("id");
+  const denied = readsMessageOr(c, id);
+  if (denied) return denied;
+  const ip = c.req.query("ip") ?? "";
+  if (!isValidIp(ip)) return c.json({ error: "invalid ip" }, 400);
+  const res = sqlite.query("DELETE FROM ip_block_message WHERE id = ? AND ip = ?").run(id, ip);
+  if (res.changes === 0) return c.json({ error: "not found" }, 404);
+  audit(requireUser(c)!.wxId, "message_block_remove", `${id} ${ip}`, clientIp(c));
+  return c.json({ ok: true });
 });
 
 /** 按需 IP 定位：为指定已读记录补全省市/运营商（幂等，成功结果缓存 24h） */

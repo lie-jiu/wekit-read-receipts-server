@@ -644,19 +644,12 @@ export function htmlPage(session) { return `<!doctype html>
         </div>
         <div class="flex">
           <span class="user-chip" id="userChip"></span>
-          <button
-            class="btn btn-outline btn-sm"
-            onclick="openPasswordModal()"
-            data-i18n="changePassword"
-          >
-            Change Password
-          </button>
           <a class="btn btn-primary btn-sm" href="/rank" data-i18n="leaderboard">
             Leaderboard
           </a>
-          <button class="btn btn-outline btn-sm" onclick="logout()" data-i18n="logout">
-            Logout
-          </button>
+          <a class="btn btn-outline btn-sm" href="/account" data-i18n="accountSettings">
+            Account Settings
+          </a>
           <button class="lang-toggle" onclick="toggleLang()">中 / EN</button>
           <button
             class="btn btn-outline btn-sm"
@@ -664,13 +657,6 @@ export function htmlPage(session) { return `<!doctype html>
             data-i18n="refresh"
           >
             Refresh
-          </button>
-          <button
-            class="btn btn-danger btn-sm"
-            onclick="showClearAllModal()"
-            data-i18n="clearAll"
-          >
-            Clear All
           </button>
         </div>
       </div>
@@ -712,49 +698,12 @@ export function htmlPage(session) { return `<!doctype html>
     </a>
 
     <div id="toastContainer" class="toast-container"></div>
-    <div id="modalOverlay" class="modal-overlay hidden">
-      <div class="modal">
-        <h3 id="modalTitle" data-i18n="confirm">Confirm</h3>
-        <p id="modalBody"></p>
-        <div class="actions">
-          <button class="btn btn-secondary" id="modalCancel" data-i18n="cancel">
-            Cancel
-          </button>
-          <button class="btn btn-danger" id="modalConfirm" data-i18n="delete">
-            Delete
-          </button>
-        </div>
-      </div>
-    </div>
-    <div id="passOverlay" class="modal-overlay hidden">
-      <div class="modal">
-        <h3 data-i18n="changePassword">Change Password</h3>
-        <div class="modal-form">
-          <input id="oldPass" type="password" data-i18n-placeholder data-i18n="currentPassword" placeholder="Current password" />
-          <input id="newPass" type="password" data-i18n-placeholder data-i18n="newPassword" placeholder="New password" />
-          <input id="newPass2" type="password" data-i18n-placeholder data-i18n="confirmPassword" placeholder="Confirm new password" />
-        </div>
-        <div class="actions">
-          <button class="btn btn-secondary" id="passCancel" data-i18n="cancel">Cancel</button>
-          <button class="btn btn-primary" id="passSave" data-i18n="save">Save</button>
-        </div>
-      </div>
-    </div>
 
     <script>
       const ME = ${safeJson({ wxId: session.wxId, level: session.level, geo: session.geo === true, geoQuota: session.geoQuota || 0, geoRemaining: session.geoRemaining || 0, messageQuota: session.messageQuota || 0, retentionMonths: session.retentionMonths || 0 })};
       const tbody = document.getElementById("tbody");
       const recordCount = document.getElementById("recordCount");
       const toastContainer = document.getElementById("toastContainer");
-      const modalOverlay = document.getElementById("modalOverlay");
-      const modalTitle = document.getElementById("modalTitle");
-      const modalBody = document.getElementById("modalBody");
-      const modalCancel = document.getElementById("modalCancel");
-      const modalConfirm = document.getElementById("modalConfirm");
-      const passOverlay = document.getElementById("passOverlay");
-      const oldPass = document.getElementById("oldPass");
-      const newPass = document.getElementById("newPass");
-      const newPass2 = document.getElementById("newPass2");
 
       /* ── i18n ── */
       let lang = localStorage.getItem("lang") || "zh-CN";
@@ -764,6 +713,7 @@ export function htmlPage(session) { return `<!doctype html>
           title: "已读追踪",
           subtitle: "已发送消息的已读人数",
           refresh: "刷新",
+          accountSettings: "账户设置",
           clearAll: "清除我的",
           changePassword: "修改密码",
           logout: "退出登录",
@@ -823,6 +773,7 @@ export function htmlPage(session) { return `<!doctype html>
           title: "Read Receipts",
           subtitle: "Read counts of sent messages",
           refresh: "Refresh",
+          accountSettings: "Account Settings",
           clearAll: "Clear Mine",
           changePassword: "Change Password",
           logout: "Logout",
@@ -929,90 +880,6 @@ export function htmlPage(session) { return `<!doctype html>
         setTimeout(() => el.remove(), 3100);
       }
 
-      /* ── modal ── */
-      function showModal(title, body, onConfirm) {
-        modalTitle.textContent = title;
-        modalBody.textContent = body;
-        modalOverlay.classList.remove("hidden");
-
-        const cleanup = () => {
-          modalOverlay.classList.add("hidden");
-          modalConfirm.onclick = null;
-        };
-        modalCancel.onclick = cleanup;
-        modalOverlay.onclick = (e) => {
-          if (e.target === modalOverlay) cleanup();
-        };
-        modalConfirm.onclick = () => {
-          cleanup();
-          onConfirm();
-        };
-      }
-
-      function showClearAllModal() {
-        showModal(t("clearAllTitle"), t("clearAllBody"), () => {
-          deleteAll();
-        });
-      }
-
-      /* ── password ── */
-      function openPasswordModal() {
-        oldPass.value = "";
-        newPass.value = "";
-        newPass2.value = "";
-        passOverlay.classList.remove("hidden");
-        oldPass.focus();
-      }
-      function closePasswordModal() {
-        passOverlay.classList.add("hidden");
-      }
-      document.getElementById("passCancel").onclick = closePasswordModal;
-      passOverlay.onclick = (e) => {
-        if (e.target === passOverlay) closePasswordModal();
-      };
-      async function savePassword() {
-        const n1 = newPass.value;
-        const n2 = newPass2.value;
-        if (n1.length < 8) {
-          toast(t("passTooShort"), "error");
-          return;
-        }
-        if (n1 !== n2) {
-          toast(t("passMismatch"), "error");
-          return;
-        }
-        try {
-          const res = await fetch("/auth/password", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ oldPassword: oldPass.value, newPassword: n1 }),
-          });
-          if (!res.ok) {
-            const err = await res.json().catch(() => ({}));
-            toast(err.error || t("passFailed"), "error");
-            return;
-          }
-          toast(t("passChanged"), "success");
-          closePasswordModal();
-        } catch (e) {
-          toast(t("networkError"), "error");
-        }
-      }
-      document.getElementById("passSave").onclick = savePassword;
-      [oldPass, newPass, newPass2].forEach((el) => {
-        el.addEventListener("keydown", (e) => {
-          if (e.key === "Enter") savePassword();
-        });
-      });
-
-      /* ── logout ── */
-      async function logout() {
-        try {
-          await fetch("/auth/logout", { method: "POST" });
-        } catch {}
-        location.href = "/";
-      }
-
       /* ── fetch helpers ── */
       async function loadAll() {
         const q = document.getElementById("msgFilter").value.trim();
@@ -1085,22 +952,6 @@ export function htmlPage(session) { return `<!doctype html>
           toast(t("networkError") + ": " + e.message, "error");
         }
         setLabels();
-      }
-
-      /* ── delete ── */
-      async function deleteAll() {
-        toast(t("clearingAll"), "info");
-        try {
-          const res = await fetch("/messages", { method: "DELETE" });
-          if (!res.ok) {
-            toast(t("failedClear"), "error");
-            return;
-          }
-          toast(t("clearedAll"), "success");
-          await loadAll();
-        } catch (e) {
-          toast(t("networkError") + ": " + e.message, "error");
-        }
       }
 
       /* ── utils ── */
@@ -2054,6 +1905,99 @@ export function readDetailsPage(session, meta) {
         font-weight: 600;
         font-family: ui-monospace, "Cascadia Code", "JetBrains Mono", monospace;
       }
+      .card {
+        background: rgba(30, 41, 59, 0.9);
+        border: 1px solid #334155;
+        border-radius: 12px;
+        padding: 1.1rem 1.25rem;
+        margin-bottom: 1.25rem;
+        backdrop-filter: blur(6px);
+        box-shadow: 0 8px 30px rgba(2, 6, 23, 0.4);
+      }
+      .card-title {
+        font-size: 0.95rem;
+        font-weight: 600;
+        color: #f1f5f9;
+        margin-bottom: 0.35rem;
+      }
+      .card-hint {
+        font-size: 0.78rem;
+        color: #64748b;
+        line-height: 1.5;
+        margin-bottom: 0.85rem;
+      }
+      .ip-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0.4rem;
+        margin-bottom: 0.85rem;
+        max-height: 280px;
+        overflow-y: auto;
+      }
+      .ip-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.75rem;
+        padding: 0.5rem 0.75rem;
+        background: #0f172a;
+        border: 1px solid #1e293b;
+        border-radius: 8px;
+      }
+      .ip-text {
+        font-family: ui-monospace, "Cascadia Code", "JetBrains Mono", monospace;
+        font-size: 0.8rem;
+        color: #a78bfa;
+        overflow-wrap: anywhere;
+      }
+      .ip-empty {
+        font-size: 0.82rem;
+        color: #475569;
+        padding: 0.9rem 0.25rem;
+        text-align: center;
+        border: 1px dashed #334155;
+        border-radius: 8px;
+      }
+      .add-row {
+        display: flex;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+      }
+      .add-row input {
+        flex: 1;
+        min-width: 180px;
+        padding: 0.45rem 0.7rem;
+        border: 1px solid #475569;
+        border-radius: 6px;
+        font-size: 0.85rem;
+        background: #0f172a;
+        color: #e2e8f0;
+        outline: none;
+        transition: border-color 0.15s;
+        font-family: ui-monospace, "Cascadia Code", "JetBrains Mono", monospace;
+      }
+      .add-row input:focus {
+        border-color: #3b82f6;
+      }
+      .btn-secondary {
+        background: #475569;
+        color: #e2e8f0;
+      }
+      .btn-secondary:hover {
+        background: #64748b;
+      }
+      .btn-danger {
+        background: #b91c1c;
+        color: #fff;
+      }
+      .btn-danger:hover {
+        background: #991b1b;
+      }
+      .blocked-info {
+        color: #a78bfa;
+        font-size: 0.78rem;
+        margin-left: 0.5rem;
+      }
       .table-card {
         background: rgba(30, 41, 59, 0.9);
         border: 1px solid #334155;
@@ -2329,7 +2273,19 @@ export function readDetailsPage(session, meta) {
         </div>
         <div class="flex">
           <span class="user-chip" id="userChip"></span>
+          <a class="btn btn-outline btn-sm" href="/account" data-i18n="accountSettings">Account Settings</a>
           <button class="lang-toggle" onclick="toggleLang()">中 / EN</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title" data-i18n="msgIpBlacklist">Message IP Blacklist</div>
+        <div class="card-hint" data-i18n="msgBlacklistHint">Blacklisted IPs are hidden from this message's read details. Records are kept, only hidden.</div>
+        <div class="ip-list" id="blockIpList"></div>
+        <div class="add-row">
+          <input id="blockNewIp" type="text" placeholder="e.g. 203.0.113.7" data-i18n="ipPlaceholder" data-i18n-placeholder />
+          <button class="btn btn-primary" onclick="addBlockIp()" data-i18n="addToBlacklist">Add to Blacklist</button>
+          <button class="btn btn-secondary" onclick="blockCurrentIp()" data-i18n="blockMyIp">Block My IP</button>
         </div>
       </div>
 
@@ -2337,7 +2293,8 @@ export function readDetailsPage(session, meta) {
         <div class="stats">
           <span
             ><span class="count" id="readCount">0</span
-            ><span data-i18n="totalReads"> reads</span></span
+            ><span data-i18n="totalReads"> reads</span
+            ><span class="hidden blocked-info" id="blockedInfo"></span></span
           >
           <span class="pagination-info hidden" id="pageInfo"></span>
         </div>
@@ -2413,6 +2370,22 @@ export function readDetailsPage(session, meta) {
           pageIndicator: "第 {0} / {1} 页",
           totalReads: "条已读记录",
           readsFor: "「{0}」的已读记录",
+          accountSettings: "账户设置",
+          msgIpBlacklist: "本消息 IP 黑名单",
+          msgBlacklistHint: "命中黑名单的 IP 将在该消息的已读详情中隐藏（记录保留，仅前端不展示）。",
+          ipPlaceholder: "输入 IP，如 203.0.113.7",
+          addToBlacklist: "加入黑名单",
+          blockMyIp: "一键拉黑我的 IP",
+          emptyBlacklist: "黑名单为空",
+          remove: "移除",
+          invalidIp: "IP 格式无效",
+          ipExists: "该 IP 已在黑名单中",
+          ipAdded: "已加入黑名单",
+          ipRemoved: "已移除",
+          addFailed: "添加失败",
+          removeFailed: "移除失败",
+          loadFailed: "加载失败",
+          hiddenCount: "已隐藏 {0} 条黑名单 IP",
         },
         en: {
           title: "Read Details",
@@ -2436,6 +2409,22 @@ export function readDetailsPage(session, meta) {
           pageIndicator: "Page {0} / {1}",
           totalReads: "read records",
           readsFor: 'Reads for: "{0}"',
+          accountSettings: "Account Settings",
+          msgIpBlacklist: "Message IP Blacklist",
+          msgBlacklistHint: "Blacklisted IPs are hidden from this message's read details. Records are kept, only hidden.",
+          ipPlaceholder: "Enter an IP, e.g. 203.0.113.7",
+          addToBlacklist: "Add to Blacklist",
+          blockMyIp: "Block My IP",
+          emptyBlacklist: "Blacklist is empty",
+          remove: "Remove",
+          invalidIp: "Invalid IP format",
+          ipExists: "IP already blacklisted",
+          ipAdded: "Added to blacklist",
+          ipRemoved: "Removed",
+          addFailed: "Failed to add",
+          removeFailed: "Failed to remove",
+          loadFailed: "Failed to load",
+          hiddenCount: "{0} blacklisted IP hidden",
         },
       };
 
@@ -2465,6 +2454,7 @@ export function readDetailsPage(session, meta) {
         applyI18n();
         setLabels();
         renderPageInfo();
+        loadBlocks();
         loadData();
       }
 
@@ -2577,12 +2567,14 @@ export function readDetailsPage(session, meta) {
 
       /* ── render ── */
       function renderRows(reads) {
-        if (!reads || !reads.length) {
+        /* 命中黑名单（全局/本消息/账户）的行前端隐藏：数据保留，仅不渲染 */
+        const visible = (reads || []).filter((r) => !r.blocked);
+        if (!visible.length) {
           readTbody.innerHTML =
             '<tr class="empty-row"><td colspan="3">' + esc(t("noReads")) + "</td></tr>";
           return;
         }
-        readTbody.innerHTML = reads
+        readTbody.innerHTML = visible
           .map((r) => {
             const parts = locParts(r);
             const isV6 = r.ip.indexOf(":") !== -1;
@@ -2679,6 +2671,7 @@ export function readDetailsPage(session, meta) {
           if (data.page) page = data.page;
           readCount.textContent = total;
           renderRows(data.reads);
+          renderBlockedInfo(data.blockedCount || 0);
           renderPageInfo();
         } catch (e) {
           readTbody.innerHTML =
@@ -2689,10 +2682,84 @@ export function readDetailsPage(session, meta) {
         }
       }
 
+      /* ── 本消息 IP 黑名单（含一键拉黑当前访问 IP） ── */
+      function renderBlockedInfo(n) {
+        const el = document.getElementById("blockedInfo");
+        if (!el) return;
+        el.textContent = n > 0 ? t("hiddenCount", n) : "";
+        el.classList.toggle("hidden", n <= 0);
+      }
+
+      async function loadBlocks() {
+        try {
+          const res = await fetch("/reads/" + encodeURIComponent(DETAIL.id) + "/block");
+          if (res.status === 401) { location.href = "/"; return; }
+          if (!res.ok) { toast(t("loadFailed"), "error"); return; }
+          const data = await res.json();
+          document.getElementById("blockIpList").innerHTML = data.ips.length
+            ? data.ips
+                .map(
+                  (r) =>
+                    '<div class="ip-item"><span class="ip-text">' + esc(r.ip) + '</span>' +
+                    '<button class="btn btn-danger btn-sm" data-ip="' + escAttr(r.ip) + '" onclick="removeBlockIp(this.dataset.ip)">' + esc(t("remove")) + "</button></div>",
+                )
+                .join("")
+            : '<div class="ip-empty">' + esc(t("emptyBlacklist")) + "</div>";
+        } catch (e) {
+          toast(t("networkError") + ": " + e.message, "error");
+        }
+      }
+
+      async function postBlock(payload) {
+        try {
+          const res = await fetch("/reads/" + encodeURIComponent(DETAIL.id) + "/block", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            toast(res.status === 400 ? t("invalidIp") : data.error === "exists" ? t("ipExists") : data.error || t("addFailed"), "error");
+            return false;
+          }
+          toast(t("ipAdded") + ": " + data.ip, "success");
+          loadBlocks();
+          loadData();
+          return true;
+        } catch (e) {
+          toast(t("networkError") + ": " + e.message, "error");
+          return false;
+        }
+      }
+
+      async function addBlockIp() {
+        const input = document.getElementById("blockNewIp");
+        const ip = input.value.trim();
+        if (await postBlock({ ip })) input.value = "";
+      }
+
+      async function blockCurrentIp() {
+        await postBlock({ action: "current" });
+      }
+
+      async function removeBlockIp(ip) {
+        try {
+          const res = await fetch("/reads/" + encodeURIComponent(DETAIL.id) + "/block?ip=" + encodeURIComponent(ip), { method: "DELETE" });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) { toast(data.error || t("removeFailed"), "error"); return; }
+          toast(t("ipRemoved") + ": " + ip, "success");
+          loadBlocks();
+          loadData();
+        } catch (e) {
+          toast(t("networkError") + ": " + e.message, "error");
+        }
+      }
+
       /* ── init ── */
       document.getElementById("msgPreview").textContent = t("readsFor", DETAIL.content);
       updateGeoChip();
       applyI18n();
+      loadBlocks();
       loadData();
     </script>
   </body>

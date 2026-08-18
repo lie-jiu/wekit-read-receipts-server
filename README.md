@@ -30,6 +30,7 @@
 - **等级权益公式**：消息保留条数 / IP 定位次数 / 保留时长均由表达式配置，`x` 代表等级
 - **FTS5 全文搜索**：trigram 分词，支持消息内容快速检索
 - **管理后台**：用户管理、等级调整、权益公式在线编辑、消息管理（`level 0` = 仅禁止注册新消息）
+- **IP 黑名单**：全局（仅管理员，admin 后台唯一入口）/ 单条消息 / 账户三级黑名单；已读详情命中行仅前端隐藏并显示隐藏条数（记录保留不删除）；注册消息自动将来源 IP 写入该消息黑名单；独立账户设置页 `/account` 集中管理账户黑名单与修改密码 / 退出登录 / 清除我的
 - **多形态部署**：反向代理 / 公网直连 / Cloudflare Tunnel，内置 HTTPS 支持
 - **跨平台自启**：Linux systemd、Windows 启动文件夹 + 隐藏窗口、无 systemd 回退 nohup
 - **定时任务**：每 10 分钟增量回填统计表，每日清理过期会话、审计日志、孤儿 reads
@@ -70,7 +71,8 @@ wekit-read-receipts-server/
 │   │   ├── messages.ts   # /、/messages 仪表盘与消息管理
 │   │   ├── reads.ts      # /reads/:id 已读详情与按需 IP 定位
 │   │   ├── stats.ts      # /leaderboard、/rank 排行榜
-│   │   └── admin.ts      # /admin/* 管理后台
+│   │   ├── admin.ts      # /admin/* 管理后台
+│   │   └── account.ts    # /account 账户设置页与账户 IP 黑名单
 │   └── pages/            # 前端页面 HTML/JS
 └── scripts/
     ├── manage.ts         # 管理 CLI 入口（bun run manage <cmd>）
@@ -118,7 +120,10 @@ ADMIN=wxid_admin bun run dev              # 管理员权限来自 ADMIN 环境�
 | `/login`、`/auth/verify`、`/auth/register`、`/auth/logout`、`/auth/password`、`/auth/status` | 会话管理（30 天；HTTPS 下 `__Host-session` + Secure，HTTP 直连自动降级为普通 cookie） |
 | `/` | 用户仪表盘：消息搜索（FTS5 trigram）、读取明细、删除 |
 | `/messages`、`DELETE /messages` | 本人消息列表 / 清空 |
-| `/reads/:id` | 单条消息读取明细（IP、UA、时间） |
+| `/reads/:id` | 单条消息读取明细（IP、UA、时间）；`GET /reads/:id/data` 返回每行 `blocked` 标记与全量 `blockedCount`，前端隐藏黑名单 IP 行并显示隐藏条数 |
+| `GET/POST/DELETE /reads/:id/block` | 单条消息 IP 黑名单（消息所有者）；`POST` 支持 `{ ip }` 自定义或 `{ "action": "current" }` 一键拉黑当前访问 IP |
+| `/account`、`GET/POST/DELETE /account/ip-block` | 独立账户设置页：账户 IP 黑名单（跨本人全部消息生效，仅自定义添加，无一键拉黑）+ 修改密码 / 退出登录 / 清除我的（自首页迁移） |
+| `GET/POST/DELETE /admin/ip-block` | 全局 IP 黑名单（仅管理员，唯一入口位于管理后台页签；仅支持自定义 IP，无一键拉黑） |
 | `POST /reads/:id/geo` | 按需 IP 定位：补全省市/运营商双语（幂等，缓存 24h；需登录，本人或管理员；按等级配额累计） |
 | `/leaderboard` | 排行榜：`?metric=reg\|read\|msg` × `?scope=day\|total`（均按 UTC 自然日；wxId 脱敏），无效参数返回 400 |
 | `/admin/*` | 管理后台：用户管理、等级调整、权益公式、消息管理 |

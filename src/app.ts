@@ -7,6 +7,7 @@ import { messagesApp } from "./routes/messages";
 import { readsApp } from "./routes/reads";
 import { statsApp } from "./routes/stats";
 import { adminApp } from "./routes/admin";
+import { accountApp } from "./routes/account";
 
 const app = new Hono();
 
@@ -27,6 +28,7 @@ app.route("/", messagesApp);
 app.route("/", readsApp);
 app.route("/", statsApp);
 app.route("/", adminApp);
+app.route("/", accountApp);
 
 app.notFound((c) => c.json({ error: "not found" }, 404));
 app.onError((err, c) => {

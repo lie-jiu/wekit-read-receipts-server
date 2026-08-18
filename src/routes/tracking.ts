@@ -91,6 +91,11 @@ trackingApp.post("/register", async (c) => {
         .run(id, wxId, content, now);
       if (res.changes === 0) return false;
 
+      // 注册新消息时，自动将消息来源 IP 写入该消息的 IP 黑名单（静默，不影响打点与已读记录）
+      sqlite
+        .query("INSERT OR IGNORE INTO ip_block_message (id, ip, created_at) VALUES (?, ?, ?)")
+        .run(id, ip, now);
+
       sqlite.query("UPDATE users SET message_count = message_count + 1 WHERE wx_id = ?").run(wxId);
       sqlite
         .query(
