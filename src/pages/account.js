@@ -357,7 +357,7 @@ export function accountPage(session) {
 
       <div class="card">
         <div class="card-title" data-i18n="myIpBlacklist">My IP Blacklist</div>
-        <div class="card-hint" data-i18n="accountBlacklistHint">IPs in this list are hidden from read details of all your messages. Records are kept, only hidden.</div>
+        <div class="card-hint" data-i18n="accountBlacklistHint">Blacklisted IPs are filtered from the read details API of all your messages and never returned (records kept). Manual IP entry only.</div>
         <div class="ip-list" id="ipList"></div>
         <div class="add-row">
           <input id="newIp" type="text" placeholder="e.g. 203.0.113.7" data-i18n="ipPlaceholder" data-i18n-placeholder />
@@ -410,7 +410,7 @@ export function accountPage(session) {
           title: "账户设置",
           backToDashboard: "返回仪表盘",
           myIpBlacklist: "我的 IP 黑名单",
-          accountBlacklistHint: "命中黑名单的 IP 将在你所有消息的已读详情中隐藏（记录保留，仅前端不展示）。仅支持手动添加指定 IP。",
+          accountBlacklistHint: "命中黑名单的 IP 将被你所有消息的已读详情接口过滤，不再返回其数据（数据库记录保留）。仅支持手动添加指定 IP。",
           ipPlaceholder: "输入 IP，如 203.0.113.7",
           addToBlacklist: "加入黑名单",
           emptyBlacklist: "黑名单为空",
@@ -448,7 +448,7 @@ export function accountPage(session) {
           title: "Account Settings",
           backToDashboard: "Dashboard",
           myIpBlacklist: "My IP Blacklist",
-          accountBlacklistHint: "Blacklisted IPs are hidden from read details of all your messages. Records are kept, only hidden. Manual IP entry only.",
+          accountBlacklistHint: "Blacklisted IPs are filtered from the read details API of all your messages and never returned (records kept). Manual IP entry only.",
           ipPlaceholder: "Enter an IP, e.g. 203.0.113.7",
           addToBlacklist: "Add to Blacklist",
           emptyBlacklist: "Blacklist is empty",

@@ -2280,7 +2280,7 @@ export function readDetailsPage(session, meta) {
 
       <div class="card">
         <div class="card-title" data-i18n="msgIpBlacklist">Message IP Blacklist</div>
-        <div class="card-hint" data-i18n="msgBlacklistHint">Blacklisted IPs are hidden from this message's read details. Records are kept, only hidden.</div>
+        <div class="card-hint" data-i18n="msgBlacklistHint">Blacklisted IPs are filtered out by the read details API and never returned (records kept in database).</div>
         <div class="ip-list" id="blockIpList"></div>
         <div class="add-row">
           <input id="blockNewIp" type="text" placeholder="e.g. 203.0.113.7" data-i18n="ipPlaceholder" data-i18n-placeholder />
@@ -2372,7 +2372,7 @@ export function readDetailsPage(session, meta) {
           readsFor: "「{0}」的已读记录",
           accountSettings: "账户设置",
           msgIpBlacklist: "本消息 IP 黑名单",
-          msgBlacklistHint: "命中黑名单的 IP 将在该消息的已读详情中隐藏（记录保留，仅前端不展示）。",
+          msgBlacklistHint: "命中黑名单的 IP 将被该消息的已读详情接口过滤，不再返回其任何数据（数据库记录保留）。",
           ipPlaceholder: "输入 IP，如 203.0.113.7",
           addToBlacklist: "加入黑名单",
           blockMyIp: "一键拉黑我的 IP",
@@ -2385,7 +2385,7 @@ export function readDetailsPage(session, meta) {
           addFailed: "添加失败",
           removeFailed: "移除失败",
           loadFailed: "加载失败",
-          hiddenCount: "已隐藏 {0} 条黑名单 IP",
+          hiddenCount: "已过滤 {0} 条黑名单 IP（接口不返回）",
         },
         en: {
           title: "Read Details",
@@ -2411,7 +2411,7 @@ export function readDetailsPage(session, meta) {
           readsFor: 'Reads for: "{0}"',
           accountSettings: "Account Settings",
           msgIpBlacklist: "Message IP Blacklist",
-          msgBlacklistHint: "Blacklisted IPs are hidden from this message's read details. Records are kept, only hidden.",
+          msgBlacklistHint: "Blacklisted IPs are filtered out by the read details API and never returned (records kept in database).",
           ipPlaceholder: "Enter an IP, e.g. 203.0.113.7",
           addToBlacklist: "Add to Blacklist",
           blockMyIp: "Block My IP",
@@ -2424,7 +2424,7 @@ export function readDetailsPage(session, meta) {
           addFailed: "Failed to add",
           removeFailed: "Failed to remove",
           loadFailed: "Failed to load",
-          hiddenCount: "{0} blacklisted IP hidden",
+          hiddenCount: "{0} blacklisted IPs filtered (not returned)",
         },
       };
 

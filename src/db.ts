@@ -118,7 +118,7 @@ ALTER TABLE users ADD COLUMN geo_count INTEGER NOT NULL DEFAULT 0 CHECK (geo_cou
   `
 ALTER TABLE users ADD COLUMN geo_date TEXT NOT NULL DEFAULT '';
 `,
-  /* v6：IP 黑名单——全局（管理员）/ 单条消息 / 账户三类，仅前端隐藏已读行，不删除 reads 记录。
+  /* v6：IP 黑名单——全局（管理员）/ 单条消息 / 账户三类，已读详情接口在服务端过滤命中行（不返回其数据），不删除 reads 记录。
    * 消息/账户表分别外键级联删除，随 messages/users 清理。 */
   `
 CREATE TABLE ip_block_global (
