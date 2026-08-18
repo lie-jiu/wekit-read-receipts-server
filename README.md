@@ -4,9 +4,9 @@
 
 <p align="center">
   <img alt="Bun" src="https://img.shields.io/badge/Bun-1.3%2B-f9f1e1?logo=bun&logoColor=000">
-  <img alt="Hono" src="https://img.shields.io/badge/Hono-4.13-e36002?logo=hono&logoColor=fff">
+  <img alt="Hono" src="https://img.shields.io/badge/Hono-4.13.2-e36002?logo=hono&logoColor=fff">
   <img alt="SQLite" src="https://img.shields.io/badge/SQLite-WAL-003b57?logo=sqlite&logoColor=fff">
-  <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-5-3178c6?logo=typescript&logoColor=fff">
+  <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-7-3178c6?logo=typescript&logoColor=fff">
   <img alt="license" src="https://img.shields.io/badge/license-MIT-blue">
   <img alt="platform" src="https://img.shields.io/badge/platform-Linux%20%7C%20Windows%20%7C%20macOS-lightgrey">
 </p>
@@ -43,7 +43,8 @@
 | 层 | 技术 | 说明 |
 |---|---|---|
 | 运行时 | Bun 1.3+ | 内置 `bun:sqlite`，单二进制部署 |
-| 框架 | Hono 4.13 | 轻量 Web 框架 |
+| 框架 | Hono 4.13.2 | 轻量 Web 框架 |
+| 语言 | TypeScript 7 | 原生编译器 tsgo，仅用于 `tsc --noEmit` 类型检查；运行时由 Bun 转译 |
 | 数据库 | SQLite (WAL) | schema 由手写原生 SQL + `PRAGMA user_version` 版本化迁移维护 |
 | 依赖 | `hono` | 极简依赖树 |
 
