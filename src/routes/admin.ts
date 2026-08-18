@@ -160,7 +160,10 @@ adminApp.get("/admin/messages", (c) => {
   if (denied) return denied;
   const q = (c.req.query("q") ?? "").trim();
   const fwx = (c.req.query("wxId") ?? "").trim();
-  const limit = clampLimit(Number(c.req.query("limit") ?? 50));
+  // 分页参数：pageSize 优先，兼容旧的 limit 参数（用户详情"查看最新消息"仍传 limit=5）
+  const pageSize = clampLimit(Number(c.req.query("pageSize") ?? c.req.query("limit") ?? 20), 1, 100);
+  const page = Math.max(Math.floor(Number(c.req.query("page") ?? 1)) || 1, 1);
+  const offset = (page - 1) * pageSize;
   const conds: Array<string> = [];
   const params: Array<string> = [];
   if (fwx) {
@@ -172,14 +175,18 @@ adminApp.get("/admin/messages", (c) => {
     params.push(`%${escapeLike(q)}%`);
   }
   const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
+  const totalRow = sqlite
+    .query(`SELECT COUNT(*) AS n FROM messages m ${where}`)
+    .get(...params) as { n: number };
+  const total = totalRow.n;
   const rows = sqlite
     .query(
       `SELECT m.id, m.wx_id AS wxId, m.content, m.timestamp,
               (SELECT COUNT(DISTINCT r.ip) FROM reads r WHERE r.id = m.id) AS reads
-       FROM messages m ${where} ORDER BY m.timestamp DESC LIMIT ?`,
+       FROM messages m ${where} ORDER BY m.timestamp DESC LIMIT ? OFFSET ?`,
     )
-    .all(...params, String(limit)) as Array<{ id: string; wxId: string; content: string; timestamp: string; reads: number }>;
-  return c.json(rows);
+    .all(...params, pageSize, offset) as Array<{ id: string; wxId: string; content: string; timestamp: string; reads: number }>;
+  return c.json({ rows, total, page, pageSize, totalPages: Math.max(1, Math.ceil(total / pageSize)) });
 });
 
 adminApp.delete("/admin/messages", (c) => {

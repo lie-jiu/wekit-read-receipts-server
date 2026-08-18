@@ -145,8 +145,8 @@ tr.expanded .expand-icon{transform:rotate(90deg)}
 
   <div id="secMsgs" class="hidden">
     <div class="controls">
-      <input id="fWxid" placeholder="Filter by wxId..." oninput="loadMsgs()" data-i18n="fWxidPlaceholder" data-i18n-placeholder/>
-      <input id="fContent" placeholder="Filter by message text..." oninput="loadMsgs()" data-i18n="fContentPlaceholder" data-i18n-placeholder/>
+      <input id="fWxid" placeholder="Filter by wxId..." oninput="resetMsgPage()" data-i18n="fWxidPlaceholder" data-i18n-placeholder/>
+      <input id="fContent" placeholder="Filter by message text..." oninput="resetMsgPage()" data-i18n="fContentPlaceholder" data-i18n-placeholder/>
       <span class="sep">|</span>
       <input id="fDelWxid" placeholder="wxId to wipe all its data" data-i18n="fDelWxidPlaceholder" data-i18n-placeholder/>
       <button class="btn btn-danger btn-sm" onclick="askClearUser()" data-i18n="wipeUserData">Wipe user data</button>
@@ -157,6 +157,7 @@ tr.expanded .expand-icon{transform:rotate(90deg)}
         <thead><tr><th>wxId</th><th data-i18n="message">Message</th><th data-i18n="reads">Reads</th><th data-i18n="timestamp">Timestamp</th><th></th></tr></thead>
         <tbody id="msgTbody"></tbody>
       </table>
+      <div class="pagination" id="msgPagination"></div>
     </div>
   </div>
 
@@ -694,20 +695,85 @@ async function doDeleteUser(wxId) {
     loadUsers();
   } catch (e) { toast(t("networkError"), "error"); }
 }
+let msgPage = 1;
+let msgPageSize = 20;
+let msgTotalPages = 1;
+let msgTotal = 0;
+
+function resetMsgPage() {
+  msgPage = 1;
+  loadMsgs();
+}
+
+function goToMsgPage(p) {
+  if (p < 1 || p > msgTotalPages || p === msgPage) return;
+  msgPage = p;
+  loadMsgs();
+}
+
+function changeMsgPageSize(size) {
+  const n = parseInt(size, 10);
+  if (!Number.isFinite(n) || n < 1) return;
+  msgPageSize = n;
+  msgPage = 1;
+  loadMsgs();
+}
+
+function renderMsgPagination() {
+  const el = $("msgPagination");
+  if (!el) return;
+  if (msgTotal === 0) { el.innerHTML = ""; return; }
+
+  const buttons = [];
+  const prevDis = msgPage <= 1 ? " disabled" : "";
+  buttons.push('<button class="page-btn" onclick="goToMsgPage(' + (msgPage - 1) + ')"' + prevDis + ' aria-label="' + escAttr(t("prevPage")) + '">&laquo;</button>');
+
+  const addPageBtn = (p, label, cls) => {
+    const dis = p === msgPage ? " disabled" : "";
+    buttons.push('<button class="page-btn ' + (cls || "") + '" onclick="goToMsgPage(' + p + ')"' + dis + ">" + label + "</button>");
+  };
+  const addEllipsis = () => buttons.push('<span class="page-btn page-ellipsis">&hellip;</span>');
+
+  const pages = new Set([1, msgPage - 1, msgPage, msgPage + 1, msgTotalPages]);
+  const sorted = [...pages].filter((p) => p >= 1 && p <= msgTotalPages).sort((a, b) => a - b);
+  let prev = 0;
+  for (const p of sorted) {
+    if (p - prev > 1) addEllipsis();
+    addPageBtn(p, p, p === msgPage ? "page-active" : "");
+    prev = p;
+  }
+
+  const nextDis = msgPage >= msgTotalPages ? " disabled" : "";
+  buttons.push('<button class="page-btn" onclick="goToMsgPage(' + (msgPage + 1) + ')"' + nextDis + ' aria-label="' + escAttr(t("nextPage")) + '">&raquo;</button>');
+
+  const sizeOptions = [10, 20, 50, 100]
+    .map((n) => '<option value="' + n + '"' + (n === msgPageSize ? " selected" : "") + ">" + n + "</option>")
+    .join("");
+  const sizeSelect = '<span class="page-info">' + t("pageOf", msgPage, msgTotalPages) + '</span><span class="page-info">' + t("pageSizeLabel") + '</span><select class="page-size-select" onchange="changeMsgPageSize(this.value)">' + sizeOptions + "</select>";
+
+  el.innerHTML = buttons.join("") + sizeSelect;
+}
+
 async function loadMsgs() {
   try {
     const params = new URLSearchParams();
     const fwx = $("fWxid").value.trim(), fq = $("fContent").value.trim();
     if (fwx) params.set("wxId", fwx);
     if (fq) params.set("q", fq);
+    params.set("page", msgPage);
+    params.set("pageSize", msgPageSize);
     const qs = params.toString();
     const res = await fetch("/admin/messages" + (qs ? "?" + qs : ""));
     if (res.status === 401) { location.href = "/"; return; }
     if (!res.ok) { toast(t("loadMsgsFail"), "error"); return; }
     const data = await res.json();
-    $("msgCount").textContent = data.length;
-    $("msgTbody").innerHTML = data.length
-      ? data
+    const rows = data.rows || [];
+    msgTotal = data.total || 0;
+    msgTotalPages = data.totalPages || 1;
+    if (msgPage > msgTotalPages) msgPage = 1;
+    $("msgCount").textContent = msgTotal;
+    $("msgTbody").innerHTML = rows.length
+      ? rows
           .map(
             (r) =>
               "<tr>" +
@@ -720,6 +786,7 @@ async function loadMsgs() {
           )
           .join("")
       : '<tr class="empty-row"><td colspan="5">' + t("noMessages") + "</td></tr>";
+    renderMsgPagination();
   } catch (e) { toast(t("networkError"), "error"); }
   setLabels();
 }
@@ -732,6 +799,12 @@ async function doDeleteMsg(id) {
     const data = await res.json().catch(() => ({}));
     if (!res.ok) { toast(data.error || t("delMsgFail"), "error"); return; }
     toast(t("msgDeleted"), "success");
+    // 删除后若当前页可能变空，先回退一页再加载
+    if (msgPage > 1) {
+      const checkRes = await fetch("/admin/messages?page=" + msgPage + "&pageSize=" + msgPageSize);
+      const checkData = await checkRes.json().catch(() => ({}));
+      if (!checkData.rows || checkData.rows.length === 0) msgPage = Math.max(1, msgPage - 1);
+    }
     loadMsgs();
   } catch (e) { toast(t("networkError"), "error"); }
 }
@@ -878,12 +951,13 @@ async function toggleLatestMsgs(btn) {
   try {
     const wxId = btn.dataset.wxid;
     if (!wxId) { toast(t("enterWxid"), "error"); return; }
-    const res = await fetch("/admin/messages?wxId=" + encodeURIComponent(wxId) + "&limit=5");
+    const res = await fetch("/admin/messages?wxId=" + encodeURIComponent(wxId) + "&pageSize=5");
     if (res.status === 401) { location.href = "/"; return; }
     if (!res.ok) { toast(t("loadMsgsFail"), "error"); return; }
     const data = await res.json();
-    list.innerHTML = data.length
-      ? data
+    const rows = data.rows || [];
+    list.innerHTML = rows.length
+      ? rows
           .map(
             (r) =>
               '<div class="msg-list-item">' +
