@@ -402,7 +402,7 @@ export function accountPage(session) {
     </div>
 
     <script>
-      const ME = \${safeJson({ wxId: session.wxId, level: session.level })};
+      const ME = ${safeJson({ wxId: session.wxId, level: session.level })};
       const $ = (id) => document.getElementById(id);
       let lang = localStorage.getItem("lang") || "zh-CN";
       const translations = {
