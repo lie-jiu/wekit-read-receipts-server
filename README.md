@@ -47,6 +47,46 @@
 | 数据库 | SQLite (WAL) | schema 由手写原生 SQL + `PRAGMA user_version` 版本化迁移维护 |
 | 依赖 | `hono` | 极简依赖树 |
 
+## 项目结构
+
+```
+wekit-read-receipts-server/
+├── index.ts              # 服务入口：建表、挂载路由、启动监听、定时任务
+├── src/
+│   ├── app.ts            # Hono 聚合层：全局安全头/限流中间件，以 app.route 挂载子路由，导出 app
+│   ├── http-helpers.ts   # 公共 HTTP 辅助：parseBody、clampLimit、鉴权/归属校验等
+│   ├── config.ts         # 环境变量读取、安全头、限流档位、像素常量
+│   ├── db.ts             # SQLite 连接与版本化迁移（PRAGMA user_version）
+│   ├── auth.ts           # 密码哈希/验证、会话（Cookie）签发与审计
+│   ├── geo.ts            # IP 地理解析（双语降级）、运营商分类、结果缓存
+│   ├── levels.ts         # 等级权益公式引擎（x*…/min/max/pow…）与 .env 读写
+│   ├── rate-limit.ts     # per-IP 固定窗口限流 + 可信代理 IP 解析
+│   ├── stats.ts          # 统计表增量回填、每日清理
+│   ├── utils.ts          # 通用工具（utcNow/校验/脱敏/哈希）
+│   ├── routes/           # 按业务职责拆分的子路由模块
+│   │   ├── tracking.ts   # /pixel、/count、/register 客户端打点
+│   │   ├── auth.ts       # /auth/*、/login 认证与会话
+│   │   ├── messages.ts   # /、/messages 仪表盘与消息管理
+│   │   ├── reads.ts      # /reads/:id 已读详情与按需 IP 定位
+│   │   ├── stats.ts      # /leaderboard、/rank 排行榜
+│   │   └── admin.ts      # /admin/* 管理后台
+│   └── pages/            # 前端页面 HTML/JS
+└── scripts/
+    ├── manage.ts         # 管理 CLI 入口（bun run manage <cmd>）
+    ├── mkuser.ts         # 快速创建/重置用户
+    ├── backfill-isp.ts   # 补全存量运营商双语短名
+    ├── migrate-d1.ts     # 从 Cloudflare D1 迁移
+    └── manage/           # CLI 实现按职责拆分
+        ├── cli.ts        # 命令分发与帮助文本
+        ├── platform.ts   # 跨平台工具（run/systemctl/portOpen/启动脚本）
+        ├── service.ts    # 服务控制（install/uninstall/start/stop/restart/status）
+        ├── env.ts        # .env 读写
+        ├── users.ts      # 用户管理
+        └── levels.ts     # 等级权益公式管理
+```
+
+> 限流中间件（`/auth/*`、`/reads/:id/geo`、`/admin/*`）统一在 `app.ts` 顶层注册，子路由模块不重复挂载；`/register` 打点限流在 `routes/tracking.ts` 内直接调用。
+
 ## 快速开始
 
 ```bash
