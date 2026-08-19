@@ -2436,6 +2436,8 @@ export function readDetailsPage(session, meta) {
         isOwner: meta.isOwner === true,
         isPublic: meta.isPublic === true,
       })};
+      // 浏览器端管理权限判定（与服务端 canManage 一致）：消息发布者本人或管理员
+      const CAN_MANAGE = ME.isAdmin === true || DETAIL.isOwner === true;
       const readTbody = document.getElementById("readTbody");
       const readCount = document.getElementById("readCount");
       const pageInfoEl = document.getElementById("pageInfo");
@@ -2583,7 +2585,7 @@ export function readDetailsPage(session, meta) {
         updatePublicBtn();
         setLabels();
         renderPageInfo();
-        if (canManage) loadBlocks();
+        if (CAN_MANAGE) loadBlocks();
         loadData();
       }
 
@@ -2954,7 +2956,7 @@ export function readDetailsPage(session, meta) {
       updateGeoChip();
       applyI18n();
       updatePublicBtn();
-      if (canManage) loadBlocks();
+      if (CAN_MANAGE) loadBlocks();
       loadData();
     </script>
   </body>
