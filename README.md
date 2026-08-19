@@ -30,6 +30,7 @@
 - **等级权益公式**：消息保留条数 / IP 定位次数 / 保留时长均由表达式配置，`x` 代表等级
 - **FTS5 全文搜索**：trigram 分词，支持消息内容快速检索
 - **管理后台**：用户管理、等级调整、权益公式在线编辑、消息管理（`level 0` = 仅禁止注册新消息）
+- **公开消息详情**：发布者本人/管理员可把单条消息详情设为公开（默认关闭）；公开后任何人（含未登录用户）可查看该消息已读明细，未公开消息仅本人与管理员可见
 - **IP 黑名单**：全局（仅管理员，admin 后台唯一入口）/ 单条消息 / 账户三级黑名单；已读详情接口在服务端直接过滤黑名单行（API 响应不返回其 IP/定位/时间数据，仅返回隐藏条数；数据库记录保留不删除）；注册消息自动将来源 IP 写入该消息黑名单；独立账户设置页 `/account` 集中管理账户黑名单与修改密码 / 退出登录 / 清除我的
 - **多形态部署**：反向代理 / 公网直连 / Cloudflare Tunnel，内置 HTTPS 支持
 - **跨平台自启**：Linux systemd、Windows 启动文件夹 + 隐藏窗口、无 systemd 回退 nohup
@@ -120,7 +121,8 @@ ADMIN=wxid_admin bun run dev              # 管理员权限来自 ADMIN 环境�
 | `/login`、`/auth/verify`、`/auth/register`、`/auth/logout`、`/auth/password`、`/auth/status` | 会话管理（30 天；HTTPS 下 `__Host-session` + Secure，HTTP 直连自动降级为普通 cookie） |
 | `/` | 用户仪表盘：消息搜索（FTS5 trigram）、读取明细、删除 |
 | `/messages`、`DELETE /messages` | 本人消息列表 / 清空 |
-| `/reads/:id` | 单条消息读取明细（IP、UA、时间）；`GET /reads/:id/data` 在服务端过滤黑名单 IP 行（响应不含其数据，仅返回 `blockedCount` 隐藏条数与 `visibleTotal` 可见分页数） |
+| `/reads/:id` | 单条消息读取明细（IP、UA、时间）；`GET /reads/:id/data` 在服务端过滤黑名单 IP 行（响应不含其数据，仅返回 `blockedCount` 隐藏条数与 `visibleTotal` 可见分页数）；`DELETE /reads/:id` 删除该消息（发布者本人或管理员，同事务清理 reads）；`POST /reads/:id/public` 切换公开详情（发布者本人或管理员，默认关闭） |
+| `/reads/:id` 公开详情 | `is_public=1` 时任何人（含未登录用户）均可只读访问详情页与 `/reads/:id/data`（黑名单过滤仍生效）；未公开时仅发布者本人与管理员可见，未登录跳转登录页。匿名访客隐藏删除/公开开关/IP 黑名单等管理功能 |
 | `GET/POST/DELETE /reads/:id/block` | 单条消息 IP 黑名单（消息所有者）；`POST` 支持 `{ ip }` 自定义或 `{ "action": "current" }` 一键拉黑当前访问 IP |
 | `/account`、`GET/POST/DELETE /account/ip-block` | 独立账户设置页：账户 IP 黑名单（跨本人全部消息生效，仅自定义添加，无一键拉黑）+ 修改密码 / 退出登录 / 清除我的（自首页迁移） |
 | `GET/POST/DELETE /admin/ip-block` | 全局 IP 黑名单（仅管理员，唯一入口位于管理后台页签；仅支持自定义 IP，无一键拉黑） |

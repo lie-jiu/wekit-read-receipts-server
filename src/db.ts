@@ -141,6 +141,10 @@ CREATE TABLE ip_block_account (
   PRIMARY KEY (wx_id, ip)
 ) STRICT;
 `,
+  /* v7：消息详情公开开关——is_public=1 时未登录/非 owner 也可查看详情与已读分页（只读），默认关闭 */
+  `
+ALTER TABLE messages ADD COLUMN is_public INTEGER NOT NULL DEFAULT 0 CHECK (is_public IN (0,1));
+`,
 ];
 
 export const sqlite = new Database(DB_PATH, { create: true });

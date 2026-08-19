@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { CSP, ENABLE_GEO, geoQuotaFor } from "../config";
-import { audit, getSessionUser, requireUser } from "../auth";
+import { audit, requireUser } from "../auth";
 import { sqlite } from "../db";
 import { lookupIpLocation } from "../geo";
 import { clientIp, isValidIp } from "../rate-limit";
@@ -9,6 +9,7 @@ import {
   clampLimit,
   emptyReadRow,
   geoUsedToday,
+  publicReadOr,
   readRow,
   readsMessageOr,
   type ReadRow,
@@ -19,27 +20,34 @@ import { readDetailsPage } from "../pages";
 export const readsApp = new Hono();
 
 readsApp.get("/reads/:id", (c) => {
-  const user = getSessionUser(c);
-  if (!user) return c.redirect("/login");
   const id = c.req.param("id");
-  const msg = sqlite
-    .query("SELECT wx_id, content FROM messages WHERE id = ?")
-    .get(id) as { wx_id: string; content: string } | undefined;
-  if (!msg) return c.json({ error: "not found" }, 404);
-  if (msg.wx_id !== user.wxId) return c.json({ error: "forbidden" }, 403);
+  const access = publicReadOr(c, id);
+  if (access instanceof Response) {
+    // 未登录访问私有消息 → 跳登录页（与历史行为一致）；已登录但越权 → 403 JSON
+    if (access.status === 401) return c.redirect("/login");
+    return access;
+  }
+  const { msg, anon, user } = access;
   c.header("Content-Security-Policy", CSP.DASHBOARD);
   c.header("Content-Type", "text/html; charset=utf-8");
-  return c.body(
-    readDetailsPage(
-      {
-        wxId: user.wxId,
-        level: user.level,
+  // 匿名公开访问：不注入登录信息，前端据此隐藏删除/公开/黑名单等管理 UI
+  const session = anon
+    ? { wxId: "", level: 0, isAdmin: false, geo: false, geoQuota: 0, geoRemaining: 0 }
+    : {
+        wxId: user!.wxId,
+        level: user!.level,
+        isAdmin: user!.isAdmin,
         geo: ENABLE_GEO,
-        geoQuota: geoQuotaFor(user.level),
-        geoRemaining: Math.max(0, geoQuotaFor(user.level) - geoUsedToday(user)),
-      },
-      { id, content: msg.content },
-    ),
+        geoQuota: geoQuotaFor(user!.level),
+        geoRemaining: Math.max(0, geoQuotaFor(user!.level) - geoUsedToday(user!)),
+      };
+  return c.body(
+    readDetailsPage(session, {
+      id,
+      content: msg.content,
+      isOwner: !anon && msg.wx_id === user!.wxId,
+      isPublic: msg.is_public === 1,
+    }),
   );
 });
 
@@ -68,20 +76,17 @@ function blockSetFor(id: string, ownerWxId: string | null): Set<string> {
  * 黑名单 IP 行在后端直接过滤，API 响应不返回其任何数据（仅返回 blockedCount 数字）。 */
 readsApp.get("/reads/:id/data", (c) => {
   const id = c.req.param("id");
-  const denied = readsMessageOr(c, id);
-  if (denied) return denied;
-  const user = requireUser(c)!;
+  const access = publicReadOr(c, id);
+  if (access instanceof Response) return access;
+  const { msg, user } = access;
   const page = Math.max(Math.floor(Number(c.req.query("page") ?? 1)) || 1, 1);
   const pageSize = clampLimit(Number(c.req.query("pageSize") ?? 50), 1, 200);
   const offset = (page - 1) * pageSize;
   const { total } = sqlite
     .query("SELECT COUNT(*) AS total FROM reads WHERE id = ?")
     .get(id) as { total: number };
-  const msg = sqlite
-    .query("SELECT content, wx_id FROM messages WHERE id = ?")
-    .get(id) as { content: string; wx_id: string };
-  // 账户黑名单仅在查看者为消息 owner 时参与判定（本接口仅 owner 可达，msg.wx_id 即 owner）
-  const ownerWxId = msg.wx_id === user.wxId ? user.wxId : null;
+  // 账户黑名单仅在查看者为消息 owner 时参与判定（公开消息的匿名访客不应用 owner 的账户黑名单）
+  const ownerWxId = user && msg.wx_id === user.wxId ? user.wxId : null;
   const blockedSet = blockSetFor(id, ownerWxId);
   // blockedCount 基于全量 reads 计算，不能用分页行数推算
   let blockedCount = 0;
@@ -111,6 +116,50 @@ readsApp.get("/reads/:id/data", (c) => {
     pageSize,
     reads: rows.map(readRow),
   });
+});
+
+/* ── 删除消息（消息所有者或管理员；管理员可删任意消息，注册用户仅可删自己发布的消息） ── */
+
+readsApp.delete("/reads/:id", (c) => {
+  const user = requireUser(c);
+  if (!user) return c.json({ error: "unauthorized" }, 401);
+  const id = c.req.param("id");
+  if (!isValidId(id)) return c.json({ error: "invalid id" }, 400);
+  const msg = sqlite
+    .query("SELECT wx_id FROM messages WHERE id = ?")
+    .get(id) as { wx_id: string } | undefined;
+  if (!msg) return c.json({ error: "not found" }, 404);
+  if (msg.wx_id !== user.wxId && !user.isAdmin) return c.json({ error: "forbidden" }, 403);
+  sqlite.transaction(() => {
+    sqlite.query("DELETE FROM reads WHERE id = ?").run(id);
+    sqlite.query("DELETE FROM messages WHERE id = ?").run(id);
+  })();
+  audit(user.wxId, "delete_message", id, clientIp(c));
+  return c.json({ ok: true });
+});
+
+/* ── 公开消息详情开关（消息所有者或管理员；默认关闭，开启后所有人含未登录用户均可访问只读详情） ── */
+
+readsApp.post("/reads/:id/public", async (c) => {
+  const user = requireUser(c);
+  if (!user) return c.json({ error: "unauthorized" }, 401);
+  const id = c.req.param("id");
+  if (!isValidId(id)) return c.json({ error: "invalid id" }, 400);
+  let body: { public?: unknown };
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: "invalid JSON" }, 400);
+  }
+  const pub = body.public === 1 || body.public === true || body.public === "1" ? 1 : 0;
+  const msg = sqlite
+    .query("SELECT wx_id FROM messages WHERE id = ?")
+    .get(id) as { wx_id: string } | undefined;
+  if (!msg) return c.json({ error: "not found" }, 404);
+  if (msg.wx_id !== user.wxId && !user.isAdmin) return c.json({ error: "forbidden" }, 403);
+  sqlite.query("UPDATE messages SET is_public = ? WHERE id = ?").run(pub, id);
+  audit(user.wxId, "message_set_public", `${id} ${pub}`, clientIp(c));
+  return c.json({ ok: true, public: pub === 1 });
 });
 
 /* ── 单条消息 IP 黑名单（消息所有者；仅此维度支持一键拉黑当前访问 IP） ── */

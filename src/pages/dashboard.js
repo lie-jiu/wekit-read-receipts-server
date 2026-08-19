@@ -1713,6 +1713,9 @@ export function leaderboardPage(session) { return `<!doctype html>
 `; }
 
 export function readDetailsPage(session, meta) {
+  // 管理权限：消息发布者本人或管理员；匿名公开访问时两者均为 false
+  const canManage = session.isAdmin === true || meta.isOwner === true;
+  const isPublic = meta.isPublic === true;
   return `<!doctype html>
 <html lang="en">
   <head>
@@ -2136,6 +2139,67 @@ export function readDetailsPage(session, meta) {
           opacity 0.3s,
           transform 0.3s;
       }
+      .hidden {
+        display: none !important;
+      }
+      /* modal confirm（删除确认） */
+      .modal-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 200;
+        background: rgba(0, 0, 0, 0.6);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        animation: modal-fade-in 0.15s ease-out;
+      }
+      @keyframes modal-fade-in {
+        from {
+          opacity: 0;
+        }
+        to {
+          opacity: 1;
+        }
+      }
+      .modal {
+        background: #1e293b;
+        border: 1px solid #334155;
+        border-radius: 12px;
+        padding: 1.5rem;
+        max-width: 400px;
+        width: 90%;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+      }
+      .modal h3 {
+        font-size: 1.1rem;
+        font-weight: 600;
+        color: #f1f5f9;
+        margin-bottom: 0.5rem;
+      }
+      .modal p {
+        font-size: 0.875rem;
+        color: #94a3b8;
+        margin-bottom: 1.25rem;
+        line-height: 1.5;
+        overflow-wrap: anywhere;
+        white-space: pre-wrap;
+        max-height: 180px;
+        overflow-y: auto;
+      }
+      .modal .actions {
+        display: flex;
+        gap: 0.5rem;
+        justify-content: flex-end;
+      }
+      /* 公开详情开关（开启态高亮） */
+      .public-on {
+        background: #059669;
+        color: #fff;
+        border: 1px solid #059669;
+      }
+      .public-on:hover {
+        background: #047857;
+      }
       @keyframes toast-in {
         from {
           opacity: 0;
@@ -2257,6 +2321,19 @@ export function readDetailsPage(session, meta) {
         .toast {
           max-width: 100%;
         }
+        .modal {
+          max-width: 94vw;
+          width: 94vw;
+          padding: 1.25rem;
+        }
+        .modal .actions {
+          flex-direction: column-reverse;
+        }
+        .modal .actions .btn {
+          width: 100%;
+          justify-content: center;
+          min-height: 44px;
+        }
       }
     </style>
   </head>
@@ -2272,13 +2349,18 @@ export function readDetailsPage(session, meta) {
           <div class="msg-preview" id="msgPreview"></div>
         </div>
         <div class="flex">
-          <span class="user-chip" id="userChip"></span>
-          <a class="btn btn-outline btn-sm" href="/account" data-i18n="accountSettings">Account Settings</a>
+          ${session.wxId ? '<span class="user-chip" id="userChip"></span>' : ""}
+          ${canManage
+            ? `<button class="btn ${isPublic ? "public-on" : "btn-outline"} btn-sm" id="publicToggle" onclick="togglePublic()"></button>
+          <button class="btn btn-danger btn-sm" id="deleteMsgBtn" onclick="showDeleteConfirm()" data-i18n="deleteMessage">Delete</button>`
+            : ""}
+          ${session.wxId ? '<a class="btn btn-outline btn-sm" href="/account" data-i18n="accountSettings">Account Settings</a>' : ""}
           <button class="lang-toggle" onclick="toggleLang()">中 / EN</button>
         </div>
       </div>
 
-      <div class="card">
+      ${canManage
+        ? `<div class="card">
         <div class="card-title" data-i18n="msgIpBlacklist">Message IP Blacklist</div>
         <div class="card-hint" data-i18n="msgBlacklistHint">Blacklisted IPs are filtered out by the read details API and never returned (records kept in database).</div>
         <div class="ip-list" id="blockIpList"></div>
@@ -2287,7 +2369,8 @@ export function readDetailsPage(session, meta) {
           <button class="btn btn-primary" onclick="addBlockIp()" data-i18n="addToBlacklist">Add to Blacklist</button>
           <button class="btn btn-secondary" onclick="blockCurrentIp()" data-i18n="blockMyIp">Block My IP</button>
         </div>
-      </div>
+      </div>`
+        : ""}
 
       <div class="table-card">
         <div class="stats">
@@ -2317,6 +2400,20 @@ export function readDetailsPage(session, meta) {
       </div>
     </div>
 
+    ${canManage
+      ? `
+    <div id="confirmModal" class="modal-overlay hidden">
+      <div class="modal">
+        <h3 data-i18n="confirmDelete">Delete this message?</h3>
+        <p id="confirmDeleteBody"></p>
+        <div class="actions">
+          <button class="btn btn-secondary" onclick="closeDeleteConfirm()" data-i18n="cancel">Cancel</button>
+          <button class="btn btn-danger" id="confirmDeleteBtn" onclick="doDeleteMessage()" data-i18n="delete">Delete</button>
+        </div>
+      </div>
+    </div>
+    ` : ""}
+
     <a class="repo-footer" href="https://github.com/lie-jiu/wekit-read-receipts-server" target="_blank" rel="noopener noreferrer" aria-label="GitHub repository">
       <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.012 8.012 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
       <span>lie-jiu · GitHub</span>
@@ -2328,11 +2425,17 @@ export function readDetailsPage(session, meta) {
       const ME = ${safeJson({
         wxId: session.wxId,
         level: session.level,
+        isAdmin: session.isAdmin === true,
         geo: session.geo === true,
         geoQuota: session.geoQuota || 0,
         geoRemaining: session.geoRemaining || 0,
       })};
-      const DETAIL = ${safeJson({ id: meta.id, content: meta.content })};
+      const DETAIL = ${safeJson({
+        id: meta.id,
+        content: meta.content,
+        isOwner: meta.isOwner === true,
+        isPublic: meta.isPublic === true,
+      })};
       const readTbody = document.getElementById("readTbody");
       const readCount = document.getElementById("readCount");
       const pageInfoEl = document.getElementById("pageInfo");
@@ -2386,6 +2489,18 @@ export function readDetailsPage(session, meta) {
           removeFailed: "移除失败",
           loadFailed: "加载失败",
           hiddenCount: "已过滤 {0} 条黑名单 IP（接口不返回）",
+          deleteMessage: "删除消息",
+          confirmDelete: "删除这条消息？",
+          confirmDeleteBody: "将永久删除这条消息及其全部已读记录，此操作不可撤销。",
+          cancel: "取消",
+          delete: "删除",
+          deleteSuccess: "消息已删除",
+          deleteFailed: "删除失败",
+          makePublicOn: "公开详情：开",
+          makePublicOff: "公开详情：关",
+          publicHint: "开启后任何人（含未登录用户）都能查看此消息详情",
+          publicUpdated: "公开状态已更新",
+          publicUpdateFailed: "更新公开状态失败",
         },
         en: {
           title: "Read Details",
@@ -2425,6 +2540,19 @@ export function readDetailsPage(session, meta) {
           removeFailed: "Failed to remove",
           loadFailed: "Failed to load",
           hiddenCount: "{0} blacklisted IPs filtered (not returned)",
+          deleteMessage: "Delete",
+          confirmDelete: "Delete this message?",
+          confirmDeleteBody:
+            "This will permanently delete this message and all of its read records. This action cannot be undone.",
+          cancel: "Cancel",
+          delete: "Delete",
+          deleteSuccess: "Message deleted",
+          deleteFailed: "Failed to delete",
+          makePublicOn: "Public: On",
+          makePublicOff: "Public: Off",
+          publicHint: "When enabled, anyone (including guests) can view this message's details",
+          publicUpdated: "Public status updated",
+          publicUpdateFailed: "Failed to update public status",
         },
       };
 
@@ -2452,9 +2580,10 @@ export function readDetailsPage(session, meta) {
         lang = lang === "zh-CN" ? "en" : "zh-CN";
         localStorage.setItem("lang", lang);
         applyI18n();
+        updatePublicBtn();
         setLabels();
         renderPageInfo();
-        loadBlocks();
+        if (canManage) loadBlocks();
         loadData();
       }
 
@@ -2515,7 +2644,9 @@ export function readDetailsPage(session, meta) {
       }
 
       function updateGeoChip() {
-        document.getElementById("userChip").textContent =
+        const el = document.getElementById("userChip");
+        if (!el) return;
+        el.textContent =
           ME.wxId + " · Lv" + ME.level + (ME.geo ? " · " + t("geoRemain", ME.geoRemaining) : "");
       }
 
@@ -2754,11 +2885,76 @@ export function readDetailsPage(session, meta) {
         }
       }
 
+      /* ── 公开详情开关（owner 或管理员可切换；默认关闭） ── */
+      function updatePublicBtn() {
+        const btn = document.getElementById("publicToggle");
+        if (!btn) return;
+        btn.textContent = DETAIL.isPublic ? t("makePublicOn") : t("makePublicOff");
+        btn.title = t("publicHint");
+        btn.classList.toggle("public-on", DETAIL.isPublic);
+        btn.classList.toggle("btn-outline", !DETAIL.isPublic);
+      }
+
+      async function togglePublic() {
+        const btn = document.getElementById("publicToggle");
+        if (!btn || btn.disabled) return;
+        btn.disabled = true;
+        const next = !DETAIL.isPublic;
+        try {
+          const res = await fetch("/reads/" + encodeURIComponent(DETAIL.id) + "/public", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ public: next }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (res.status === 401) { location.href = "/"; return; }
+          if (!res.ok) throw new Error(data.error || "HTTP " + res.status);
+          DETAIL.isPublic = data.public === true;
+          updatePublicBtn();
+          toast(t("publicUpdated"), "success");
+        } catch (e) {
+          toast(t("publicUpdateFailed") + ": " + e.message, "error");
+        } finally {
+          btn.disabled = false;
+        }
+      }
+
+      /* ── 删除消息（owner 或管理员；确认弹窗防误删） ── */
+      function showDeleteConfirm() {
+        document.getElementById("confirmDeleteBody").textContent =
+          t("confirmDeleteBody") + "\n\n" + DETAIL.content;
+        document.getElementById("confirmModal").classList.remove("hidden");
+        document.getElementById("confirmDeleteBtn").disabled = false;
+      }
+
+      function closeDeleteConfirm() {
+        document.getElementById("confirmModal").classList.add("hidden");
+        document.getElementById("confirmDeleteBtn").disabled = false;
+      }
+
+      async function doDeleteMessage() {
+        const btn = document.getElementById("confirmDeleteBtn");
+        if (btn.disabled) return;
+        btn.disabled = true;
+        try {
+          const res = await fetch("/reads/" + encodeURIComponent(DETAIL.id), { method: "DELETE" });
+          const data = await res.json().catch(() => ({}));
+          if (res.status === 401) { location.href = "/"; return; }
+          if (!res.ok) throw new Error(data.error || "HTTP " + res.status);
+          toast(t("deleteSuccess"), "success");
+          setTimeout(() => { location.href = "/"; }, 600);
+        } catch (e) {
+          toast(t("deleteFailed") + ": " + e.message, "error");
+          btn.disabled = false;
+        }
+      }
+
       /* ── init ── */
       document.getElementById("msgPreview").textContent = t("readsFor", DETAIL.content);
       updateGeoChip();
       applyI18n();
-      loadBlocks();
+      updatePublicBtn();
+      if (canManage) loadBlocks();
       loadData();
     </script>
   </body>

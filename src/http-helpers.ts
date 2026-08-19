@@ -86,6 +86,24 @@ export function readsMessageOr(c: Context, id: string): Response | null {
   return null;
 }
 
+/** 已读详情的公开访问归属：公开消息（is_public=1）放行匿名只读；私有消息要求登录且 owner 或 admin。
+ * 返回消息记录（含 wx_id/content/is_public）、anon 标志（是否为匿名公开访问）与已登录用户（匿名时 null），非法时给出错误响应。 */
+export function publicReadOr(
+  c: Context,
+  id: string,
+): { msg: { wx_id: string; content: string; is_public: number }; anon: boolean; user: SessionUser | null } | Response {
+  if (!isValidId(id)) return c.json({ error: "invalid id" }, 400);
+  const msg = sqlite
+    .query("SELECT wx_id, content, is_public FROM messages WHERE id = ?")
+    .get(id) as { wx_id: string; content: string; is_public: number } | undefined;
+  if (!msg) return c.json({ error: "not found" }, 404);
+  if (msg.is_public === 1) return { msg, anon: true, user: null };
+  const user = requireUser(c);
+  if (!user) return c.json({ error: "unauthorized" }, 401);
+  if (msg.wx_id !== user.wxId && !user.isAdmin) return c.json({ error: "forbidden" }, 403);
+  return { msg, anon: false, user };
+}
+
 /** 当日 IP 定位已用次数：geo_date 与今日（UTC）不一致则视为 0（惰性跨天归零） */
 export function geoUsedToday(user: SessionUser): number {
   return user.geoDate === utcDate() ? user.geoCount : 0;
