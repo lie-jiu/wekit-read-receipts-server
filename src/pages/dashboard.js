@@ -2922,7 +2922,7 @@ export function readDetailsPage(session, meta) {
       /* ── 删除消息（owner 或管理员；确认弹窗防误删） ── */
       function showDeleteConfirm() {
         document.getElementById("confirmDeleteBody").textContent =
-          t("confirmDeleteBody") + "\n\n" + DETAIL.content;
+          t("confirmDeleteBody") + "\\n\\n" + DETAIL.content;
         document.getElementById("confirmModal").classList.remove("hidden");
         document.getElementById("confirmDeleteBtn").disabled = false;
       }
