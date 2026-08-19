@@ -2081,8 +2081,9 @@ export function readDetailsPage(session, meta) {
         font-family: ui-monospace, "Cascadia Code", "JetBrains Mono", monospace;
       }
       .repo-footer {
-        display: inline-flex;
+        display: flex;
         align-items: center;
+        justify-content: center;
         gap: 0.45rem;
         margin-top: 2rem;
         color: #475569;
@@ -2467,6 +2468,7 @@ export function readDetailsPage(session, meta) {
           ipv6NoGeo: "IPv6 不支持定位",
           geoQuotaExhausted: "今日定位次数已用完",
           geoRemain: "定位剩余 {0} 次",
+          loginRequired: "未登录，请先登录",
           noReads: "暂无读取记录",
           loading: "加载中...",
           networkError: "网络错误",
@@ -2518,6 +2520,7 @@ export function readDetailsPage(session, meta) {
           ipv6NoGeo: "IPv6 not supported",
           geoQuotaExhausted: "Daily locate quota used up",
           geoRemain: "Locate left {0}",
+          loginRequired: "Please log in first",
           noReads: "No reads yet",
           loading: "Loading...",
           networkError: "Network error",
@@ -2654,6 +2657,10 @@ export function readDetailsPage(session, meta) {
 
       async function locateRead(btn) {
         if (btn.disabled) return;
+        if (!ME.wxId) {
+          toast(t("loginRequired"), "error");
+          return;
+        }
         btn.disabled = true;
         const id = btn.dataset.id;
         const original = btn.textContent;
@@ -2711,7 +2718,7 @@ export function readDetailsPage(session, meta) {
             const isV6 = r.ip.indexOf(":") !== -1;
             const cell = r.located
               ? '<span class="loc-text">' + esc(parts.join(" ") || t("noGeo")) + "</span>"
-              : ME.geo && !isV6 && ME.geoRemaining > 0
+              : ME.geo && !isV6 && (!ME.wxId || ME.geoRemaining > 0)
                 ? '<button class="btn btn-outline btn-sm" data-id="' +
                   DETAIL.id +
                   '" data-ip="' +
@@ -2724,7 +2731,7 @@ export function readDetailsPage(session, meta) {
                     t(
                       isV6
                         ? "ipv6NoGeo"
-                        : ME.geo && ME.geoRemaining <= 0
+                        : ME.wxId && ME.geoRemaining <= 0
                           ? "geoQuotaExhausted"
                           : "noGeo",
                     ),

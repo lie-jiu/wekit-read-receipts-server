@@ -27,25 +27,25 @@ readsApp.get("/reads/:id", (c) => {
     if (access.status === 401) return c.redirect("/login");
     return access;
   }
-  const { msg, anon, user } = access;
+  const { msg, user } = access;
   c.header("Content-Security-Policy", CSP.DASHBOARD);
   c.header("Content-Type", "text/html; charset=utf-8");
-  // 匿名公开访问：不注入登录信息，前端据此隐藏删除/公开/黑名单等管理 UI
-  const session = anon
-    ? { wxId: "", level: 0, isAdmin: false, geo: false, geoQuota: 0, geoRemaining: 0 }
-    : {
-        wxId: user!.wxId,
-        level: user!.level,
-        isAdmin: user!.isAdmin,
+  // 匿名公开访问：不注入登录信息，前端据此隐藏删除/公开/黑名单等管理 UI；geo 置为 ENABLE_GEO 以便渲染定位按钮（点击后前端提示登录）
+  const session = user
+    ? {
+        wxId: user.wxId,
+        level: user.level,
+        isAdmin: user.isAdmin,
         geo: ENABLE_GEO,
-        geoQuota: geoQuotaFor(user!.level),
-        geoRemaining: Math.max(0, geoQuotaFor(user!.level) - geoUsedToday(user!)),
-      };
+        geoQuota: geoQuotaFor(user.level),
+        geoRemaining: Math.max(0, geoQuotaFor(user.level) - geoUsedToday(user)),
+      }
+    : { wxId: "", level: 0, isAdmin: false, geo: ENABLE_GEO, geoQuota: 0, geoRemaining: 0 };
   return c.body(
     readDetailsPage(session, {
       id,
       content: msg.content,
-      isOwner: !anon && msg.wx_id === user!.wxId,
+      isOwner: !!user && msg.wx_id === user.wxId,
       isPublic: msg.is_public === 1,
     }),
   );
@@ -232,9 +232,14 @@ readsApp.post("/reads/:id/geo", async (c) => {
     return c.json({ error: "invalid ip" }, 400);
   }
 
-  const msg = sqlite.query("SELECT wx_id FROM messages WHERE id = ?").get(id) as { wx_id: string } | undefined;
+  const msg = sqlite
+    .query("SELECT wx_id, is_public FROM messages WHERE id = ?")
+    .get(id) as { wx_id: string; is_public: number } | undefined;
   if (!msg) return c.json({ error: "not found" }, 404);
-  if (msg.wx_id !== user.wxId && !user.isAdmin) return c.json({ error: "forbidden" }, 403);
+  // 公开消息：任意登录用户可按需定位（消耗访问者自己的配额）；私有消息仅 owner/admin
+  if (msg.wx_id !== user.wxId && !user.isAdmin && msg.is_public !== 1) {
+    return c.json({ error: "forbidden" }, 403);
+  }
   // 黑名单 IP 的定位数据同样不返回（与 /data 过滤策略一致）
   if (blockSetFor(id, msg.wx_id === user.wxId ? user.wxId : null).has(ip)) {
     return c.json({ error: "not found" }, 404);

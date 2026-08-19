@@ -1,5 +1,5 @@
 import type { Context } from "hono";
-import { requireAdmin, requireUser } from "./auth";
+import { getSessionUser, requireAdmin, requireUser } from "./auth";
 import type { SessionUser } from "./auth";
 import { sqlite } from "./db";
 import { isValidId, utcDate } from "./utils";
@@ -86,7 +86,7 @@ export function readsMessageOr(c: Context, id: string): Response | null {
   return null;
 }
 
-/** 已读详情的公开访问归属：公开消息（is_public=1）放行匿名只读；私有消息要求登录且 owner 或 admin。
+/** 已读详情的公开访问归属：公开消息（is_public=1）放行匿名只读；已登录用户（含 owner/admin 与其他登录用户）保留会话。
  * 返回消息记录（含 wx_id/content/is_public）、anon 标志（是否为匿名公开访问）与已登录用户（匿名时 null），非法时给出错误响应。 */
 export function publicReadOr(
   c: Context,
@@ -97,7 +97,12 @@ export function publicReadOr(
     .query("SELECT wx_id, content, is_public FROM messages WHERE id = ?")
     .get(id) as { wx_id: string; content: string; is_public: number } | undefined;
   if (!msg) return c.json({ error: "not found" }, 404);
-  if (msg.is_public === 1) return { msg, anon: true, user: null };
+  if (msg.is_public === 1) {
+    // 公开消息：已登录用户（无论是否为 owner/admin）保留会话以便按访问者扣定位配额；仅真正匿名才按匿名只读处理
+    const user = getSessionUser(c);
+    if (user) return { msg, anon: false, user };
+    return { msg, anon: true, user: null };
+  }
   const user = requireUser(c);
   if (!user) return c.json({ error: "unauthorized" }, 401);
   if (msg.wx_id !== user.wxId && !user.isAdmin) return c.json({ error: "forbidden" }, 403);
