@@ -39,7 +39,7 @@ td{border-bottom:1px solid #1e293b;color:#cbd5e1}
 tr:last-child td{border-bottom:none}
 tr:hover td{background:#0f172a80}
 .uuid-col{font-family:ui-monospace,"Cascadia Code","JetBrains Mono",monospace;font-size:.78rem;color:#60a5fa}
-.msg-col{max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.msg-col{max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer}
 .ts-col{color:#94a3b8;white-space:nowrap}
 .empty-row td{text-align:center;padding:2.5rem 1rem;color:#475569;font-size:.85rem}
 .pagination{display:flex;align-items:center;justify-content:center;gap:.35rem;flex-wrap:wrap;padding:.65rem 1rem;border-top:1px solid #334155;background:#0f172a}
@@ -95,7 +95,8 @@ tr:hover td{background:#0f172a80}
 .expand-icon{display:inline-block;transition:transform .2s ease}
 tr.expanded .expand-icon{transform:rotate(90deg)}
 .msg-list{margin-top:.75rem;border-top:1px solid #1e293b;padding-top:.6rem;display:flex;flex-direction:column;gap:.4rem}
-.msg-list-item{display:flex;flex-direction:column;gap:.15rem;padding:.5rem .65rem;background:#0f172a;border:1px solid #1e293b;border-radius:8px}
+.msg-list-item{display:flex;flex-direction:column;gap:.15rem;padding:.5rem .65rem;background:#0f172a;border:1px solid #1e293b;border-radius:8px;cursor:pointer;transition:border-color .15s,background .15s}
+.msg-list-item:hover{background:#111c33;border-color:#334155}
 .msg-list-content{font-size:.85rem;color:#cbd5e1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .msg-list-meta{display:flex;gap:.75rem;font-size:.72rem;color:#64748b}
 .msg-list-meta .reads{color:#059669;font-weight:600}
@@ -827,7 +828,7 @@ async function loadMsgs() {
             (r) =>
               "<tr>" +
               '<td class="uuid-col">' + esc(r.wxId) + "</td>" +
-              '<td class="msg-col" title="' + escAttr(r.content) + '">' + esc(r.content) + "</td>" +
+              '<td class="msg-col" data-id="' + escAttr(r.id) + '" onclick="location.href=\'/reads/\' + encodeURIComponent(\'' + escAttr(r.id) + '\')" title="' + escAttr(r.content) + '">' + esc(r.content) + "</td>" +
               "<td>" + esc(r.reads) + "</td>" +
               '<td class="ts-col">' + esc(fmtTs(r.timestamp)) + "</td>" +
               '<td><button class="btn btn-danger btn-sm act-del-msg" data-id="' + escAttr(r.id) + '">' + t("delete") + "</button></td>" +
@@ -1058,7 +1059,7 @@ async function toggleLatestMsgs(btn) {
       ? rows
           .map(
             (r) =>
-              '<div class="msg-list-item">' +
+              '<div class="msg-list-item" data-id="' + escAttr(r.id) + '" onclick="location.href=\'/reads/\' + encodeURIComponent(\'' + escAttr(r.id) + '\')">' +
               '<div class="msg-list-content" title="' + escAttr(r.content) + '">' + esc(r.content) + "</div>" +
               '<div class="msg-list-meta"><span class="reads">' + esc(r.reads) + " " + t("reads") + '</span><span class="ts-col">' + esc(fmtTs(r.timestamp)) + "</span></div>" +
               "</div>",
