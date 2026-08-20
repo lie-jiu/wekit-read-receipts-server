@@ -73,7 +73,7 @@ export function requireUserOr(c: Context): Response | null {
   return null;
 }
 
-/** 校验已读详情的访问归属：返回消息记录（含 content），非法时给出对应错误响应 */
+/** 校验单条消息 IP 黑名单的访问归属：消息所有者或管理员；非法时给出对应错误响应 */
 export function readsMessageOr(c: Context, id: string): Response | null {
   if (!isValidId(id)) return c.json({ error: "invalid id" }, 400);
   const msg = sqlite
@@ -82,7 +82,7 @@ export function readsMessageOr(c: Context, id: string): Response | null {
   if (!msg) return c.json({ error: "not found" }, 404);
   const user = requireUser(c);
   if (!user) return c.json({ error: "unauthorized" }, 401);
-  if (msg.wx_id !== user.wxId) return c.json({ error: "forbidden" }, 403);
+  if (msg.wx_id !== user.wxId && !user.isAdmin) return c.json({ error: "forbidden" }, 403);
   return null;
 }
 
