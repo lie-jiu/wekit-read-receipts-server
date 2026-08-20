@@ -828,7 +828,7 @@ async function loadMsgs() {
             (r) =>
               "<tr>" +
               '<td class="uuid-col">' + esc(r.wxId) + "</td>" +
-              '<td class="msg-col" data-id="' + escAttr(r.id) + '" onclick="location.href=\'/reads/\' + encodeURIComponent(\'' + escAttr(r.id) + '\')" title="' + escAttr(r.content) + '">' + esc(r.content) + "</td>" +
+              '<td class="msg-col" data-id="' + escAttr(r.id) + '" title="' + escAttr(r.content) + '">' + esc(r.content) + "</td>" +
               "<td>" + esc(r.reads) + "</td>" +
               '<td class="ts-col">' + esc(fmtTs(r.timestamp)) + "</td>" +
               '<td><button class="btn btn-danger btn-sm act-del-msg" data-id="' + escAttr(r.id) + '">' + t("delete") + "</button></td>" +
@@ -1059,7 +1059,7 @@ async function toggleLatestMsgs(btn) {
       ? rows
           .map(
             (r) =>
-              '<div class="msg-list-item" data-id="' + escAttr(r.id) + '" onclick="location.href=\'/reads/\' + encodeURIComponent(\'' + escAttr(r.id) + '\')">' +
+              '<div class="msg-list-item" data-id="' + escAttr(r.id) + '">' +
               '<div class="msg-list-content" title="' + escAttr(r.content) + '">' + esc(r.content) + "</div>" +
               '<div class="msg-list-meta"><span class="reads">' + esc(r.reads) + " " + t("reads") + '</span><span class="ts-col">' + esc(fmtTs(r.timestamp)) + "</span></div>" +
               "</div>",
@@ -1078,6 +1078,8 @@ async function toggleLatestMsgs(btn) {
 function initAdminHandlers() {
   const ut = $("userTbody");
   ut.addEventListener("click", (e) => {
+    const item = e.target.closest(".msg-list-item");
+    if (item) { location.href = "/reads/" + encodeURIComponent(item.dataset.id); return; }
     const btn = e.target.closest("button");
     if (!btn) return;
     const editor = btn.closest(".level-editor");
@@ -1109,8 +1111,9 @@ function initAdminHandlers() {
   const mt = $("msgTbody");
   mt.addEventListener("click", (e) => {
     const btn = e.target.closest(".act-del-msg");
-    if (!btn) return;
-    askDeleteMsg(btn.dataset.id);
+    if (btn) { askDeleteMsg(btn.dataset.id); return; }
+    const cell = e.target.closest(".msg-col");
+    if (cell) { location.href = "/reads/" + encodeURIComponent(cell.dataset.id); return; }
   });
   const gt = $("globalIpTbody");
   gt.addEventListener("click", (e) => {
