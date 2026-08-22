@@ -144,6 +144,7 @@ adminApp.delete("/admin/users/:wxId", (c) => {
   const denied = adminOr(c);
   if (denied) return denied;
   const wxId = c.req.param("wxId");
+  const actor = requireAdmin(c)!.wxId;
   if (isAdmin(wxId)) return c.json({ error: "protected account" }, 403);
   sqlite.transaction(() => {
     sqlite.query("DELETE FROM reads WHERE id IN (SELECT id FROM messages WHERE wx_id = ?)").run(wxId);
@@ -151,7 +152,7 @@ adminApp.delete("/admin/users/:wxId", (c) => {
     sqlite.query("DELETE FROM sessions WHERE wx_id = ?").run(wxId);
     sqlite.query("DELETE FROM users WHERE wx_id = ?").run(wxId);
   })();
-  audit(wxId, "admin_delete_user", null, clientIp(c));
+  audit(wxId, "admin_delete_user", `by=${actor} target=${wxId}`, clientIp(c));
   return c.json({ ok: true });
 });
 
@@ -192,13 +193,14 @@ adminApp.get("/admin/messages", (c) => {
 adminApp.delete("/admin/messages", (c) => {
   const denied = adminOr(c);
   if (denied) return denied;
+  const actor = requireAdmin(c)!.wxId;
   const wxId = (c.req.query("wxId") ?? "").trim();
   if (wxId) {
     sqlite.transaction(() => {
       sqlite.query("DELETE FROM reads WHERE id IN (SELECT id FROM messages WHERE wx_id = ?)").run(wxId);
       sqlite.query("DELETE FROM messages WHERE wx_id = ?").run(wxId);
     })();
-    audit(wxId, "admin_wipe_user", null, clientIp(c));
+    audit(wxId, "admin_wipe_user", `by=${actor} target=${wxId}`, clientIp(c));
   } else {
     // 全库删除为不可逆高危操作：要求显式二次确认，防止误触 / CSRF / 被劫持会话一键清库
     if ((c.req.query("confirm") ?? "") !== "DELETE ALL") {
@@ -208,7 +210,7 @@ adminApp.delete("/admin/messages", (c) => {
       sqlite.query("DELETE FROM reads").run();
       sqlite.query("DELETE FROM messages").run();
     })();
-    audit(null, "admin_delete_all_messages", null, clientIp(c));
+    audit(null, "admin_delete_all_messages", `by=${actor}`, clientIp(c));
   }
   return c.json({ ok: true });
 });
@@ -216,13 +218,14 @@ adminApp.delete("/admin/messages", (c) => {
 adminApp.delete("/admin/messages/:id", (c) => {
   const denied = adminOr(c);
   if (denied) return denied;
+  const actor = requireAdmin(c)!.wxId;
   const id = c.req.param("id");
   if (!isValidId(id)) return c.json({ error: "invalid id" }, 400);
   sqlite.transaction(() => {
     sqlite.query("DELETE FROM reads WHERE id = ?").run(id);
     sqlite.query("DELETE FROM messages WHERE id = ?").run(id);
   })();
-  audit(null, "admin_delete_message", id, clientIp(c));
+  audit(null, "admin_delete_message", `by=${actor} target=${id}`, clientIp(c));
   return c.json({ ok: true });
 });
 
@@ -239,6 +242,7 @@ adminApp.get("/admin/levels/preview", (c) => {
   if (denied) return denied;
   const formula = (c.req.query("formula") ?? "").trim();
   if (!formula) return c.json({ valid: false, error: "formula required" });
+  if (formula.length > 200) return c.json({ valid: false, error: "formula too long" });
   const error = validateFormula(formula);
   if (error) return c.json({ valid: false, error });
   return c.json({ valid: true, values: previewValues(formula) });
