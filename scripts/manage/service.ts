@@ -147,6 +147,30 @@ export function serviceStart(): void {
 
 export function serviceStop(): void {
   if (isWin) {
+    // 优先按 PID 文件精确停止（服务端 index.ts 启动时写入，退出时清除）；
+    // 校验目标进程确为 bun 再杀，防 PID 复用误伤无关进程
+    if (existsSync(PID_FILE)) {
+      const pid = Number(readFileSync(PID_FILE, "utf8").trim());
+      rmSync(PID_FILE, { force: true });
+      if (Number.isInteger(pid) && pid > 0 && pid !== process.pid) {
+        const chk = run("powershell", [
+          "-NoProfile", "-NonInteractive", "-Command",
+          `(Get-Process -Id ${pid} -ErrorAction SilentlyContinue).ProcessName -eq 'bun'`,
+        ]);
+        if (!chk.ok || chk.out.trim() !== "True") {
+          console.log("未发现运行中的服务（PID " + pid + "）。");
+          return;
+        }
+        const r = run("powershell", [
+          "-NoProfile", "-NonInteractive", "-Command",
+          `Stop-Process -Id ${pid} -Force`,
+        ]);
+        if (r.err.trim()) console.error(r.err.trim());
+        console.log("已发送停止指令（PID " + pid + "）。");
+        return;
+      }
+    }
+    // 无 PID 文件（旧版本安装/手动启动）：回退按命令行匹配
     const ps = [
       "-NoProfile", "-NonInteractive", "-Command",
       `Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'bun.exe' -and $_.CommandLine -like '*index.ts*' -and $_.ProcessId -ne $PID } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }`,
