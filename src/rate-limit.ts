@@ -87,10 +87,11 @@ export function resolveXffIp(xff: string, trusted: string[]): string | null {
   return parts.length > 0 ? parts[parts.length - 1]! : null;
 }
 
-/** 直连方地址（Bun server.requestIP + ::ffff: 归一化），不信任任何代理头 */
+/** 直连方地址（Bun server.requestIP + ::ffff: 归一化），不信任任何代理头。
+ * c.env 仅由 Bun.serve 注入，缺失时（如 app.request 测试）回退 "unknown"。 */
 export function peerIp(c: Context): string {
-  const env = c.env as { requestIP?: (req: Request) => { address: string } | null };
-  return normalizeIp(env.requestIP?.(c.req.raw)?.address ?? "unknown");
+  const env = c.env as { requestIP?: (req: Request) => { address: string } | null } | undefined;
+  return normalizeIp(env?.requestIP?.(c.req.raw)?.address ?? "unknown");
 }
 
 export function clientIp(c: Context): string {
@@ -132,7 +133,7 @@ function hit(key: string, limit: number, windowMs: number): boolean {
   return w.count > limit;
 }
 
-/** 计数并判断是否超限。fail-open 档位超限仍返回 true（由路由决定降级响应） */
+/** 计数并判断是否超限（超过 limit 返回 true，由路由决定 429 或降级响应） */
 export function overLimit(bucket: Bucket, ip: string): boolean {
   const cfg = RATE_LIMITS[bucket];
   return hit(`${bucket}:${ip}`, cfg.limit, cfg.windowMs);
@@ -145,7 +146,7 @@ export function overLimitWxId(wxId: string): boolean {
   return minOver || dayOver;
 }
 
-/** fail-closed 档位的中间件（auth / admin） */
+/** fail-closed 中间件：超限直接 429（auth / admin） */
 export function rateLimit(bucket: Bucket) {
   return async (c: Context, next: Next) => {
     if (overLimit(bucket, clientIp(c))) {

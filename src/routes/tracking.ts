@@ -34,10 +34,16 @@ trackingApp.get("/pixel", (c) => {
 
 trackingApp.get("/count", (c) => {
   const id = c.req.query("id") ?? "";
-  if (!isValidId(id) || overLimit("count", clientIp(c))) {
-    return c.json({ count: 0 });
+  // 无效 id 恒返回 {"count":0}（客户端健康检查依赖），不消耗限流窗口
+  if (!isValidId(id)) return c.json({ count: 0 });
+  if (overLimit("count", clientIp(c))) {
+    return c.json({ error: "rate limited" }, 429);
   }
-  const row = stmt().countReads.get(id) as { n: number };
+  const msg = sqlite.query("SELECT wx_id FROM messages WHERE id = ?").get(id) as
+    | { wx_id: string }
+    | undefined;
+  if (!msg) return c.json({ count: 0 });
+  const row = stmt().countReads.get(id, id, msg.wx_id) as { n: number };
   return c.json({ count: row.n });
 });
 
@@ -72,16 +78,17 @@ trackingApp.post("/register", async (c) => {
       return c.json({ error: "invalid payload" }, 400);
     }
 
-    // 公开端点按 wxId 限流：缓解未授权批量伪造消息（客户端协议无鉴权，不可变）
-    if (overLimitWxId(wxId)) {
-      audit(wxId, "register_wxid_limited", null, ip);
-      return c.json({ error: "rate limited" }, 429);
-    }
-
     const user = sqlite.query("SELECT level FROM users WHERE wx_id = ?").get(wxId) as
       | { level: number }
       | undefined;
     if (!user || user.level <= 0) return c.json({ error: "not registered" }, 403);
+
+    // 公开端点按 wxId 限流：缓解未授权批量伪造消息（客户端协议无鉴权，不可变）。
+    // 置于注册校验之后：未注册 wxId 不消耗限流窗口、不产生审计
+    if (overLimitWxId(wxId)) {
+      audit(wxId, "register_wxid_limited", null, ip);
+      return c.json({ error: "rate limited" }, 429);
+    }
 
     const id = computeId(wxId, content, createTime);
     sqlite.transaction(() => {

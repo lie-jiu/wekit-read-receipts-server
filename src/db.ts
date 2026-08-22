@@ -170,7 +170,13 @@ export function stmt() {
       insertRead: sqlite.prepare(
         "INSERT OR IGNORE INTO reads (id, ip, timestamp, user_agent) VALUES (?, ?, ?, ?)",
       ),
-      countReads: sqlite.prepare("SELECT COUNT(DISTINCT ip) AS n FROM reads WHERE id = ?"),
+      countReads: sqlite.prepare(
+        `SELECT COUNT(DISTINCT ip) AS n FROM reads
+         WHERE id = ?
+           AND ip NOT IN (SELECT ip FROM ip_block_global)
+           AND ip NOT IN (SELECT ip FROM ip_block_message WHERE id = ?)
+           AND ip NOT IN (SELECT ip FROM ip_block_account WHERE wx_id = ?)`,
+      ),
     };
   }
   return _stmt;

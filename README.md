@@ -111,7 +111,7 @@ ADMIN=wxid_admin bun run dev              # 管理员权限来自 ADMIN 环境�
 | 端点 | 说明 |
 |---|---|
 | `GET /pixel?wxId=&id=` | 1×1 透明 PNG，`INSERT OR IGNORE` 打点；`Cache-Control: no-store` |
-| `GET /count?wxId=&id=` | 恒返回 `{"count":n}`，n = `COUNT(DISTINCT ip)`；无效 id 返回 `{"count":0}` |
+| `GET /count?wxId=&id=` | 已读人数 = 排除三级黑名单 IP 后的 `COUNT(DISTINCT ip)`；无效 id 返回 `{"count":0}`，超限返回 429 |
 | `POST /register` | 批量上报（单条或 ≤50 条），未注册 wxId 返回 403；另有 per-wxId 限流（分钟/天） |
 
 ### Web 管理（登录后使用）
@@ -171,9 +171,9 @@ ADMIN=wxid_admin bun run dev              # 管理员权限来自 ADMIN 环境�
 
 | 端点 | 限额 | 超出后 |
 |---|---|---|
-| `/pixel` | 200/分 | fail-open（不拦截打点） |
-| `/count` | 60/分 | fail-open |
-| `/register` | 30/分（per-IP，fail-open）+ 30/分·500/天（per-wxId） | fail-open / per-wxId 超限返回 429 |
+| `/pixel` | 200/分 | fail-open（超限仅跳过打点记录，仍返回像素） |
+| `/count` | 60/分 | 超限返回 429 |
+| `/register` | 30/分（per-IP）+ 30/分·500/天（per-wxId） | 超限返回 429 |
 | `/auth/*` | 5/分 | fail-closed（拒绝） |
 | `/admin/*` | 30/分 | fail-closed（拒绝） |
 

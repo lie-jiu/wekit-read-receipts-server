@@ -38,7 +38,11 @@ export const AUDIT_RETENTION_DAYS = Number(process.env.AUDIT_RETENTION_DAYS ?? 3
 /** 等级权益：消息保留条数 / IP 定位次数 / 保留时长(月)，由公式配置（见 src/levels.ts） */
 export { quotaFor, geoQuotaFor, retentionMonthsFor } from "./levels";
 
-export const MAX_CONTENT_LENGTH = 10_000;
+/**
+ * 微信单条消息输入框上限约 2000 字符（PC 端 2048 字），真实客户端不可能产生更长载荷；
+ * DB 层 CHECK(length(content)<=10000) 保持不动，此处仅拦截伪造的超长请求体。
+ */
+export const MAX_CONTENT_LENGTH = 2_048;
 export const MAX_REGISTER_BATCH = 50;
 
 /**
@@ -58,14 +62,14 @@ export const GEO_CACHE_SUCCESS_MS = 24 * 3600 * 1000;
 export const GEO_CACHE_FAILURE_MS = 3600 * 1000;
 export const GEO_CACHE_MAX = 10_000;
 
-/** 限流档位：per-IP 固定窗口（毫秒） */
+/** 限流档位：per-IP 固定窗口（毫秒）。超限行为由各路由决定（429 或降级） */
 export const RATE_LIMITS = {
-  pixel: { limit: 200, windowMs: 60_000, failOpen: true },
-  count: { limit: 60, windowMs: 60_000, failOpen: true },
-  register: { limit: 30, windowMs: 60_000, failOpen: true },
-  auth: { limit: 5, windowMs: 60_000, failOpen: false },
-  admin: { limit: 30, windowMs: 60_000, failOpen: false },
-  geo: { limit: 30, windowMs: 60_000, failOpen: false },
+  pixel: { limit: 200, windowMs: 60_000 },
+  count: { limit: 60, windowMs: 60_000 },
+  register: { limit: 30, windowMs: 60_000 },
+  auth: { limit: 5, windowMs: 60_000 },
+  admin: { limit: 30, windowMs: 60_000 },
+  geo: { limit: 30, windowMs: 60_000 },
 } as const;
 
 export const SECURITY_HEADERS = {
@@ -74,6 +78,7 @@ export const SECURITY_HEADERS = {
   "Referrer-Policy": "no-referrer",
   "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
   "Cross-Origin-Opener-Policy": "same-origin",
+  "Strict-Transport-Security": "max-age=31536000",
 };
 
 export const CSP = {
