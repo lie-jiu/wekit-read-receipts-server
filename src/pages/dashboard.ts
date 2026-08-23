@@ -1,6 +1,7 @@
+import type { DashboardSession, BasicSession, ReadDetailsSession, ReadDetailsMeta } from "./types";
 import { safeJson } from "../utils";
 
-export function htmlPage(session) { return `<!doctype html>
+export function htmlPage(session: DashboardSession): string { return `<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -1007,7 +1008,7 @@ export function htmlPage(session) { return `<!doctype html>
 </html>
 `; }
 
-export function leaderboardPage(session) { return `<!doctype html>
+export function leaderboardPage(session: BasicSession): string { return `<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -1712,7 +1713,7 @@ export function leaderboardPage(session) { return `<!doctype html>
 </html>
 `; }
 
-export function readDetailsPage(session, meta) {
+export function readDetailsPage(session: ReadDetailsSession, meta: ReadDetailsMeta): string {
   // 管理权限：消息发布者本人或管理员；匿名公开访问时两者均为 false
   const canManage = session.isAdmin === true || meta.isOwner === true;
   const isPublic = meta.isPublic === true;

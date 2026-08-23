@@ -1,7 +1,8 @@
+import type { BasicSession } from "./types";
 import { safeJson } from "../utils";
 
 /** 独立用户设置页 /account：账户 IP 黑名单 + 修改密码 / 退出登录 / 清除我的（自首页迁移） */
-export function accountPage(session) {
+export function accountPage(session: BasicSession): string {
   return `<!doctype html>
 <html lang="en">
   <head>

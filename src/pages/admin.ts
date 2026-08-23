@@ -1,6 +1,7 @@
+import type { AdminSession } from "./types";
 import { safeJson } from "../utils";
 
-export function adminPage(session) { return `<!doctype html>
+export function adminPage(session: AdminSession): string { return `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
