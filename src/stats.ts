@@ -1,5 +1,6 @@
 import { sqlite } from "./db";
 import { AUDIT_RETENTION_DAYS } from "./config";
+import { utcDate } from "./utils";
 
 const CURSOR_KEY = "stats_cursor";
 const EPOCH = "0000-00-00 00:00:00";
@@ -109,7 +110,21 @@ export function backfillStats(): number {
   })();
 }
 
-/** 每日清理：过期会话、>30 天审计、7 天前孤儿 reads、FTS rebuild */
+/**
+ * 回收非当日（陈旧）的 IP 定位计数。
+ *
+ * 只清理「geo_date 不是今天 UTC」且「仍有残留计数」的行，因此幂等、无写放大，
+ * 在进程启动时执行也不会重置当日正在使用的配额（无条件清零会让「重启一次 = 配额加满」，
+ * 可被反复重启无限次绕过配额并持续外呼第三方定位接口）。
+ *
+ * 配额的正确性不依赖本函数：请求路径由 geoUsedToday()（惰性跨天归零）与
+ * /reads/:id/geo 占额 SQL 的 CASE 分支保证，这里只是把陈旧数值物理回收掉。
+ */
+export function recycleStaleGeoCounts(): void {
+  sqlite.query("UPDATE users SET geo_count = 0 WHERE geo_date <> ? AND geo_count > 0").run(utcDate());
+}
+
+/** 每日清理：过期会话、>30 天审计、7 天前孤儿 reads、FTS rebuild、陈旧定位计数回收 */
 export function dailyCleanup(): void {
   const daysAgo = (days: number): string => {
     const d = new Date(Date.now() - days * 24 * 3600 * 1000);
@@ -125,7 +140,6 @@ export function dailyCleanup(): void {
       .query("DELETE FROM reads WHERE timestamp < ? AND id NOT IN (SELECT id FROM messages)")
       .run(daysAgo(7));
     sqlite.query("INSERT INTO messages_fts(messages_fts) VALUES ('rebuild')").run();
-    // 每日 0 点（UTC）刷新 IP 定位配额：兜底清零（请求路径另有惰性跨天归零）
-    sqlite.query("UPDATE users SET geo_count = 0").run();
+    recycleStaleGeoCounts();
   })();
 }

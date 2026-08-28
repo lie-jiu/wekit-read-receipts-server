@@ -144,7 +144,7 @@ ADMIN=wxid_admin bun run dev              # 管理员权限来自 ADMIN 环境�
 | `ENABLE_GEO` | `1` | 按需 IP 定位开关（`0`/`off`/`false` 关闭）：隐藏「定位」按钮并拒绝 geo 端点，打点路径始终零外部请求 |
 | `GEO_ALLOW_HTTP` | `0` | 是否允许明文本地化接口 ip-api.com（仅 HTTP）；默认关闭，中文定位缺失时由英文兜底 |
 | `MESSAGE_QUOTA_FORMULA` | `x` | 等级消息保留条数公式（`x` = 等级），超出自动删除最早消息 |
-| `GEO_QUOTA_FORMULA` | `x` | 等级 IP 定位次数公式（每日配额），耗尽返回 `429`，每日 0 点（UTC）刷新 |
+| `GEO_QUOTA_FORMULA` | `x` | 等级 IP 定位次数公式（每日配额），耗尽返回 `429`；按 **UTC 自然日惰性归零**（跨天首次定位即从 1 起算，不继承昨日用量），非当日的陈旧计数由 `dailyCleanup` 回收（幂等，重启不会重置当日配额） |
 | `RETENTION_MONTHS_FORMULA` | `x` | 等级消息保留时长（月），结果 0 表示不限制 |
 | `REGISTER_PER_WXID_PER_MIN` | `30` | `/register` 单个 wxId 每分钟注册条数上限（公开端点，无鉴权） |
 | `REGISTER_PER_WXID_PER_DAY` | `500` | `/register` 单个 wxId 每天注册条数上限 |

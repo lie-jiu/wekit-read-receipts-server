@@ -1,12 +1,21 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, mock, test } from "bun:test";
 
 // 必须在动态 import 触发 config.ts 求值前设置（bunfig [test] preload 亦已兜底）
 process.env.DB_PATH = ":memory:";
 process.env.ADMIN = "admin_wx";
 
+// 定位外呼必须在 app 之前打桩：reads.ts 会 import ./geo，真实外呼会让测试依赖公网
+mock.module("./geo", () => ({
+  lookupIpLocation: async () => ({
+    zh: { country: "中国", region: "广东", city: "深圳", isp: "中国电信" },
+    en: { country: "China", region: "Guangdong", city: "Shenzhen", isp: "China Telecom" },
+  }),
+}));
+
+const { geoQuotaFor } = await import("./config");
 const { sqlite, migrate } = await import("./db");
 const { default: app } = await import("./app");
-const { backfillStats, getCursor } = await import("./stats");
+const { backfillStats, getCursor, recycleStaleGeoCounts } = await import("./stats");
 const { setIpResolver } = await import("./rate-limit");
 const { computeId, sha256Hex } = await import("./utils");
 
@@ -270,5 +279,95 @@ describe("stats 游标", () => {
     const again = statCount("stat_b");
     backfillStats();
     expect(statCount("stat_b")).toBe(again);
+  });
+});
+
+/* ── IP 定位配额（按 UTC 自然日） ── */
+
+describe("POST /reads/:id/geo（配额跨天归零）", () => {
+  const geoId = sha256Hex("geo-quota-msg");
+  const quota = geoQuotaFor(3);
+  const today = new Date().toISOString().slice(0, 10);
+  const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
+
+  insertUser("geo_wx", 3);
+  insertMessage(geoId, "geo_wx", "geo me");
+
+  function setUsage(wxId: string, count: number, date: string): void {
+    sqlite.query("UPDATE users SET geo_count = ?, geo_date = ? WHERE wx_id = ?").run(count, date, wxId);
+  }
+
+  function usage(wxId: string): { geo_count: number; geo_date: string } {
+    return sqlite
+      .query("SELECT geo_count, geo_date FROM users WHERE wx_id = ?")
+      .get(wxId) as { geo_count: number; geo_date: string };
+  }
+
+  function locate(ip: string) {
+    return app.request(`/reads/${geoId}/geo`, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...authCookie("geo_wx") },
+      body: JSON.stringify({ ip }),
+    });
+  }
+
+  test("跨天首次定位从 1 起算，不继承昨日用量", async () => {
+    currentIp = freshIp();
+    insertRead(geoId, "10.50.0.1", "2026-04-01 00:00:10");
+    setUsage("geo_wx", quota - 1, yesterday);
+    const res = await locate("10.50.0.1");
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { remaining: number; quota: number };
+    expect(body.quota).toBe(quota);
+    // 修复前：geo_count = (quota - 1) + 1 → remaining 被昨日用量吞掉（此处为 0）
+    expect(body.remaining).toBe(quota - 1);
+    expect(usage("geo_wx")).toEqual({ geo_count: 1, geo_date: today });
+  });
+
+  test("昨日配额已耗尽时 remaining 不为负", async () => {
+    currentIp = freshIp();
+    insertRead(geoId, "10.50.0.2", "2026-04-01 00:00:11");
+    setUsage("geo_wx", quota, yesterday);
+    const res = await locate("10.50.0.2");
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { remaining: number };
+    // 修复前：geo_count = quota + 1 → remaining = -1
+    expect(body.remaining).toBe(quota - 1);
+    expect(body.remaining).toBeGreaterThanOrEqual(0);
+  });
+
+  test("同日连续定位继续累加（不改变同日语义）", async () => {
+    currentIp = freshIp();
+    insertRead(geoId, "10.50.0.3", "2026-04-01 00:00:12");
+    setUsage("geo_wx", 1, today);
+    const res = await locate("10.50.0.3");
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { remaining: number };
+    expect(body.remaining).toBe(quota - 2);
+    expect(usage("geo_wx").geo_count).toBe(2);
+  });
+
+  test("回收只清理陈旧计数：当日用量不受影响，且幂等", () => {
+    setUsage("geo_wx", 2, today);
+    setUsage("other_wx", 7, yesterday);
+    recycleStaleGeoCounts();
+    // 当日用量必须保持 —— 否则 dailyCleanup 在启动时执行就等于「重启即配额加满」
+    expect(usage("geo_wx").geo_count).toBe(2);
+    expect(usage("other_wx").geo_count).toBe(0);
+    // 幂等：已归零的行不再匹配，重复执行无副作用
+    recycleStaleGeoCounts();
+    expect(usage("other_wx").geo_count).toBe(0);
+    expect(usage("geo_wx").geo_count).toBe(2);
+  });
+
+  test("配额耗尽后返回 429", async () => {
+    currentIp = freshIp();
+    insertRead(geoId, "10.50.0.4", "2026-04-01 00:00:13");
+    setUsage("geo_wx", quota, today);
+    const res = await locate("10.50.0.4");
+    expect(res.status).toBe(429);
+    expect((await res.json()) as { error: string }).toEqual(
+      expect.objectContaining({ error: "geo_quota_exceeded" }),
+    );
   });
 });

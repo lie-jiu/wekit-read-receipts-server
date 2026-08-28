@@ -265,13 +265,18 @@ readsApp.post("/reads/:id/geo", async (c) => {
   }
 
   // 原子占额（合并跨天惰性归零）：在 WHERE 内原子判断，消除「检查→外呼→累加」的 TOCTOU 竞态。
+  // geo_date 非今日时必须归 1 而不是 geo_count + 1：否则昨日用量会结转到今天，
+  // 既吞掉当日配额（昨日用了 5 次 → 今天只剩 quota-6），昨日耗尽时还会让剩余次数变成负数。
   // 外呼失败也占额（与旧语义一致）：失败结果有 1h 失败缓存，避免用户无成本反复触发外呼。
   const today = utcDate();
   const claim = sqlite
     .query(
-      "UPDATE users SET geo_count = geo_count + 1, geo_date = ? WHERE wx_id = ? AND (geo_date != ? OR geo_count < ?)",
+      `UPDATE users
+          SET geo_count = CASE WHEN geo_date = ? THEN geo_count + 1 ELSE 1 END,
+              geo_date = ?
+        WHERE wx_id = ? AND (geo_date != ? OR geo_count < ?)`,
     )
-    .run(today, user.wxId, today, quota);
+    .run(today, today, user.wxId, today, quota);
   if (claim.changes === 0) {
     return c.json({ error: "geo_quota_exceeded", remaining: 0, quota }, 429);
   }
