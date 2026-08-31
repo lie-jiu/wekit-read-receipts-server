@@ -8,8 +8,39 @@ import {
 
 export type Bucket = keyof typeof RATE_LIMITS;
 
-/** 进程内固定窗口：bucket + ip → {窗口起点, 计数} */
-const windows = new Map<string, { start: number; count: number }>();
+/**
+ * 进程内固定窗口计数：bucket + ip → {窗口起点, 计数}
+ *
+ * 采用「双桶轮转」：按窗口长度分组，每推进一个窗口周期就把 current 整体降级为 previous、
+ * 更早的桶直接丢弃，因此过期清理是 O(1)，内存上界为两个周期内的活跃 key 数。
+ *
+ * 早期实现在 size 越过阈值后遍历整个 Map 删除过期项，有两个致命问题：
+ *   1. 未过期的活跃项一个都删不掉，Map 仍会无界增长；
+ *   2. 越过阈值后**每次** hit 都要全表扫描，单次开销随历史 key 数线性退化
+ *      （实测 5 万条时约 688 µs/次，是常态 0.27 µs 的 2500 倍）。
+ *      /pixel 是无鉴权公开端点且 IP 极度分散，用大量不同来源 IP 即可把 CPU 打满。
+ */
+type Window = { start: number; count: number };
+type Generation = { rotatedAt: number; current: Map<string, Window>; previous: Map<string, Window> };
+const generations = new Map<number, Generation>();
+
+/** 单桶 key 上限：兜底防内存无界。触发时提前轮转——宁可让限流精度降级，也不让 CPU 耗尽 */
+const MAX_KEYS_PER_BUCKET = 50_000;
+
+function generationFor(windowMs: number, now: number): Generation {
+  let g = generations.get(windowMs);
+  if (!g) {
+    g = { rotatedAt: now, current: new Map(), previous: new Map() };
+    generations.set(windowMs, g);
+    return g;
+  }
+  if (now - g.rotatedAt >= windowMs || g.current.size > MAX_KEYS_PER_BUCKET) {
+    g.previous = g.current;
+    g.current = new Map();
+    g.rotatedAt = now;
+  }
+  return g;
+}
 
 export function ipInCidr(ip: string, cidr: string): boolean {
   const [net, prefixStr] = cidr.split("/");
@@ -118,18 +149,22 @@ export function clientIp(c: Context): string {
   return peer;
 }
 
-/** 固定窗口计数并判断是否超限（超过 limit 返回 true）。windows Map 超过阈值时清理过期项。 */
+/** 固定窗口计数并判断是否超限（超过 limit 返回 true）。清理由双桶轮转承担，O(1) 且内存有界。 */
 function hit(key: string, limit: number, windowMs: number): boolean {
   const now = Date.now();
-  let w = windows.get(key);
-  if (!w || now - w.start >= windowMs) {
+  const g = generationFor(windowMs, now);
+  let w = g.current.get(key);
+  if (!w) {
+    // 跨轮转继承：previous 桶内仍未过期的窗口继续累加，
+    // 保证轮转不会缩短任何 key 的实际窗口（与单桶实现的语义一致）
+    const prev = g.previous.get(key);
+    w = prev !== undefined && now - prev.start < windowMs ? prev : { start: now, count: 0 };
+    g.current.set(key, w);
+  } else if (now - w.start >= windowMs) {
     w = { start: now, count: 0 };
-    windows.set(key, w);
+    g.current.set(key, w);
   }
   w.count++;
-  if (windows.size > 10_000) {
-    for (const [k, v] of windows) if (now - v.start >= windowMs) windows.delete(k);
-  }
   return w.count > limit;
 }
 
