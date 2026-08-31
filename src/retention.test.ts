@@ -6,7 +6,7 @@ process.env.ADMIN = "admin_wx";
 
 const { sqlite, migrate } = await import("./db");
 const { default: app } = await import("./app");
-const { sha256Hex } = await import("./utils");
+const { sha256Hex, maskWxId } = await import("./utils");
 const {
   getRetentionSettings,
   saveRetentionSettings,
@@ -14,6 +14,7 @@ const {
   purgeIdleUsers,
   PURGE_BATCH_LIMIT,
 } = await import("./retention");
+const { dailyCleanup } = await import("./stats");
 const { utcDateDaysAgo, utcDaysAgo } = await import("./utils");
 
 migrate();
@@ -481,6 +482,56 @@ describe("清理不依赖外键级联", () => {
       expect(exists("admin_wx")).toBe(true);
     } finally {
       sqlite.exec(`PRAGMA foreign_keys = ${fkBefore}`);
+    }
+  });
+});
+
+/* ── 注册消息排行榜孤儿行 ── */
+
+describe("注册消息排行榜孤儿行", () => {
+  test("孤儿 registration_stats 不出现在注册榜（即使数据尚未清理）", async () => {
+    reset();
+    insertUser("viewer");
+    // 真实用户有数据
+    sqlite
+      .query("INSERT INTO registration_stats (date, wx_id, count) VALUES (?, ?, 3)")
+      .run(utcDateDaysAgo(10), "viewer");
+    // 孤儿：wx_id 不在 users 中（模拟 FK 关闭删除后残留）。临时关外键才能插入
+    sqlite.exec("PRAGMA foreign_keys = OFF");
+    try {
+      sqlite
+        .query("INSERT INTO registration_stats (date, wx_id, count) VALUES (?, ?, 999)")
+        .run(utcDateDaysAgo(5), "ghost_user");
+    } finally {
+      sqlite.exec("PRAGMA foreign_keys = ON");
+    }
+
+    const data = await j<Array<{ wxId: string }>>(
+      app.request("/leaderboard?metric=reg&scope=total", { headers: cookieOf("viewer") }),
+    );
+    expect(data.map((r) => r.wxId)).toContain(maskWxId("viewer"));
+    expect(data.map((r) => r.wxId)).not.toContain(maskWxId("ghost_user"));
+  });
+
+  test("dailyCleanup 清掉三张统计表的孤儿行，保留真实用户", () => {
+    reset();
+    insertUser("real_user");
+    for (const t of ["registration_stats", "read_stats", "message_read_stats"]) {
+      sqlite.query(`INSERT INTO ${t} (date, wx_id, count) VALUES (?, ?, 5)`).run(utcDateDaysAgo(10), "real_user");
+    }
+    // 孤儿行（wx_id 不在 users）；临时关外键才能插入
+    sqlite.exec("PRAGMA foreign_keys = OFF");
+    try {
+      for (const t of ["registration_stats", "read_stats", "message_read_stats"]) {
+        sqlite.query(`INSERT INTO ${t} (date, wx_id, count) VALUES (?, ?, 9)`).run(utcDateDaysAgo(5), "ghost_" + t);
+      }
+    } finally {
+      sqlite.exec("PRAGMA foreign_keys = ON");
+    }
+    dailyCleanup();
+    for (const t of ["registration_stats", "read_stats", "message_read_stats"]) {
+      expect(sqlite.query(`SELECT COUNT(*) n FROM ${t} WHERE wx_id = ?`).get("ghost_" + t)).toEqual({ n: 0 });
+      expect(sqlite.query(`SELECT COUNT(*) n FROM ${t} WHERE wx_id = ?`).get("real_user")).toEqual({ n: 1 });
     }
   });
 });
