@@ -131,7 +131,7 @@ ADMIN=wxid_admin bun run dev              # 管理员权限来自 ADMIN 环境�
 | `/leaderboard` | 排行榜：`?metric=reg\|read\|msg` × `?scope=day\|total`（均按 UTC 自然日；wxId 脱敏），无效参数返回 400 |
 | `/admin/*` | 管理后台：用户管理、等级调整、权益公式、消息管理、**僵尸用户清理** |
 | `GET /admin/retention`、`POST /admin/retention` | 读取 / 保存清理策略（两项天数：`newUserDays` 注册后从未注册消息、`dormantDays` 注册后沉寂；均存 `meta` 表，0 = 不清理，保存立即生效）；写审计 `admin_set_retention` |
-| `GET /admin/retention/preview?limit=` | 预演：仅统计不删，返回命中数量（never/dormant 拆分）、受豁免数、样例（上限 100） |
+| `GET /admin/retention/preview?page=&pageSize=` | 预演：仅统计不删，返回命中数量（never/dormant 拆分）、受豁免数、样例；`page`/`pageSize` 分页（`pageSize` 兼容旧 `limit`，1–100），`purgeable`/`never`/`dormant` 等全量计数跨页不变 |
 | `POST /admin/retention/run` | 立即执行一次清理（与每日任务同一套逻辑），写审计 `admin_run_retention`（含 `by=/deleted=/skipped=`） |
 
 ## 环境变量
