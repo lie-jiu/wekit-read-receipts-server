@@ -78,7 +78,7 @@ export async function hashPassword(password: string): Promise<string> {
 }
 
 /** 请求是否走 TLS：直连 HTTPS，或经受信代理转发（X-Forwarded-Proto） */
-function isSecureRequest(c: Context): boolean {
+export function isSecureRequest(c: Context): boolean {
   try {
     if (new URL(c.req.url).protocol === "https:") return true;
   } catch {

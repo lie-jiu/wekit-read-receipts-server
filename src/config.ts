@@ -78,8 +78,16 @@ export const SECURITY_HEADERS = {
   "Referrer-Policy": "no-referrer",
   "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
   "Cross-Origin-Opener-Policy": "same-origin",
-  "Strict-Transport-Security": "max-age=31536000",
 };
+
+/**
+ * HSTS 仅在确认是 HTTPS 请求时下发（见 app.ts）。
+ *
+ * 若在裸 HTTP 响应里也带上它，浏览器会把该主机锁定为「一年内强制 HTTPS」，
+ * 之后即使服务本来就是 HTTP 部署（形态 B 裸 HTTP、局域网测试），
+ * 也会被浏览器强制跳转到 https 而彻底打不开，且用户侧极难排查。
+ */
+export const HSTS_HEADER = { "Strict-Transport-Security": "max-age=31536000" } as const;
 
 export const CSP = {
   LOGIN: [
