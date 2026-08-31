@@ -8,10 +8,7 @@
         "hono": "4.13.5",
       },
       "devDependencies": {
-        "@types/bun": "latest",
-        "typescript": "^7",
-      },
-      "peerDependencies": {
+        "@types/bun": "1.4.0",
         "typescript": "^7",
       },
     },
