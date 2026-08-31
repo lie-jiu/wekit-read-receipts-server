@@ -238,6 +238,41 @@ describe("豁免账号", () => {
   });
 });
 
+/* ── 预演分页 ── */
+
+describe("预演分页", () => {
+  test("offset/limit 只切样例，全量统计不变、分页不重叠不漏", () => {
+    reset();
+    const ids: string[] = [];
+    for (let i = 0; i < 25; i++) {
+      const u = uid();
+      ids.push(u);
+      insertUser(u, 1, utcDaysAgo(365)); // 全部「从未注册」，命中规则一
+    }
+
+    const page1 = previewIdleUsers({ newUserDays: 30, dormantDays: 0 }, 20, 0);
+    expect(page1.purgeable).toBe(25);
+    expect(page1.never).toBe(25);
+    expect(page1.dormant).toBe(0);
+    expect(page1.samples.length).toBe(20);
+
+    const page2 = previewIdleUsers({ newUserDays: 30, dormantDays: 0 }, 20, 20);
+    expect(page2.purgeable).toBe(25); // 全量计数不受 offset 影响
+    expect(page2.samples.length).toBe(5);
+
+    // 两页并集覆盖全部、互不重叠
+    const page1Ids = page1.samples.map((s) => s.wxId);
+    const page2Ids = page2.samples.map((s) => s.wxId);
+    expect(new Set([...page1Ids, ...page2Ids]).size).toBe(25);
+    for (const id of page2Ids) expect(page1Ids).not.toContain(id);
+
+    // 越界 offset：样例为空但计数不变
+    const beyond = previewIdleUsers({ newUserDays: 30, dormantDays: 0 }, 20, 100);
+    expect(beyond.samples.length).toBe(0);
+    expect(beyond.purgeable).toBe(25);
+  });
+});
+
 /* ── 删除范围 ── */
 
 describe("删除范围", () => {
@@ -386,5 +421,34 @@ describe("管理端 /admin/retention 接口", () => {
       | { detail: string }
       | null;
     expect(log?.detail).toContain("by=admin_wx");
+  });
+
+  test("预演接口分页返回 page/pageSize/totalPages 与切片样例", async () => {
+    reset();
+    insertUser("admin_wx");
+    for (let i = 0; i < 25; i++) insertUser(uid(), 1, utcDaysAgo(365));
+    await postRetention({ newUserDays: 30, dormantDays: 0 });
+
+    const p1 = await j<RetentionPreview & { page: number; pageSize: number; totalPages: number }>(
+      app.request("/admin/retention/preview?page=1&pageSize=20", { headers: cookieOf("admin_wx") }),
+    );
+    expect(p1.purgeable).toBe(25);
+    expect(p1.page).toBe(1);
+    expect(p1.pageSize).toBe(20);
+    expect(p1.totalPages).toBe(2);
+    expect(p1.samples.length).toBe(20);
+
+    const p2 = await j<RetentionPreview & { page: number; totalPages: number }>(
+      app.request("/admin/retention/preview?page=2&pageSize=20", { headers: cookieOf("admin_wx") }),
+    );
+    expect(p2.samples.length).toBe(5);
+    expect(p2.purgeable).toBe(25); // 全量统计跨页不变
+
+    // 兼容旧 limit 参数
+    const legacy = await j<RetentionPreview & { totalPages: number }>(
+      app.request("/admin/retention/preview?limit=1", { headers: cookieOf("admin_wx") }),
+    );
+    expect(legacy.samples.length).toBe(1);
+    expect(legacy.purgeable).toBe(25);
   });
 });
