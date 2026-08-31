@@ -368,6 +368,41 @@ adminApp.post("/admin/retention/run", (c) => {
   return c.json({ ok: true, ...result });
 });
 
+/* ── 手动清理孤儿排行榜（历史遗留：外部/FK 关闭删除用户导致三表残留已删用户的孤儿行） ── */
+
+const ORPHAN_STAT_TABLES = ["registration_stats", "read_stats", "message_read_stats"] as const;
+
+function countOrphanStats(): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const t of ORPHAN_STAT_TABLES) {
+    out[t] = (sqlite.query(`SELECT COUNT(*) n FROM ${t} WHERE wx_id NOT IN (SELECT wx_id FROM users)`).get() as { n: number }).n;
+  }
+  return out;
+}
+
+adminApp.get("/admin/retention/orphans", (c) => {
+  const denied = adminOr(c);
+  if (denied) return denied;
+  return c.json({ ok: true, orphans: countOrphanStats() });
+});
+
+adminApp.post("/admin/retention/orphans", (c) => {
+  const denied = adminOr(c);
+  if (denied) return denied;
+  const actor = requireAdmin(c)!.wxId;
+  const counts: Record<string, number> = {};
+  let total = 0;
+  sqlite.transaction(() => {
+    for (const t of ORPHAN_STAT_TABLES) {
+      const r = sqlite.query(`DELETE FROM ${t} WHERE wx_id NOT IN (SELECT wx_id FROM users)`).run();
+      counts[t] = r.changes;
+      total += r.changes;
+    }
+  })();
+  audit(null, "admin_cleanup_orphans", `by=${actor} total=${total} ${JSON.stringify(counts)}`, clientIp(c));
+  return c.json({ ok: true, total, counts });
+});
+
 adminApp.get("/admin/reads/:id", (c) => {
   const denied = adminOr(c);
   if (denied) return denied;
