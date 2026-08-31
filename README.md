@@ -204,7 +204,8 @@ ADMIN=wxid_admin bun run dev              # 管理员权限来自 ADMIN 环境�
 | 长期沉寂 | `dormantDays` | 注册过消息，但最后一次注册消息距今超过 N 天 → 删除 |
 
 - **「是否注册过消息」以 `registration_stats` 累计值为准**，不能用 `messages` 表判断（消息会按等级配额 `MESSAGE_QUOTA_FORMULA` 与保留时长 `RETENTION_MONTHS_FORMULA` 被裁剪，老用户的消息可能早已清空但仍属活跃用户）
-- **删除范围**：用户 + 其全部 `messages` + 这些消息的 `reads` + `sessions`；`registration_stats` / `read_stats` / `message_read_stats` / `ip_block_account` 由外键 `ON DELETE CASCADE` 自动跟随——即**排行榜中该用户的记录一并清空**，不留幽灵条目
+- **删除范围**：用户 + 其全部 `messages` + 这些消息的 `reads` + `sessions`；`registration_stats` / `read_stats` / `message_read_stats` / `ip_block_account` 在删除事务中**显式清空**（不再单纯依赖外键 `ON DELETE CASCADE`）——即**排行榜中该用户的记录一并清空**，不留幽灵条目。
+  > ⚠️ SQLite 的外键级联仅在执行删除的连接开启了 `PRAGMA foreign_keys = ON` 时才生效。若曾用外部工具（DB Browser、`sqlite3` 命令、导入导出）或旧版服务删除用户，级联不会触发，会在排行榜三表留下孤儿行。可用 `bun run cleanup-orphans [--dry-run]` 脚本按「父用户已不存在」清理历史孤儿行（支持 `--dry-run` 预演）。
 - **豁免**：`ADMIN` 列表内的账号、以及被管理员停用（`level = 0`）的账号永不自动删除
 - **单次上限 `PURGE_BATCH_LIMIT = 1000`**：避免首次启用时一次性长事务阻塞读写，超出的候选留待次日任务继续（预演与执行均返回 `truncated` 标记）
 - **触发**：管理后台「保存」后立即生效、无需重启；`dailyCleanup` 自动执行；页面另提供「预演」（只统计不删，展示样例）与「立即清理」（二次确认后执行，写审计留痕）手动入口
