@@ -1,6 +1,7 @@
 import { sqlite } from "./db";
 import { AUDIT_RETENTION_DAYS } from "./config";
-import { utcDate } from "./utils";
+import { utcDate, utcDaysAgo } from "./utils";
+import { purgeIdleUsers } from "./retention";
 
 const CURSOR_KEY = "stats_cursor";
 const EPOCH = "0000-00-00 00:00:00";
@@ -124,21 +125,30 @@ export function recycleStaleGeoCounts(): void {
   sqlite.query("UPDATE users SET geo_count = 0 WHERE geo_date <> ? AND geo_count > 0").run(utcDate());
 }
 
-/** 每日清理：过期会话、>30 天审计、7 天前孤儿 reads、FTS rebuild、陈旧定位计数回收 */
+/**
+ * 每日清理：僵尸用户（按管理后台保留策略）、过期会话、>30 天审计、
+ * 7 天前孤儿 reads、FTS rebuild、陈旧定位计数回收。
+ *
+ * 僵尸用户清理单独成事务，且必须排在 FTS rebuild 之前：
+ * 它删除的 messages 会逐行触发 messages_ad 触发器，之后再 rebuild 一次即可收敛索引。
+ */
 export function dailyCleanup(): void {
-  const daysAgo = (days: number): string => {
-    const d = new Date(Date.now() - days * 24 * 3600 * 1000);
-    return d.toISOString().slice(0, 19).replace("T", " ");
-  };
+  const purged = purgeIdleUsers();
+  if (purged.deleted > 0) {
+    console.log(
+      `[cleanup] 自动清理僵尸用户 ${purged.deleted} 个（从未注册 ${purged.never} / 长期沉寂 ${purged.dormant}）` +
+        (purged.truncated ? "，已达单次上限，剩余留待下次" : ""),
+    );
+  }
 
   sqlite.transaction(() => {
-    sqlite.query("DELETE FROM sessions WHERE expires_at <= ?").run(daysAgo(0));
+    sqlite.query("DELETE FROM sessions WHERE expires_at <= ?").run(utcDaysAgo(0));
     if (AUDIT_RETENTION_DAYS > 0) {
-      sqlite.query("DELETE FROM audit_logs WHERE timestamp < ?").run(daysAgo(AUDIT_RETENTION_DAYS));
+      sqlite.query("DELETE FROM audit_logs WHERE timestamp < ?").run(utcDaysAgo(AUDIT_RETENTION_DAYS));
     }
     sqlite
       .query("DELETE FROM reads WHERE timestamp < ? AND id NOT IN (SELECT id FROM messages)")
-      .run(daysAgo(7));
+      .run(utcDaysAgo(7));
     sqlite.query("INSERT INTO messages_fts(messages_fts) VALUES ('rebuild')").run();
     recycleStaleGeoCounts();
   })();

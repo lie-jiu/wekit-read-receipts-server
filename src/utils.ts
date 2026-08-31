@@ -17,6 +17,17 @@ export function utcDate(): string {
   return utcNow().slice(0, 10);
 }
 
+/** UTC 时间戳往前推 days 天，格式 `YYYY-MM-DD HH:MM:SS` */
+export function utcDaysAgo(days: number): string {
+  const d = new Date(Date.now() - days * 24 * 3600 * 1000);
+  return d.toISOString().slice(0, 19).replace("T", " ");
+}
+
+/** UTC 自然日往前推 days 天，格式 `YYYY-MM-DD`（与 registration_stats.date 同格式） */
+export function utcDateDaysAgo(days: number): string {
+  return utcDaysAgo(days).slice(0, 10);
+}
+
 /** UTC 时间往前推 months 个月（按公历月边界）；超大月数导致日期溢出时返回最早时间（视为不裁剪） */
 export function utcMonthsAgo(months: number): string {
   const d = new Date(Date.now());

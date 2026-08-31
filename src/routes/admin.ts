@@ -12,6 +12,14 @@ import {
 } from "../levels";
 import { escapeLike, isValidId, isValidWxId, utcNow } from "../utils";
 import { adminOr, clampLimit, readRow, type ReadRow } from "../http-helpers";
+import {
+  MAX_RETENTION_DAYS,
+  getRetentionSettings,
+  previewIdleUsers,
+  purgeIdleUsers,
+  saveRetentionSettings,
+  type RetentionSettings,
+} from "../retention";
 import { adminPage } from "../pages";
 
 /** 管理后台（统一受 /admin/* 30/分 限流，仅 ADMIN 列表内账号；中间件由 app.ts 顶层控制） */
@@ -284,6 +292,71 @@ adminApp.post("/admin/levels", async (c) => {
     clientIp(c),
   );
   return c.json({ ok: true, restart: true });
+});
+
+/* ── 僵尸用户自动清理（设置存 meta 表，改完立即生效，无需重启） ── */
+
+/**
+ * 解析并校验天数：非 number 类型（含数字字符串）、非整数、负数、越界一律拒绝。
+ * 这里刻意不用 Number(raw)——那会把 "30" 之类也放行，让类型校验形同虚设。
+ */
+function parseDays(raw: unknown): number | null {
+  if (typeof raw !== "number" || !Number.isInteger(raw) || raw < 0 || raw > MAX_RETENTION_DAYS) return null;
+  return raw;
+}
+
+adminApp.get("/admin/retention", (c) => {
+  const denied = adminOr(c);
+  if (denied) return denied;
+  return c.json({ ...getRetentionSettings(), maxDays: MAX_RETENTION_DAYS });
+});
+
+adminApp.post("/admin/retention", async (c) => {
+  const denied = adminOr(c);
+  if (denied) return denied;
+  let body: { newUserDays?: unknown; dormantDays?: unknown };
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: "invalid JSON" }, 400);
+  }
+  const newUserDays = parseDays(body.newUserDays);
+  const dormantDays = parseDays(body.dormantDays);
+  if (newUserDays === null || dormantDays === null) {
+    return c.json({ error: `invalid payload: days must be 0-${MAX_RETENTION_DAYS}` }, 400);
+  }
+  const settings: RetentionSettings = { newUserDays, dormantDays };
+  saveRetentionSettings(settings);
+  audit(
+    requireAdmin(c)!.wxId,
+    "admin_set_retention",
+    `newUserDays=${newUserDays} dormantDays=${dormantDays}`,
+    clientIp(c),
+  );
+  return c.json({ ok: true, ...settings });
+});
+
+/** 预演：只统计不删除，返回命中数量与样例 */
+adminApp.get("/admin/retention/preview", (c) => {
+  const denied = adminOr(c);
+  if (denied) return denied;
+  const limit = clampLimit(Number(c.req.query("limit") ?? 20), 1, 100);
+  return c.json(previewIdleUsers(getRetentionSettings(), limit));
+});
+
+/** 立即执行一次清理（与每日任务同一套逻辑） */
+adminApp.post("/admin/retention/run", (c) => {
+  const denied = adminOr(c);
+  if (denied) return denied;
+  const actor = requireAdmin(c)!.wxId;
+  const result = purgeIdleUsers();
+  audit(
+    null,
+    "admin_run_retention",
+    `by=${actor} deleted=${result.deleted} never=${result.never} dormant=${result.dormant} skipped=${result.skipped}`,
+    clientIp(c),
+  );
+  return c.json({ ok: true, ...result });
 });
 
 adminApp.get("/admin/reads/:id", (c) => {
