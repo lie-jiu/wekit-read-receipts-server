@@ -1320,7 +1320,7 @@ async function checkOrphans() {
       ["message_read_stats", o.message_read_stats || 0],
     ];
     $("orphanTbody").innerHTML = rows
-      .map(([tb, n]) => "<tr><td class=\"uuid-col\">" + esc(tb) + "</td><td>" + n + "</td></tr>")
+      .map(([tb, n]) => '<tr><td class="uuid-col">' + esc(tb) + "</td><td>" + n + "</td></tr>")
       .join("");
     $("orphanSummary").textContent = t("orphanSummary", total);
     $("orphanWrap").classList.remove("hidden");
