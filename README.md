@@ -81,6 +81,7 @@ wekit-read-receipts-server/
     ├── mkuser.ts         # 快速创建/重置用户
     ├── backfill-isp.ts   # 补全存量运营商双语短名
     ├── migrate-d1.ts     # 从 Cloudflare D1 迁移
+    ├── cleanup-orphans.ts # 清理孤儿排行榜行（父用户已删除）：bun run cleanup-orphans [--dry-run]
     └── manage/           # CLI 实现按职责拆分
         ├── cli.ts        # 命令分发与帮助文本
         ├── platform.ts   # 跨平台工具（run/systemctl/portOpen/启动脚本）
