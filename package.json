@@ -11,7 +11,7 @@
     "typescript": "^7"
   },
   "dependencies": {
-    "hono": "4.13.3"
+    "hono": "4.13.5"
   },
   "scripts": {
     "dev": "bun --watch index.ts",
