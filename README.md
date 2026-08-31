@@ -75,7 +75,19 @@ wekit-read-receipts-server/
 │   │   ├── stats.ts      # /leaderboard、/rank 排行榜
 │   │   ├── admin.ts      # /admin/* 管理后台
 │   │   └── account.ts    # /account 账户设置页与账户 IP 黑名单
-│   └── pages/            # 前端页面 HTML/JS
+│   ├── pages/            # 前端页面 HTML/JS（服务端拼接整段 HTML + 内联 JS 返回）
+│   │   ├── shared.ts             # 统一的浏览器端 helper（esc/escAttr 严格版/t/applyI18n），以字符串插值注入各页面 <script>
+│   │   ├── index.ts              # 桶文件：重导出各页面模块，路由统一 import { ... } from "../pages"
+│   │   ├── dashboard/            # 仪表盘三页面（由 2973 行的 dashboard.ts 拆分）
+│   │   │   ├── dashboard-page.ts # 消息仪表盘 htmlPage
+│   │   │   ├── leaderboard-page.ts # 排行榜 leaderboardPage
+│   │   │   └── read-details-page.ts # 已读详情 readDetailsPage
+│   │   ├── admin/                # 管理后台（由 1471 行的 admin.ts 拆分）
+│   │   │   ├── admin-style.ts    # adminStyle() 内联 CSS
+│   │   │   └── admin-script.ts   # adminScript() 内联 JS（6 大功能模块）
+│   │   ├── admin.ts              # adminPage() 薄组合层（拼 style + script）
+│   │   ├── account.ts            # 账户设置页
+│   │   └── login.ts              # 登录页
 └── scripts/
     ├── manage.ts         # 管理 CLI 入口（bun run manage <cmd>）
     ├── mkuser.ts         # 快速创建/重置用户
