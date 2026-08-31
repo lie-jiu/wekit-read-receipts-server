@@ -29,7 +29,7 @@
 - **双语 IP 定位**：按需触发，中文 ip-api → ipwho.is，英文 ipwho.is → ipinfo.io，两路并发、失败逐级降级
 - **等级权益公式**：消息保留条数 / IP 定位次数 / 保留时长均由表达式配置，`x` 代表等级
 - **FTS5 全文搜索**：trigram 分词，支持消息内容快速检索
-- **管理后台**：用户管理、等级调整、权益公式在线编辑、消息管理（`level 0` = 仅禁止注册新消息）
+- **管理后台**：用户管理、等级调整、权益公式在线编辑、消息管理、**僵尸用户自动清理**（`level 0` = 仅禁止注册新消息）
 - **公开消息详情**：发布者本人/管理员可把单条消息详情设为公开（默认关闭）；公开后任何人（含未登录用户）可查看该消息已读明细，未公开消息仅本人与管理员可见
 - **IP 黑名单**：全局（仅管理员，admin 后台唯一入口）/ 单条消息 / 账户三级黑名单；已读详情接口在服务端直接过滤黑名单行（API 响应不返回其 IP/定位/时间数据，仅返回隐藏条数；数据库记录保留不删除）；注册消息自动将来源 IP 写入该消息黑名单；独立账户设置页 `/account` 集中管理账户黑名单与修改密码 / 退出登录 / 清除我的
 - **多形态部署**：反向代理 / 公网直连 / Cloudflare Tunnel，内置 HTTPS 支持
@@ -65,6 +65,7 @@ wekit-read-receipts-server/
 │   ├── levels.ts         # 等级权益公式引擎（x*…/min/max/pow…）与 .env 读写
 │   ├── rate-limit.ts     # per-IP 固定窗口限流 + 可信代理 IP 解析
 │   ├── stats.ts          # 统计表增量回填、每日清理
+│   ├── retention.ts      # 僵尸用户自动清理：策略读写、预演、执行（含排行榜级联清空）
 │   ├── utils.ts          # 通用工具（utcNow/校验/脱敏/哈希）
 │   ├── routes/           # 按业务职责拆分的子路由模块
 │   │   ├── tracking.ts   # /pixel、/count、/register 客户端打点
@@ -128,7 +129,10 @@ ADMIN=wxid_admin bun run dev              # 管理员权限来自 ADMIN 环境�
 | `GET/POST/DELETE /admin/ip-block` | 全局 IP 黑名单（仅管理员，唯一入口位于管理后台页签；仅支持自定义 IP，无一键拉黑） |
 | `POST /reads/:id/geo` | 按需 IP 定位：补全省市/运营商双语（幂等，缓存 24h；需登录，本人或管理员；按等级配额累计） |
 | `/leaderboard` | 排行榜：`?metric=reg\|read\|msg` × `?scope=day\|total`（均按 UTC 自然日；wxId 脱敏），无效参数返回 400 |
-| `/admin/*` | 管理后台：用户管理、等级调整、权益公式、消息管理 |
+| `/admin/*` | 管理后台：用户管理、等级调整、权益公式、消息管理、**僵尸用户清理** |
+| `GET /admin/retention`、`POST /admin/retention` | 读取 / 保存清理策略（两项天数：`newUserDays` 注册后从未注册消息、`dormantDays` 注册后沉寂；均存 `meta` 表，0 = 不清理，保存立即生效）；写审计 `admin_set_retention` |
+| `GET /admin/retention/preview?limit=` | 预演：仅统计不删，返回命中数量（never/dormant 拆分）、受豁免数、样例（上限 100） |
+| `POST /admin/retention/run` | 立即执行一次清理（与每日任务同一套逻辑），写审计 `admin_run_retention`（含 `by=/deleted=/skipped=`） |
 
 ## 环境变量
 
@@ -188,7 +192,23 @@ ADMIN=wxid_admin bun run dev              # 管理员权限来自 ADMIN 环境�
 - 运营商显示为双语短名（如 中国移动 / China Mobile），国外 ISP 仅在英文视图显示原文
 - 存量数据的运营商短名可通过 `bun run backfill-isp` 一次性补齐；已定位但缺英文的行会在下次点「定位」时自动重查补齐
 - `reads` 表无外键、无 wxId，删用户/删消息由服务端在同一事务内清理对应 reads；残留孤儿 reads 由每日任务清理（保留 7 天）
-- 定时任务：每 10 分钟游标增量回填统计表；每日清理过期会话、`AUDIT_RETENTION_DAYS`（默认 30）天前审计日志、孤儿 reads 并重建 FTS
+- 定时任务：每 10 分钟游标增量回填统计表；每日清理过期会话、`AUDIT_RETENTION_DAYS`（默认 30）天前审计日志、孤儿 reads 并重建 FTS；**若启用了僵尸清理策略，每日任务还会自动执行用户清理**（见下）
+
+### 僵尸用户自动清理
+
+针对「注册后从未使用 / 长期沉寂」的账号，避免库里堆积大量无意义用户与幽灵排行榜条目。策略在管理后台「僵尸清理」页签配置，**两项规则独立生效，均为 0 表示不清理**：
+
+| 规则 | 字段 | 含义 |
+|---|---|---|
+| 从未注册消息 | `newUserDays` | 注册后 N 天内**从未注册过任何消息** → 删除 |
+| 长期沉寂 | `dormantDays` | 注册过消息，但最后一次注册消息距今超过 N 天 → 删除 |
+
+- **「是否注册过消息」以 `registration_stats` 累计值为准**，不能用 `messages` 表判断（消息会按等级配额 `MESSAGE_QUOTA_FORMULA` 与保留时长 `RETENTION_MONTHS_FORMULA` 被裁剪，老用户的消息可能早已清空但仍属活跃用户）
+- **删除范围**：用户 + 其全部 `messages` + 这些消息的 `reads` + `sessions`；`registration_stats` / `read_stats` / `message_read_stats` / `ip_block_account` 由外键 `ON DELETE CASCADE` 自动跟随——即**排行榜中该用户的记录一并清空**，不留幽灵条目
+- **豁免**：`ADMIN` 列表内的账号、以及被管理员停用（`level = 0`）的账号永不自动删除
+- **单次上限 `PURGE_BATCH_LIMIT = 1000`**：避免首次启用时一次性长事务阻塞读写，超出的候选留待次日任务继续（预演与执行均返回 `truncated` 标记）
+- **触发**：管理后台「保存」后立即生效、无需重启；`dailyCleanup` 自动执行；页面另提供「预演」（只统计不删，展示样例）与「立即清理」（二次确认后执行，写审计留痕）手动入口
+- 天数上限 `MAX_RETENTION_DAYS = 36500`（≈100 年），后端校验 `0..上限` 的整数，越界 / 非整数 / 负数 / 字符串一律拒绝
 
 </details>
 
