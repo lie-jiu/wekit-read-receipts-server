@@ -452,3 +452,35 @@ describe("管理端 /admin/retention 接口", () => {
     expect(legacy.purgeable).toBe(25);
   });
 });
+
+/* ── 清理不依赖外键级联（防御性显式删除） ── */
+
+describe("清理不依赖外键级联", () => {
+  test("关闭 foreign_keys 时，删除用户仍清空排行榜三表", async () => {
+    reset();
+    insertUser("admin_wx");
+    const victim = uid();
+    insertUser(victim, 1, utcDaysAgo(365));
+    addStats(victim);
+
+    // 记录原始 FK 状态，结束后还原（bun test 跨文件共享同一 :memory: 连接）
+    const fkBefore = (sqlite.query("PRAGMA foreign_keys").get() as { foreign_keys: number }).foreign_keys;
+    sqlite.exec("PRAGMA foreign_keys = OFF");
+    try {
+      // 外键关闭时 ON DELETE CASCADE 不会触发，若只靠级联，排行榜会残留孤儿行
+      const res = await app.request(`/admin/users/${victim}`, {
+        method: "DELETE",
+        headers: cookieOf("admin_wx"),
+      });
+      expect(res.status).toBe(200);
+      for (const table of ["registration_stats", "read_stats", "message_read_stats"]) {
+        expect(sqlite.query(`SELECT COUNT(*) n FROM ${table} WHERE wx_id = ?`).get(victim)).toEqual({ n: 0 });
+      }
+      expect(exists(victim)).toBe(false);
+      // 其他用户（含 admin_wx）不应被波及
+      expect(exists("admin_wx")).toBe(true);
+    } finally {
+      sqlite.exec(`PRAGMA foreign_keys = ${fkBefore}`);
+    }
+  });
+});
