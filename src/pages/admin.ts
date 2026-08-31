@@ -60,6 +60,8 @@ tr:hover td{background:#0f172a80}
 .level-input{width:3.2rem;text-align:center;padding:.25rem .3rem;border:1px solid #475569;border-radius:6px;background:#0f172a;color:#e2e8f0;font-size:.8rem;outline:none;-moz-appearance:textfield}
 .level-input::-webkit-outer-spin-button,.level-input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
 .level-input:focus{border-color:#3b82f6}
+.retention-input{width:7rem;text-align:center;padding:.35rem .5rem;border:1px solid #475569;border-radius:6px;background:#0f172a;color:#e2e8f0;font-size:.85rem;outline:none;font-variant-numeric:tabular-nums}
+.retention-input:focus{border-color:#3b82f6}
 .toast-container{position:fixed;top:max(1rem,env(safe-area-inset-top));right:max(1rem,env(safe-area-inset-right));z-index:1000;display:flex;flex-direction:column;gap:.5rem}
 .levels-hint{font-size:.78rem;color:#64748b;line-height:1.5}
 .levels-hint b{color:#94a3b8}
@@ -126,6 +128,7 @@ tr.expanded .expand-icon{transform:rotate(90deg)}
     <button id="tabUsers" class="tab active" onclick="showTab('users')" data-i18n="tabUsers">Users</button>
     <button id="tabMsgs" class="tab" onclick="showTab('msgs')" data-i18n="tabMsgs">Messages</button>
     <button id="tabLevels" class="tab" onclick="showTab('levels')" data-i18n="tabLevels">Levels</button>
+    <button id="tabRetention" class="tab" onclick="showTab('retention')" data-i18n="tabRetention">Retention</button>
     <button id="tabBlock" class="tab" onclick="showTab('block')" data-i18n="tabBlock">IP Blacklist</button>
   </div>
 
@@ -201,6 +204,43 @@ tr.expanded .expand-icon{transform:rotate(90deg)}
       </table>
     </div>
   </div>
+  <div id="secRetention" class="hidden">
+    <div class="controls">
+      <span class="levels-hint" data-i18n="retentionHint"></span>
+    </div>
+    <div class="table-wrapper">
+      <table>
+        <tbody>
+          <tr>
+            <td class="uuid-col" data-label="" data-i18n="retentionNewUser">Days since signup, never registered a message</td>
+            <td><input id="retentionNewUserDays" class="retention-input" type="number" min="0" step="1"/></td>
+          </tr>
+          <tr>
+            <td class="uuid-col" data-label="" data-i18n="retentionDormant">Days since last registered message</td>
+            <td><input id="retentionDormantDays" class="retention-input" type="number" min="0" step="1"/></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="controls">
+      <button class="btn btn-primary" onclick="saveRetention()" data-i18n="saveRetention">Save Policy</button>
+      <span class="sep">|</span>
+      <button class="btn btn-secondary" onclick="previewRetention()" data-i18n="previewRetention">Preview</button>
+      <button class="btn btn-danger" onclick="askRunRetention()" data-i18n="runRetention">Purge now</button>
+    </div>
+    <div class="table-wrapper hidden" id="retentionPreviewWrap">
+      <div class="stats"><span id="retentionSummary"></span></div>
+      <table>
+        <thead><tr>
+          <th>wxId</th>
+          <th data-i18n="retentionReason">Reason</th>
+          <th data-i18n="registered">Registered</th>
+          <th data-i18n="retentionLastReg">Last registered message</th>
+        </tr></thead>
+        <tbody id="retentionTbody"></tbody>
+      </table>
+    </div>
+  </div>
   <div id="secBlock" class="hidden">
     <div class="controls">
       <input id="fGlobalIp" placeholder="Add IP to global blacklist..." onkeydown="if(event.key==='Enter')addGlobalIp()" data-i18n="fGlobalIpPlaceholder" data-i18n-placeholder/>
@@ -270,7 +310,31 @@ const translations = {
     tabUsers: "用户",
     tabMsgs: "消息",
     tabLevels: "等级权益",
+    tabRetention: "僵尸清理",
     tabBlock: "全局 IP 黑名单",
+    retentionHint: "两条规则独立判断，0 表示不清理。清理会删除用户及其全部消息、已读记录，并同步清空该用户在注册榜/已读榜/消息榜上的记录（外键级联）。管理员账号与已停用（等级 0）的账号永不自动清理。保存后立即生效，无需重启。",
+    retentionNewUser: "注册后从未注册消息（天）",
+    retentionDormant: "注册过但已沉寂（天）",
+    saveRetention: "保存清理策略",
+    retentionSaved: "已保存，立即生效",
+    saveRetentionFail: "保存失败",
+    loadRetentionFail: "加载清理策略失败",
+    previewRetention: "预演",
+    previewRetentionFail: "预演失败",
+    runRetention: "立即清理",
+    retentionReason: "命中原因",
+    retentionLastReg: "最后注册消息",
+    reasonNever: "从未注册消息",
+    reasonDormant: "长期未注册消息",
+    retentionPreviewEmpty: "当前策略下没有会被清理的用户",
+    retentionSummary: "将清理 {0} 个（从未注册 {1} / 长期沉寂 {2}）",
+    retentionSkipped: "；另有 {0} 个命中但受豁免",
+    retentionTruncated: "（本次已达上限，剩余留待下次）",
+    retentionRunTitle: "立即清理？",
+    retentionRunBody: "将删除 {0} 个用户及其全部消息、已读记录与排行榜记录。此操作不可撤销。",
+    retentionRunDone: "已清理 {0} 个用户",
+    retentionRunFail: "清理失败",
+    retentionInvalidDays: "天数需为 0 到 {0} 之间的整数",
     globalBlacklistHint: "命中即对所有用户的所有消息的已读详情生效：接口不再返回该 IP 的任何数据（记录保留）",
     fGlobalIpPlaceholder: "输入要拉黑的 IP，如 203.0.113.7",
     addIp: "添加",
@@ -367,7 +431,31 @@ const translations = {
     tabUsers: "Users",
     tabMsgs: "Messages",
     tabLevels: "Levels",
+    tabRetention: "Retention",
     tabBlock: "IP Blacklist",
+    retentionHint: "The two rules are evaluated independently; 0 disables a rule. Purging deletes the user together with all their messages, read records, and their rows on the registration/read/message leaderboards (foreign key cascade). Admin accounts and disabled accounts (level 0) are never purged. Changes take effect immediately, no restart needed.",
+    retentionNewUser: "Days since signup, never registered a message",
+    retentionDormant: "Days since last registered message",
+    saveRetention: "Save Policy",
+    retentionSaved: "Saved. Takes effect immediately.",
+    saveRetentionFail: "Failed to save",
+    loadRetentionFail: "Failed to load retention policy",
+    previewRetention: "Preview",
+    previewRetentionFail: "Preview failed",
+    runRetention: "Purge now",
+    retentionReason: "Reason",
+    retentionLastReg: "Last registered message",
+    reasonNever: "Never registered a message",
+    reasonDormant: "Silent for too long",
+    retentionPreviewEmpty: "No users match the current policy",
+    retentionSummary: "{0} users will be purged (never registered {1} / silent {2})",
+    retentionSkipped: "; {0} more matched but are exempt",
+    retentionTruncated: " (batch limit reached, the rest will follow next run)",
+    retentionRunTitle: "Purge now?",
+    retentionRunBody: "This deletes {0} users along with all their messages, read records and leaderboard rows. This cannot be undone.",
+    retentionRunDone: "Purged {0} users",
+    retentionRunFail: "Purge failed",
+    retentionInvalidDays: "Days must be an integer between 0 and {0}",
     globalBlacklistHint: "Applies to read details of all messages of all users: the API returns no data for blacklisted IPs (records kept)",
     fGlobalIpPlaceholder: "Enter an IP to blacklist, e.g. 203.0.113.7",
     addIp: "Add",
@@ -477,6 +565,11 @@ function toggleLang() {
   applyI18n();
   if ($("tabUsers").classList.contains("active")) loadUsers();
   else if ($("tabMsgs").classList.contains("active")) loadMsgs();
+  else if ($("tabRetention").classList.contains("active")) {
+    loadRetention();
+    // 仅当预演结果已展开时才重新拉取，避免切语言把隐藏区块顶出来
+    if (!$("retentionPreviewWrap").classList.contains("hidden")) previewRetention();
+  }
   else if ($("tabBlock").classList.contains("active")) loadGlobalIps();
   else loadLevels();
 }
@@ -491,6 +584,7 @@ function setLabels() {
   };
   apply($("userTbody"), ["wxId", t("level"), t("registered"), t("actions")]);
   apply($("msgTbody"), ["wxId", t("message"), t("reads"), t("timestamp"), t("actions")]);
+  apply($("retentionTbody"), ["wxId", t("retentionReason"), t("registered"), t("retentionLastReg")]);
   apply($("globalIpTbody"), [t("ipAddressCol"), t("addedAt"), t("actions")]);
 }
 applyI18n();
@@ -537,13 +631,16 @@ function showTab(name){
   $("tabUsers").classList.toggle("active", name === "users");
   $("tabMsgs").classList.toggle("active", name === "msgs");
   $("tabLevels").classList.toggle("active", name === "levels");
+  $("tabRetention").classList.toggle("active", name === "retention");
   $("tabBlock").classList.toggle("active", name === "block");
   $("secUsers").classList.toggle("hidden", name !== "users");
   $("secMsgs").classList.toggle("hidden", name !== "msgs");
   $("secLevels").classList.toggle("hidden", name !== "levels");
+  $("secRetention").classList.toggle("hidden", name !== "retention");
   $("secBlock").classList.toggle("hidden", name !== "block");
   if (name === "users") loadUsers();
   else if (name === "msgs") loadMsgs();
+  else if (name === "retention") loadRetention();
   else if (name === "block") loadGlobalIps();
   else loadLevels();
 }
@@ -1009,6 +1106,99 @@ async function saveLevels() {
     loadLevels();
   } catch (e) { toast(t("networkError"), "error"); }
 }
+/* ── 僵尸用户清理 ── */
+let retentionMaxDays = 36500;
+
+async function loadRetention() {
+  try {
+    const res = await fetch("/admin/retention");
+    if (res.status === 401) { location.href = "/"; return; }
+    if (!res.ok) { toast(t("loadRetentionFail"), "error"); return; }
+    const data = await res.json();
+    retentionMaxDays = data.maxDays || retentionMaxDays;
+    $("retentionNewUserDays").value = data.newUserDays;
+    $("retentionDormantDays").value = data.dormantDays;
+  } catch (e) { toast(t("networkError") + ": " + e.message, "error"); }
+}
+
+async function saveRetention() {
+  const newUserDays = Number($("retentionNewUserDays").value);
+  const dormantDays = Number($("retentionDormantDays").value);
+  const invalid = (n) => !Number.isInteger(n) || n < 0 || n > retentionMaxDays;
+  if (invalid(newUserDays) || invalid(dormantDays)) {
+    toast(t("retentionInvalidDays", retentionMaxDays), "error");
+    return;
+  }
+  try {
+    const res = await fetch("/admin/retention", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ newUserDays, dormantDays }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) { toast(data.error || t("saveRetentionFail"), "error"); return; }
+    toast(t("retentionSaved"), "success");
+    $("retentionPreviewWrap").classList.add("hidden");
+  } catch (e) { toast(t("networkError"), "error"); }
+}
+
+async function previewRetention() {
+  try {
+    const res = await fetch("/admin/retention/preview?limit=20");
+    if (res.status === 401) { location.href = "/"; return; }
+    if (!res.ok) { toast(t("previewRetentionFail"), "error"); return; }
+    const data = await res.json();
+    if (!data.purgeable) {
+      $("retentionSummary").textContent = t("retentionPreviewEmpty");
+      $("retentionTbody").innerHTML = "";
+      $("retentionPreviewWrap").classList.remove("hidden");
+      return;
+    }
+    let summary = t("retentionSummary", data.purgeable, data.never, data.dormant);
+    if (data.protectedCount) summary += t("retentionSkipped", data.protectedCount);
+    if (data.truncated) summary += t("retentionTruncated");
+    $("retentionSummary").textContent = summary;
+    $("retentionTbody").innerHTML = (data.samples || [])
+      .map(
+        (u) =>
+          "<tr>" +
+          '<td class="uuid-col">' + esc(u.wxId) + "</td>" +
+          "<td>" + esc(u.reason === "never" ? t("reasonNever") : t("reasonDormant")) + "</td>" +
+          '<td class="ts-col">' + esc(fmtTs(u.createdAt)) + "</td>" +
+          '<td class="ts-col">' + esc(u.lastRegAt || "—") + "</td>" +
+          "</tr>",
+      )
+      .join("");
+    $("retentionPreviewWrap").classList.remove("hidden");
+  } catch (e) { toast(t("networkError") + ": " + e.message, "error"); }
+  setLabels();
+}
+
+/** 先按当前策略取一次数量再二次确认，避免确认框里的数字与点击瞬间的实况不一致 */
+async function askRunRetention() {
+  try {
+    const res = await fetch("/admin/retention/preview?limit=1");
+    if (!res.ok) { toast(t("previewRetentionFail"), "error"); return; }
+    const data = await res.json();
+    if (!data.purgeable) { toast(t("retentionPreviewEmpty"), "info"); return; }
+    showModal(t("retentionRunTitle"), t("retentionRunBody", data.purgeable), runRetention);
+  } catch (e) { toast(t("networkError"), "error"); }
+}
+
+async function runRetention() {
+  try {
+    const res = await fetch("/admin/retention/run", { method: "POST" });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) { toast(data.error || t("retentionRunFail"), "error"); return; }
+    let msg = t("retentionRunDone", data.deleted);
+    if (data.skipped) msg += t("retentionSkipped", data.skipped);
+    if (data.truncated) msg += t("retentionTruncated");
+    toast(msg, "success");
+    await previewRetention();
+    loadUsers();
+  } catch (e) { toast(t("networkError"), "error"); }
+}
+
 function toggleUserRow(row) {
   const detail = row.nextElementSibling;
   if (!detail || !detail.classList.contains("detail-row")) return;
