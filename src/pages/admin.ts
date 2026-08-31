@@ -62,6 +62,7 @@ tr:hover td{background:#0f172a80}
 .level-input:focus{border-color:#3b82f6}
 .retention-input{width:7rem;text-align:center;padding:.35rem .5rem;border:1px solid #475569;border-radius:6px;background:#0f172a;color:#e2e8f0;font-size:.85rem;outline:none;font-variant-numeric:tabular-nums}
 .retention-input:focus{border-color:#3b82f6}
+.section-sep{margin:1.25rem 0;border:none;border-top:1px solid #334155;}
 .toast-container{position:fixed;top:max(1rem,env(safe-area-inset-top));right:max(1rem,env(safe-area-inset-right));z-index:1000;display:flex;flex-direction:column;gap:.5rem}
 .levels-hint{font-size:.78rem;color:#64748b;line-height:1.5}
 .levels-hint b{color:#94a3b8}
@@ -241,6 +242,25 @@ tr.expanded .expand-icon{transform:rotate(90deg)}
       </table>
       <div class="pagination" id="retentionPagination"></div>
     </div>
+    <hr class="section-sep" />
+    <div class="controls">
+      <span class="levels-hint" data-i18n="orphanCleanupHint"></span>
+    </div>
+    <div class="controls">
+      <button class="btn btn-secondary" onclick="checkOrphans()" data-i18n="checkOrphans">Check orphan leaderboard rows</button>
+      <span class="sep">|</span>
+      <button class="btn btn-danger" onclick="askCleanOrphans()" data-i18n="cleanOrphans">Clean orphan leaderboard</button>
+    </div>
+    <div class="table-wrapper hidden" id="orphanWrap">
+      <div class="stats"><span id="orphanSummary"></span></div>
+      <table>
+        <thead><tr>
+          <th data-i18n="orphanTable">Table</th>
+          <th data-i18n="orphanCount">Orphan rows</th>
+        </tr></thead>
+        <tbody id="orphanTbody"></tbody>
+      </table>
+    </div>
   </div>
   <div id="secBlock" class="hidden">
     <div class="controls">
@@ -336,6 +356,18 @@ const translations = {
     retentionRunDone: "已清理 {0} 个用户",
     retentionRunFail: "清理失败",
     retentionInvalidDays: "天数需为 0 到 {0} 之间的整数",
+    orphanCleanupHint: "历史遗留：曾用外部工具（未开启外键）删除用户时，注册榜/已读榜/消息榜可能残留「父用户已不存在」的孤儿行，导致已删用户仍显示在榜上。可在此手动清理。",
+    checkOrphans: "检测孤儿排行榜行",
+    checkOrphansFail: "检测失败",
+    cleanOrphans: "清理孤儿排行榜",
+    orphanTable: "数据表",
+    orphanCount: "孤儿行数",
+    orphanSummary: "共发现 {0} 行孤儿记录",
+    orphanNone: "未检测到孤儿排行榜行",
+    orphanCleanTitle: "清理孤儿排行榜？",
+    orphanCleanBody: "将删除 {0} 行「父用户已不存在」的排行榜记录（注册榜/已读榜/消息榜）。此操作不可撤销。",
+    orphanCleanDone: "已清理 {0} 行孤儿记录",
+    cleanOrphansFail: "清理失败",
     globalBlacklistHint: "命中即对所有用户的所有消息的已读详情生效：接口不再返回该 IP 的任何数据（记录保留）",
     fGlobalIpPlaceholder: "输入要拉黑的 IP，如 203.0.113.7",
     addIp: "添加",
@@ -457,6 +489,18 @@ const translations = {
     retentionRunDone: "Purged {0} users",
     retentionRunFail: "Purge failed",
     retentionInvalidDays: "Days must be an integer between 0 and {0}",
+    orphanCleanupHint: "Legacy orphans: if users were ever deleted via external tools (foreign keys off), the registration/read/message leaderboard tables may retain rows whose user no longer exists, so deleted users still show on the boards. Clean them here.",
+    checkOrphans: "Check orphan leaderboard rows",
+    checkOrphansFail: "Check failed",
+    cleanOrphans: "Clean orphan leaderboard",
+    orphanTable: "Table",
+    orphanCount: "Orphan rows",
+    orphanSummary: "{0} orphan rows found",
+    orphanNone: "No orphan leaderboard rows detected",
+    orphanCleanTitle: "Clean orphan leaderboard?",
+    orphanCleanBody: "This will delete {0} leaderboard rows whose user no longer exists (registration/read/message boards). This cannot be undone.",
+    orphanCleanDone: "Cleaned {0} orphan rows",
+    cleanOrphansFail: "Clean failed",
     globalBlacklistHint: "Applies to read details of all messages of all users: the API returns no data for blacklisted IPs (records kept)",
     fGlobalIpPlaceholder: "Enter an IP to blacklist, e.g. 203.0.113.7",
     addIp: "Add",
@@ -1258,6 +1302,51 @@ async function runRetention() {
     toast(msg, "success");
     await previewRetention(true);
     loadUsers();
+  } catch (e) { toast(t("networkError"), "error"); }
+}
+
+/* ── 手动清理孤儿排行榜 ── */
+async function checkOrphans() {
+  try {
+    const res = await fetch("/admin/retention/orphans");
+    if (res.status === 401) { location.href = "/"; return; }
+    if (!res.ok) { toast(t("checkOrphansFail"), "error"); return; }
+    const data = await res.json();
+    const o = data.orphans || {};
+    const total = (o.registration_stats || 0) + (o.read_stats || 0) + (o.message_read_stats || 0);
+    const rows = [
+      ["registration_stats", o.registration_stats || 0],
+      ["read_stats", o.read_stats || 0],
+      ["message_read_stats", o.message_read_stats || 0],
+    ];
+    $("orphanTbody").innerHTML = rows
+      .map(([tb, n]) => "<tr><td class=\"uuid-col\">" + esc(tb) + "</td><td>" + n + "</td></tr>")
+      .join("");
+    $("orphanSummary").textContent = t("orphanSummary", total);
+    $("orphanWrap").classList.remove("hidden");
+    setLabels();
+  } catch (e) { toast(t("networkError") + ": " + e.message, "error"); }
+}
+
+async function askCleanOrphans() {
+  try {
+    const res = await fetch("/admin/retention/orphans");
+    if (!res.ok) { toast(t("checkOrphansFail"), "error"); return; }
+    const data = await res.json();
+    const o = data.orphans || {};
+    const total = (o.registration_stats || 0) + (o.read_stats || 0) + (o.message_read_stats || 0);
+    if (!total) { toast(t("orphanNone"), "info"); return; }
+    showModal(t("orphanCleanTitle"), t("orphanCleanBody", total), cleanOrphans);
+  } catch (e) { toast(t("networkError"), "error"); }
+}
+
+async function cleanOrphans() {
+  try {
+    const res = await fetch("/admin/retention/orphans", { method: "POST" });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) { toast(data.error || t("cleanOrphansFail"), "error"); return; }
+    toast(t("orphanCleanDone", data.total), "success");
+    await checkOrphans();
   } catch (e) { toast(t("networkError"), "error"); }
 }
 
