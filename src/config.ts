@@ -46,6 +46,20 @@ export const MAX_CONTENT_LENGTH = 2_048;
 export const MAX_REGISTER_BATCH = 50;
 
 /**
+ * 请求体上限（字节），传给 Bun.serve 的 maxRequestBodySize。
+ *
+ * /pixel、/count、/register 都是无鉴权公开端点；不设上限时 Bun 会先把请求体完整读进内存
+ * 再交给业务校验，可被用于内存/CPU 放大（实测向 /register POST 20MB 会被完整读入并 JSON.parse）。
+ * 上限按 /register 的最大合法载荷推导：50 条 × 2048 字符，UTF-8 极端约 300 KB，故取 512 KB。
+ */
+const rawMaxBody = Number(process.env.MAX_BODY_BYTES ?? 512 * 1024);
+export const MAX_BODY_BYTES = Number.isFinite(rawMaxBody) && rawMaxBody > 0 ? rawMaxBody : 512 * 1024;
+
+/** 优雅关闭等待在途请求的上限（毫秒），超时后强制断开剩余连接 */
+const rawShutdownMs = Number(process.env.SHUTDOWN_TIMEOUT_MS ?? 10_000);
+export const SHUTDOWN_TIMEOUT_MS = Number.isFinite(rawShutdownMs) && rawShutdownMs >= 0 ? rawShutdownMs : 10_000;
+
+/**
  * /register 为未授权端点（客户端协议不可变），按 wxId 限流缓解批量伪造消息。
  * 正常客户端逐条 POST、量小，不会触及；定向慢速注入无法完全阻断（协议无鉴权的固有缺陷）。
  */
