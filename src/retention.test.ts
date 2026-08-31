@@ -535,3 +535,62 @@ describe("注册消息排行榜孤儿行", () => {
     }
   });
 });
+
+/* ── 孤儿排行榜清理端点（后台按钮，免登服务器） ── */
+
+describe("孤儿排行榜清理端点 /admin/retention/orphans", () => {
+  const getOrphans = () => app.request("/admin/retention/orphans", { headers: cookieOf("admin_wx") });
+  const postOrphans = (wxId = "admin_wx") =>
+    app.request("/admin/retention/orphans", { method: "POST", headers: cookieOf(wxId) });
+
+  test("非管理员 403", async () => {
+    reset();
+    insertUser("admin_wx");
+    insertUser("plain_wx");
+    expect((await getOrphans()).status).toBe(200);
+    expect((await app.request("/admin/retention/orphans", { headers: cookieOf("plain_wx") })).status).toBe(403);
+  });
+
+  test("检测返回三表孤儿计数，清理后归零且写审计", async () => {
+    reset();
+    insertUser("admin_wx");
+    insertUser("real_user");
+    for (const t of ["registration_stats", "read_stats", "message_read_stats"]) {
+      sqlite.query(`INSERT INTO ${t} (date, wx_id, count) VALUES (?, ?, 5)`).run(utcDateDaysAgo(10), "real_user");
+    }
+    // 孤儿行（wx_id 不在 users）；临时关外键才能插入
+    sqlite.exec("PRAGMA foreign_keys = OFF");
+    try {
+      for (const t of ["registration_stats", "read_stats", "message_read_stats"]) {
+        sqlite.query(`INSERT INTO ${t} (date, wx_id, count) VALUES (?, ?, 9)`).run(utcDateDaysAgo(5), "ghost_" + t);
+      }
+    } finally {
+      sqlite.exec("PRAGMA foreign_keys = ON");
+    }
+
+    const before = await j<{ orphans: Record<string, number> }>(getOrphans());
+    expect(before.orphans.registration_stats).toBe(1);
+    expect(before.orphans.read_stats).toBe(1);
+    expect(before.orphans.message_read_stats).toBe(1);
+
+    const run = await j<{ ok: boolean; total: number; counts: Record<string, number> }>(postOrphans());
+    expect(run.ok).toBe(true);
+    expect(run.total).toBe(3);
+    expect(run.counts.registration_stats).toBe(1);
+
+    // 真实用户数据保留
+    for (const t of ["registration_stats", "read_stats", "message_read_stats"]) {
+      expect(sqlite.query(`SELECT COUNT(*) n FROM ${t} WHERE wx_id = ?`).get("real_user")).toEqual({ n: 1 });
+    }
+    // 孤儿归零
+    const after = await j<{ orphans: Record<string, number> }>(getOrphans());
+    expect(after.orphans.registration_stats).toBe(0);
+    expect(after.orphans.read_stats).toBe(0);
+    expect(after.orphans.message_read_stats).toBe(0);
+
+    const log = sqlite.query("SELECT detail FROM audit_logs WHERE action = 'admin_cleanup_orphans'").get() as
+      | { detail: string }
+      | null;
+    expect(log?.detail).toContain("by=admin_wx");
+  });
+});
