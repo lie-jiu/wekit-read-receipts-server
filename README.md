@@ -133,6 +133,8 @@ ADMIN=wxid_admin bun run dev              # 管理员权限来自 ADMIN 环境�
 | `GET /admin/retention`、`POST /admin/retention` | 读取 / 保存清理策略（两项天数：`newUserDays` 注册后从未注册消息、`dormantDays` 注册后沉寂；均存 `meta` 表，0 = 不清理，保存立即生效）；写审计 `admin_set_retention` |
 | `GET /admin/retention/preview?page=&pageSize=` | 预演：仅统计不删，返回命中数量（never/dormant 拆分）、受豁免数、样例；`page`/`pageSize` 分页（`pageSize` 兼容旧 `limit`，1–100），`purgeable`/`never`/`dormant` 等全量计数跨页不变 |
 | `POST /admin/retention/run` | 立即执行一次清理（与每日任务同一套逻辑），写审计 `admin_run_retention`（含 `by=/deleted=/skipped=`） |
+| `GET /admin/retention/orphans` | 检测孤儿排行榜行：返回 `registration_stats` / `read_stats` / `message_read_stats` 三表「父用户已不存在」的行数（历史遗留：外部/FK 关闭删除用户所致） |
+| `POST /admin/retention/orphans` | 清理孤儿排行榜行（删除三表中 `wx_id` 不在 `users` 的行），写审计 `admin_cleanup_orphans`（含 `by=/total=/逐表计数`）；对应管理后台「僵尸清理」页签的「清理孤儿排行榜」按钮 |
 
 ## 环境变量
 
