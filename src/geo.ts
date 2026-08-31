@@ -170,13 +170,21 @@ function cacheGet(ip: string): GeoResult | undefined {
 }
 
 function cacheSet(ip: string, info: GeoResult): void {
+  // delete 再 set：把重复写入的 key 刷新到插入序末尾，使下面的淘汰真正按「最久未写入」进行
+  cache.delete(ip);
   cache.set(ip, {
     info,
     expiresAt: Date.now() + (info ? GEO_CACHE_SUCCESS_MS : GEO_CACHE_FAILURE_MS),
   });
   if (cache.size > GEO_CACHE_MAX) {
-    const cutoff = Date.now();
-    for (const [k, v] of cache) if (v.expiresAt < cutoff) cache.delete(k);
+    // 淘汰最久未写入的 excess 项：单次 O(excess)、摊还 O(1)。
+    // 原实现遍历全表只删已过期项，若全未过期则一项都删不掉，Map 会无界增长且每次写入都要全表扫描。
+    const excess = cache.size - GEO_CACHE_MAX;
+    let i = 0;
+    for (const k of cache.keys()) {
+      if (i++ >= excess) break;
+      cache.delete(k);
+    }
   }
 }
 
