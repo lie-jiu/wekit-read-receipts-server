@@ -32,7 +32,7 @@ statsApp.get("/leaderboard", (c) => {
     const rows = sqlite
       .query(
         `SELECT m.id, m.wx_id, m.content, COUNT(DISTINCT r.ip) AS total
-         FROM messages m LEFT JOIN reads r ON r.id = m.id ${dayCond}
+         FROM messages m JOIN users u ON u.wx_id = m.wx_id LEFT JOIN reads r ON r.id = m.id ${dayCond}
          GROUP BY m.id ORDER BY total DESC, m.wx_id ASC, m.id ASC LIMIT 10`,
       )
       .all(...params) as Array<{ id: string; wx_id: string; content: string; total: number }>;
@@ -48,10 +48,14 @@ statsApp.get("/leaderboard", (c) => {
   }
 
   const table = LEADERBOARD_TABLES[metric];
-  const where = scope === "day" ? " WHERE date = ?" : "";
+  const where = scope === "day" ? " AND s.date = ?" : "";
   const params: Array<string> = scope === "day" ? [utcDate()] : [];
   const rows = sqlite
-    .query(`SELECT wx_id, SUM(count) AS total FROM ${table}${where} GROUP BY wx_id ORDER BY total DESC LIMIT 10`)
+    .query(
+      `SELECT s.wx_id AS wx_id, SUM(s.count) AS total
+       FROM ${table} s JOIN users u ON u.wx_id = s.wx_id${where}
+       GROUP BY s.wx_id ORDER BY total DESC LIMIT 10`,
+    )
     .all(...params) as Array<{ wx_id: string; total: number }>;
 
   return c.json(rows.map((r) => ({ wxId: maskWxId(r.wx_id), count: r.total, me: r.wx_id === me.wxId })));

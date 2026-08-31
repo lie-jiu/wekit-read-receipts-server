@@ -142,6 +142,13 @@ export function dailyCleanup(): void {
   }
 
   sqlite.transaction(() => {
+    // 清理因外部工具 / 旧版服务（未开启 foreign_keys）删除用户而残留的孤儿统计行。
+    // 关键不对称：backfillStats 在检测到大量删除时会全量重建 read_stats / message_read_stats，
+    // 孤儿行随之自然消失；但 registration_stats 不参与重建，其孤儿行会永久残留。
+    // 故这里对三张统计表统一显式清理，保证「注册消息排行榜」不残留已删用户。
+    for (const t of ["registration_stats", "read_stats", "message_read_stats"]) {
+      sqlite.query(`DELETE FROM ${t} WHERE wx_id NOT IN (SELECT wx_id FROM users)`).run();
+    }
     sqlite.query("DELETE FROM sessions WHERE expires_at <= ?").run(utcDaysAgo(0));
     if (AUDIT_RETENTION_DAYS > 0) {
       sqlite.query("DELETE FROM audit_logs WHERE timestamp < ?").run(utcDaysAgo(AUDIT_RETENTION_DAYS));
