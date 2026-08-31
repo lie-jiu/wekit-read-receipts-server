@@ -229,6 +229,10 @@ export function purgeIdleUsers(settings: RetentionSettings = getRetentionSetting
   const delReads = sqlite.prepare("DELETE FROM reads WHERE id IN (SELECT id FROM messages WHERE wx_id = ?)");
   const delMessages = sqlite.prepare("DELETE FROM messages WHERE wx_id = ?");
   const delSessions = sqlite.prepare("DELETE FROM sessions WHERE wx_id = ?");
+  const delRegStats = sqlite.prepare("DELETE FROM registration_stats WHERE wx_id = ?");
+  const delReadStats = sqlite.prepare("DELETE FROM read_stats WHERE wx_id = ?");
+  const delMsgStats = sqlite.prepare("DELETE FROM message_read_stats WHERE wx_id = ?");
+  const delIpBlockAccount = sqlite.prepare("DELETE FROM ip_block_account WHERE wx_id = ?");
   const delUser = sqlite.prepare("DELETE FROM users WHERE wx_id = ?");
 
   let never = 0;
@@ -238,6 +242,11 @@ export function purgeIdleUsers(settings: RetentionSettings = getRetentionSetting
       delReads.run(t.wxId);
       delMessages.run(t.wxId);
       delSessions.run(t.wxId);
+      // 显式清理排行榜三表与账户级 IP 黑名单：不依赖外键级联（级联仅在开启 foreign_keys 的连接上生效）
+      delRegStats.run(t.wxId);
+      delReadStats.run(t.wxId);
+      delMsgStats.run(t.wxId);
+      delIpBlockAccount.run(t.wxId);
       delUser.run(t.wxId);
       if (t.reason === "never") never++;
       else dormant++;

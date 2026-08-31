@@ -158,6 +158,12 @@ adminApp.delete("/admin/users/:wxId", (c) => {
     sqlite.query("DELETE FROM reads WHERE id IN (SELECT id FROM messages WHERE wx_id = ?)").run(wxId);
     sqlite.query("DELETE FROM messages WHERE wx_id = ?").run(wxId);
     sqlite.query("DELETE FROM sessions WHERE wx_id = ?").run(wxId);
+    // 显式清理排行榜三表与账户级 IP 黑名单：不依赖外键级联（级联仅在开启 foreign_keys 的连接上生效，
+    // 外部工具或旧版服务删除用户时可能未开启，会留下孤儿排行榜行）
+    sqlite.query("DELETE FROM registration_stats WHERE wx_id = ?").run(wxId);
+    sqlite.query("DELETE FROM read_stats WHERE wx_id = ?").run(wxId);
+    sqlite.query("DELETE FROM message_read_stats WHERE wx_id = ?").run(wxId);
+    sqlite.query("DELETE FROM ip_block_account WHERE wx_id = ?").run(wxId);
     sqlite.query("DELETE FROM users WHERE wx_id = ?").run(wxId);
   })();
   audit(wxId, "admin_delete_user", `by=${actor} target=${wxId}`, clientIp(c));
