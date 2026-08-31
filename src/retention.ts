@@ -134,7 +134,7 @@ function queryCandidates(settings: RetentionSettings): CandidateRow[] {
        ) rs ON rs.wx_id = u.wx_id
        WHERE ( ?1 > 0 AND COALESCE(rs.total, 0) = 0 AND u.created_at < ?2 )
           OR ( ?3 > 0 AND COALESCE(rs.total, 0) > 0 AND rs.last_date < ?4 )
-       ORDER BY u.created_at ASC`,
+       ORDER BY u.created_at ASC, u.wx_id ASC`,
     )
     .all(
       settings.newUserDays,
@@ -152,16 +152,22 @@ export function isProtected(wxId: string, level: number): boolean {
 /**
  * 预演：统计将被删除的用户，返回样例供管理后台展示。
  * 纯查询，不改动任何数据。
+ *
+ * `total` / `purgeable` / `never` / `dormant` / `protectedCount` / `truncated`
+ * 始终统计**全量**候选；`samples` 只返回 `[offset, offset + sampleLimit)` 这一页
+ * 的可删除用户（受豁免的不进样例，也不占 offset 位）。
  */
 export function previewIdleUsers(
   settings: RetentionSettings = getRetentionSettings(),
   sampleLimit = 20,
+  offset = 0,
 ): RetentionPreview {
   const candidates = queryCandidates(settings);
   const samples: IdleUser[] = [];
   let protectedCount = 0;
   let never = 0;
   let dormant = 0;
+  let idx = 0; // 可删除用户序号（受豁免者跳过，不占位）
 
   for (const c of candidates) {
     if (isProtected(c.wxId, c.level)) {
@@ -170,7 +176,7 @@ export function previewIdleUsers(
     }
     if (c.reason === "never") never++;
     else dormant++;
-    if (samples.length < sampleLimit) {
+    if (idx >= offset && samples.length < sampleLimit) {
       samples.push({
         wxId: c.wxId,
         reason: c.reason,
@@ -180,6 +186,7 @@ export function previewIdleUsers(
         messageCount: c.messageCount,
       });
     }
+    idx++;
   }
 
   return {

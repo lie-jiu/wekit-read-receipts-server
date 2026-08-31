@@ -336,12 +336,15 @@ adminApp.post("/admin/retention", async (c) => {
   return c.json({ ok: true, ...settings });
 });
 
-/** 预演：只统计不删除，返回命中数量与样例 */
+/** 预演：只统计不删除，返回命中数量与当前页样例（page/pageSize 分页，pageSize 兼容旧的 limit 参数） */
 adminApp.get("/admin/retention/preview", (c) => {
   const denied = adminOr(c);
   if (denied) return denied;
-  const limit = clampLimit(Number(c.req.query("limit") ?? 20), 1, 100);
-  return c.json(previewIdleUsers(getRetentionSettings(), limit));
+  const pageSize = clampLimit(Number(c.req.query("pageSize") ?? c.req.query("limit") ?? 20), 1, 100);
+  const page = Math.max(Math.floor(Number(c.req.query("page") ?? 1)) || 1, 1);
+  const offset = (page - 1) * pageSize;
+  const preview = previewIdleUsers(getRetentionSettings(), pageSize, offset);
+  return c.json({ ...preview, page, pageSize, totalPages: Math.max(1, Math.ceil(preview.purgeable / pageSize)) });
 });
 
 /** 立即执行一次清理（与每日任务同一套逻辑） */
