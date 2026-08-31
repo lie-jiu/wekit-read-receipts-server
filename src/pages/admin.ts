@@ -225,7 +225,7 @@ tr.expanded .expand-icon{transform:rotate(90deg)}
     <div class="controls">
       <button class="btn btn-primary" onclick="saveRetention()" data-i18n="saveRetention">Save Policy</button>
       <span class="sep">|</span>
-      <button class="btn btn-secondary" onclick="previewRetention()" data-i18n="previewRetention">Preview</button>
+      <button class="btn btn-secondary" onclick="previewRetention(true)" data-i18n="previewRetention">Preview</button>
       <button class="btn btn-danger" onclick="askRunRetention()" data-i18n="runRetention">Purge now</button>
     </div>
     <div class="table-wrapper hidden" id="retentionPreviewWrap">
@@ -239,6 +239,7 @@ tr.expanded .expand-icon{transform:rotate(90deg)}
         </tr></thead>
         <tbody id="retentionTbody"></tbody>
       </table>
+      <div class="pagination" id="retentionPagination"></div>
     </div>
   </div>
   <div id="secBlock" class="hidden">
@@ -1108,6 +1109,10 @@ async function saveLevels() {
 }
 /* ── 僵尸用户清理 ── */
 let retentionMaxDays = 36500;
+let retentionPage = 1;
+let retentionPageSize = 20;
+let retentionTotal = 0;
+let retentionTotalPages = 1;
 
 async function loadRetention() {
   try {
@@ -1139,19 +1144,26 @@ async function saveRetention() {
     if (!res.ok) { toast(data.error || t("saveRetentionFail"), "error"); return; }
     toast(t("retentionSaved"), "success");
     $("retentionPreviewWrap").classList.add("hidden");
+    retentionPage = 1;
   } catch (e) { toast(t("networkError"), "error"); }
 }
 
-async function previewRetention() {
+async function previewRetention(reset = false) {
+  if (reset) retentionPage = 1;
   try {
-    const res = await fetch("/admin/retention/preview?limit=20");
+    const res = await fetch("/admin/retention/preview?page=" + retentionPage + "&pageSize=" + retentionPageSize);
     if (res.status === 401) { location.href = "/"; return; }
     if (!res.ok) { toast(t("previewRetentionFail"), "error"); return; }
     const data = await res.json();
+    retentionTotal = data.purgeable || 0;
+    retentionTotalPages = data.totalPages || 1;
+    if (retentionPage > retentionTotalPages) { retentionPage = 1; await previewRetention(); return; }
     if (!data.purgeable) {
       $("retentionSummary").textContent = t("retentionPreviewEmpty");
       $("retentionTbody").innerHTML = "";
+      $("retentionPagination").innerHTML = "";
       $("retentionPreviewWrap").classList.remove("hidden");
+      setLabels();
       return;
     }
     let summary = t("retentionSummary", data.purgeable, data.never, data.dormant);
@@ -1170,8 +1182,58 @@ async function previewRetention() {
       )
       .join("");
     $("retentionPreviewWrap").classList.remove("hidden");
+    renderRetentionPagination();
   } catch (e) { toast(t("networkError") + ": " + e.message, "error"); }
   setLabels();
+}
+
+function goToRetentionPage(p) {
+  if (p < 1 || p > retentionTotalPages || p === retentionPage) return;
+  retentionPage = p;
+  previewRetention();
+}
+
+function changeRetentionPageSize(size) {
+  const n = parseInt(size, 10);
+  if (!Number.isFinite(n) || n < 1) return;
+  retentionPageSize = n;
+  retentionPage = 1;
+  previewRetention();
+}
+
+function renderRetentionPagination() {
+  const el = $("retentionPagination");
+  if (!el) return;
+  if (retentionTotal === 0) { el.innerHTML = ""; return; }
+
+  const buttons = [];
+  const prevDis = retentionPage <= 1 ? " disabled" : "";
+  buttons.push('<button class="page-btn" onclick="goToRetentionPage(' + (retentionPage - 1) + ')"' + prevDis + ' aria-label="' + escAttr(t("prevPage")) + '">&laquo;</button>');
+
+  const addPageBtn = (p, label, cls) => {
+    const dis = p === retentionPage ? " disabled" : "";
+    buttons.push('<button class="page-btn ' + (cls || "") + '" onclick="goToRetentionPage(' + p + ')"' + dis + ">" + label + "</button>");
+  };
+  const addEllipsis = () => buttons.push('<span class="page-btn page-ellipsis">&hellip;</span>');
+
+  const pages = new Set([1, retentionPage - 1, retentionPage, retentionPage + 1, retentionTotalPages]);
+  const sorted = [...pages].filter((p) => p >= 1 && p <= retentionTotalPages).sort((a, b) => a - b);
+  let prev = 0;
+  for (const p of sorted) {
+    if (p - prev > 1) addEllipsis();
+    addPageBtn(p, p, p === retentionPage ? "page-active" : "");
+    prev = p;
+  }
+
+  const nextDis = retentionPage >= retentionTotalPages ? " disabled" : "";
+  buttons.push('<button class="page-btn" onclick="goToRetentionPage(' + (retentionPage + 1) + ')"' + nextDis + ' aria-label="' + escAttr(t("nextPage")) + '">&raquo;</button>');
+
+  const sizeOptions = [10, 20, 50, 100]
+    .map((n) => '<option value="' + n + '"' + (n === retentionPageSize ? " selected" : "") + ">" + n + "</option>")
+    .join("");
+  const sizeSelect = '<span class="page-info">' + t("pageOf", retentionPage, retentionTotalPages) + '</span><span class="page-info">' + t("pageSizeLabel") + '</span><select class="page-size-select" onchange="changeRetentionPageSize(this.value)">' + sizeOptions + "</select>";
+
+  el.innerHTML = buttons.join("") + sizeSelect;
 }
 
 /** 先按当前策略取一次数量再二次确认，避免确认框里的数字与点击瞬间的实况不一致 */
@@ -1194,7 +1256,7 @@ async function runRetention() {
     if (data.skipped) msg += t("retentionSkipped", data.skipped);
     if (data.truncated) msg += t("retentionTruncated");
     toast(msg, "success");
-    await previewRetention();
+    await previewRetention(true);
     loadUsers();
   } catch (e) { toast(t("networkError"), "error"); }
 }
