@@ -83,6 +83,18 @@ html[data-theme="light"] {
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+}
+/* 触屏设备：输入控件字号不低于 16px，避免 iOS Safari 聚焦时整页自动放大。
+   页面级选择器（如 .controls input）特异性更高，故需 !important；仅 coarse pointer 生效，桌面观感不变。 */
+@media (pointer: coarse) {
+  input, select, textarea {
+    font-size: 1rem !important;
+  }
+}
+/* 去掉点按高亮，并消除按钮上双击缩放的等待延迟 */
+button, input, select, textarea {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }`;
 }
 
@@ -212,7 +224,7 @@ tr:hover td {
   }
   .header .flex {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   }
   .header .user-chip {
     grid-column: 1 / -1;

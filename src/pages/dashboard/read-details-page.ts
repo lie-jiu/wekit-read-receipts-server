@@ -19,7 +19,6 @@ body {
   font-family: system-ui, -apple-system, "PingFang SC", sans-serif;
   background: var(--bg);
   background-image: radial-gradient(1200px 500px at 80% -10%, rgba(37, 99, 235, 0.18), transparent 60%), radial-gradient(900px 400px at -10% 110%, rgba(59, 130, 246, 0.1), transparent 55%);
-  background-attachment: fixed;
   color: var(--text);
   min-height: 100vh;
   min-height: 100dvh;
@@ -140,6 +139,7 @@ body {
   border-radius: 12px;
   padding: 1.1rem 1.25rem;
   margin-bottom: 1.25rem;
+  -webkit-backdrop-filter: blur(6px);
   backdrop-filter: blur(6px);
   box-shadow: 0 8px 30px rgba(2, 6, 23, 0.4);
 }
@@ -231,7 +231,8 @@ body {
   background: rgba(30, 41, 59, 0.9);
   border: 1px solid var(--border);
   border-radius: 12px;
-  overflow: hidden;
+  overflow-x: auto;
+  -webkit-backdrop-filter: blur(6px);
   backdrop-filter: blur(6px);
   box-shadow: 0 8px 30px rgba(2, 6, 23, 0.4);
 }

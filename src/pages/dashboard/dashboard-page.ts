@@ -107,7 +107,7 @@ body {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 10px;
-  overflow: hidden;
+  overflow-x: auto;
 }
 .msg-col {
   max-width: 220px;
@@ -131,7 +131,7 @@ body {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 10px;
-  overflow: hidden;
+  overflow-x: auto;
   margin-bottom: 1rem;
 }
 .leaderboard-header {

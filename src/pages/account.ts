@@ -1,6 +1,7 @@
 import type { BasicSession } from "./types";
 import { safeJson } from "../utils";
 import { themeTokens } from "./shared-style";
+import { frontendHelpers } from "./shared";
 
 /** 独立用户设置页 /account：账户 IP 黑名单 + 修改密码 / 退出登录 / 清除我的（自首页迁移） */
 export function accountPage(session: BasicSession): string {
@@ -27,7 +28,6 @@ ${themeTokens()}
         background-image:
           radial-gradient(1200px 500px at 80% -10%, rgba(37, 99, 235, 0.18), transparent 60%),
           radial-gradient(900px 400px at -10% 110%, rgba(59, 130, 246, 0.1), transparent 55%);
-        background-attachment: fixed;
         color: var(--text);
         min-height: 100vh;
         min-height: 100dvh;
@@ -96,6 +96,7 @@ ${themeTokens()}
         border-radius: 12px;
         padding: 1.1rem 1.25rem;
         margin-bottom: 1.25rem;
+        -webkit-backdrop-filter: blur(6px);
         backdrop-filter: blur(6px);
         box-shadow: 0 8px 30px rgba(2, 6, 23, 0.4);
       }
@@ -343,7 +344,7 @@ ${themeTokens()}
       @media (max-width: 640px) {
         body { padding: 1rem 0.75rem; }
         .header { flex-direction: column; align-items: stretch; }
-        .header .flex { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .header .flex { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
         .header .user-chip { grid-column: 1 / -1; justify-content: center; }
         .header .btn, .header .lang-toggle, .header .theme-toggle { width: 100%; justify-content: center; min-height: 40px; }
         .btn { min-height: 40px; }
@@ -424,6 +425,7 @@ ${themeTokens()}
     </div>
 
     <script>
+      ${frontendHelpers()}
       const ME = ${safeJson({ wxId: session.wxId, level: session.level })};
       const $ = (id) => document.getElementById(id);
       let lang = localStorage.getItem("lang") || "zh-CN";
@@ -509,19 +511,7 @@ ${themeTokens()}
           networkError: "Network error",
         },
       };
-      function t(key, ...args) {
-        let s = (translations[lang] && translations[lang][key]) || key;
-        args.forEach((a, i) => { s = s.split("{" + i + "}").join(a); });
-        return s;
-      }
-      function applyI18n() {
-        document.querySelectorAll("[data-i18n]").forEach((el) => {
-          const key = el.dataset.i18n;
-          if (el.tagName === "TITLE") document.title = t(key);
-          else if ("i18nPlaceholder" in el.dataset) el.placeholder = t(key);
-          else el.textContent = t(key);
-        });
-      }
+      /* t / applyI18n / esc / escAttr / 主题切换来自顶部注入的 frontendHelpers() */
       function toggleLang() {
         lang = lang === "zh-CN" ? "en" : "zh-CN";
         localStorage.setItem("lang", lang);
@@ -529,12 +519,6 @@ ${themeTokens()}
         loadIps();
       }
 
-      function esc(s) {
-        return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-      }
-      function escAttr(s) {
-        return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
-      }
       function toast(message, type = "info") {
         const el = document.createElement("div");
         el.className = "toast toast-" + type;
