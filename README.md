@@ -13,6 +13,7 @@
 
 <p align="center">
   <a href="#快速开始">快速开始</a> ·
+  <a href="#开发与测试">开发与测试</a> ·
   <a href="#功能特性">功能特性</a> ·
   <a href="#端点">端点</a> ·
   <a href="#环境变量">环境变量</a> ·
@@ -38,6 +39,10 @@
 - **安全会话**：30 天会话，HTTPS 下 `__Host-session` + Secure，HTTP 直连自动降级
 - **可信代理**：CIDR 精确信任，公网直连绝不设置，防止 IP 伪造；`X-Forwarded-For` 自右向左取值，抵御反代「追加」模式下的首值伪造
 - **注入防护**：内联脚本数据经安全序列化（阻断 `</script>` 逃逸），前端渲染统一转义，SQL 全参数化
+- **明暗主题**：6 个页面内置浅色 / 深色主题切换，默认跟随系统 `prefers-color-scheme` 自动初始化，用户选择经 `localStorage` 持久化，`meta theme-color` 随主题联动
+- **键盘可访问性**：`:focus-visible` 焦点环 + `prefers-reduced-motion` 兜底；模态框统一 Esc 关闭 + Tab 焦点陷阱 + 焦点还原；看板表格行键盘可达（Enter / Space 触发）
+- **移动端响应式**：触屏输入框 `1rem` 字号防 iOS 缩放、全局 `touch-action` 优化、表格横向滚动、关键按钮 40×40 命中区（断点 480 / 640px 适配手机）
+- **仪表盘消息分页**：`/` 消息列表修复超 50 条静默截断，改为每页 10 条 + 上一页/下一页 + 页码指示；服务端返回 `X-Total-Count`（与列表过滤口径一致）
 - **限流**：per-IP 固定窗口 + `/register` per-wxId 双窗口（分钟/天）
 
 ## 技术栈
@@ -67,6 +72,7 @@ wekit-read-receipts-server/
 │   ├── stats.ts          # 统计表增量回填、每日清理
 │   ├── retention.ts      # 僵尸用户自动清理：策略读写、预演、执行（含排行榜级联清空）
 │   ├── utils.ts          # 通用工具（utcNow/校验/脱敏/哈希）
+│   ├── *.test.ts         # 单元测试：levels / retention / routes / security（bun test）
 │   ├── routes/           # 按业务职责拆分的子路由模块
 │   │   ├── tracking.ts   # /pixel、/count、/register 客户端打点
 │   │   ├── auth.ts       # /auth/*、/login 认证与会话
@@ -77,11 +83,14 @@ wekit-read-receipts-server/
 │   │   └── account.ts    # /account 账户设置页与账户 IP 黑名单
 │   ├── pages/            # 前端页面 HTML/JS（服务端拼接整段 HTML + 内联 JS 返回）
 │   │   ├── shared.ts             # 统一的浏览器端 helper（esc/escAttr 严格版/t/applyI18n），以字符串插值注入各页面 <script>
+│   │   ├── shared-style.ts       # 共享设计令牌（themeTokens()：24 令牌 + 浅色板 + 焦点环 + reduced-motion）+ 6 页一致的公共 CSS（sharedStyle()）
+│   │   ├── types.ts              # 页面层视图模型类型（BasicSession / DashboardSession 等），路由 → 页面的收窄投影，与 auth.ts SessionUser 解耦
 │   │   ├── index.ts              # 桶文件：重导出各页面模块，路由统一 import { ... } from "../pages"
 │   │   ├── dashboard/            # 仪表盘三页面（由 2973 行的 dashboard.ts 拆分）
 │   │   │   ├── dashboard-page.ts # 消息仪表盘 htmlPage
 │   │   │   ├── leaderboard-page.ts # 排行榜 leaderboardPage
-│   │   │   └── read-details-page.ts # 已读详情 readDetailsPage
+│   │   │   ├── read-details-page.ts # 已读详情 readDetailsPage
+│   │   │   └── index.ts          # 桶文件：重导出三个页面
 │   │   ├── admin/                # 管理后台（由 1471 行的 admin.ts 拆分）
 │   │   │   ├── admin-style.ts    # adminStyle() 内联 CSS
 │   │   │   └── admin-script.ts   # adminScript() 内联 JS（6 大功能模块）
@@ -94,6 +103,7 @@ wekit-read-receipts-server/
     ├── backfill-isp.ts   # 补全存量运营商双语短名
     ├── migrate-d1.ts     # 从 Cloudflare D1 迁移
     ├── cleanup-orphans.ts # 清理孤儿排行榜行（父用户已删除）：bun run cleanup-orphans [--dry-run]
+    ├── test-preload.ts   # bun test 预载（bunfig.toml [test] preload）：强制内存库，防止误写 data.db
     └── manage/           # CLI 实现按职责拆分
         ├── cli.ts        # 命令分发与帮助文本
         ├── platform.ts   # 跨平台工具（run/systemctl/portOpen/启动脚本）
@@ -116,7 +126,17 @@ ADMIN=wxid_admin bun run dev              # 管理员权限来自 ADMIN 环境�
 
 浏览器打开 `http://localhost:3000`，用刚创建的账号登录。
 
-> `mkuser` 直接写入账号，**不校验邀请码**，适合自建初始化；管理员标记（`ADMIN`）只影响 Web 后台 `/admin` 权限，登录本身不需要。
+> `mkuser` 直接写入账号，**不校验邀请码**，适合自建初始化（密码 ≥8 位，level 0–99）；管理员标记（`ADMIN`）只影响 Web 后台 `/admin` 权限，登录本身不需要。
+
+## 开发与测试
+
+```bash
+bun run dev        # 开发模式（--watch 热重载）
+bun run typecheck  # tsc --noEmit 类型检查（tsgo）
+bun run test       # bun test：levels / retention / routes / security
+```
+
+测试经 `bunfig.toml` 的 `[test] preload` 预载 `scripts/test-preload.ts`，强制 `DB_PATH=:memory:`（全部测试共享内存库），不会读写仓库内的 `data.db`。
 
 ## 端点
 
@@ -133,7 +153,7 @@ ADMIN=wxid_admin bun run dev              # 管理员权限来自 ADMIN 环境�
 | 端点 | 说明 |
 |---|---|
 | `/login`、`/auth/verify`、`/auth/register`、`/auth/logout`、`/auth/password`、`/auth/status` | 会话管理（30 天；HTTPS 下 `__Host-session` + Secure，HTTP 直连自动降级为普通 cookie） |
-| `/` | 用户仪表盘：消息搜索（FTS5 trigram）、读取明细、删除 |
+| `/` | 用户仪表盘：消息搜索（FTS5 trigram）、读取明细、删除；消息列表分页（每页 10 条，服务端返回 `X-Total-Count`） |
 | `/messages`、`DELETE /messages` | 本人消息列表 / 清空 |
 | `/reads/:id` | 单条消息读取明细（IP、UA、时间）；`GET /reads/:id/data` 在服务端过滤黑名单 IP 行（响应不含其数据，仅返回 `blockedCount` 隐藏条数与 `visibleTotal` 可见分页数）；`DELETE /reads/:id` 删除该消息（发布者本人或管理员，同事务清理 reads）；`POST /reads/:id/public` 切换公开详情（发布者本人或管理员，默认关闭） |
 | `/reads/:id` 公开详情 | `is_public=1` 时任何人（含未登录用户）均可只读访问详情页与 `/reads/:id/data`（黑名单过滤仍生效）；未公开时仅发布者本人与管理员可见，未登录跳转登录页。匿名访客隐藏删除/公开开关/IP 黑名单等管理功能 |
@@ -156,7 +176,7 @@ ADMIN=wxid_admin bun run dev              # 管理员权限来自 ADMIN 环境�
 | `PORT` | `3000` | 监听端口 |
 | `BIND_HOST` | `127.0.0.1` | 监听地址。反代/隧道与服务同机时保持默认；**公网直连**或反代在其它机器时设 `0.0.0.0` |
 | `TLS_CERT` / `TLS_KEY` | 无 | PEM 证书与私钥路径，**两者同时设置**启用内置 HTTPS（公网直连免反代） |
-| `DB_PATH` | `./data.db` | SQLite 文件路径 |
+| `DB_PATH` | 开发 `./data.db`；`NODE_ENV=production` 时 `/var/lib/read-receipts.db` | SQLite 文件路径 |
 | `ADMIN` | 无 | 管理员 wxId（逗号分隔多个），此类账号受保护：不可删除、不可降级 |
 | `INVITE_CODE` | 无 | 注册邀请码；未设置时注册直接通过 |
 | `TRUSTED_PROXY` | 空 | 信任的代理网段（CIDR，逗号分隔）；**仅填真正直连服务的代理**，反代/CF Tunnel 场景必填。命中时从 `X-Forwarded-For` 自右向左取首个非受信代理 IP（抵御反代「追加」模式下的首值伪造），否则信任伪造头 |
@@ -195,6 +215,7 @@ ADMIN=wxid_admin bun run dev              # 管理员权限来自 ADMIN 环境�
 | `/register` | 30/分（per-IP）+ 30/分·500/天（per-wxId） | 超限返回 429 |
 | `/auth/*` | 5/分 | fail-closed（拒绝） |
 | `/admin/*` | 30/分 | fail-closed（拒绝） |
+| `/reads/:id/geo` | 30/分 | fail-closed（拒绝） |
 
 </details>
 
