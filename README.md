@@ -7,7 +7,7 @@
   <img alt="Hono" src="https://img.shields.io/badge/Hono-4.13.5-e36002?logo=hono&logoColor=fff">
   <img alt="SQLite" src="https://img.shields.io/badge/SQLite-WAL-003b57?logo=sqlite&logoColor=fff">
   <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-7-3178c6?logo=typescript&logoColor=fff">
-  <img alt="license" src="https://img.shields.io/badge/license-MIT-blue">
+  <img alt="license" src="https://img.shields.io/badge/license-AGPL--3.0-blue">
   <img alt="platform" src="https://img.shields.io/badge/platform-Linux%20%7C%20Windows%20%7C%20macOS-lightgrey">
 </p>
 
@@ -485,4 +485,4 @@ bun run manage user pass <wxId> <password>  # 重置密码
 
 ## 许可证
 
-MIT
+AGPL-3.0（GNU Affero General Public License v3.0）
