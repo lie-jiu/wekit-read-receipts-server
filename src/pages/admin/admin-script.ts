@@ -12,6 +12,8 @@ const translations = {
     title: "管理后台",
     dashboard: "仪表盘",
     logout: "退出登录",
+    themeLight: "浅色",
+    themeDark: "深色",
     tabUsers: "用户",
     tabMsgs: "消息",
     tabLevels: "等级权益",
@@ -145,6 +147,8 @@ const translations = {
     title: "Admin Console",
     dashboard: "Dashboard",
     logout: "Logout",
+    themeLight: "Light",
+    themeDark: "Dark",
     tabUsers: "Users",
     tabMsgs: "Messages",
     tabLevels: "Levels",
@@ -304,6 +308,7 @@ function setLabels() {
   apply($("globalIpTbody"), [t("ipAddressCol"), t("addedAt"), t("actions")]);
 }
 applyI18n();
+initTheme();
 const toastContainer = $("toastContainer");
 const modalOverlay = $("modalOverlay"), modalTitle = $("modalTitle"), modalBody = $("modalBody"), modalCancel = $("modalCancel"), modalConfirm = $("modalConfirm");
 const passOverlay = $("passOverlay"), newUserPass = $("newUserPass"), passCancel = $("passCancel"), passSave = $("passSave");
@@ -328,14 +333,20 @@ function toast(message, type = "info"){
   setTimeout(() => el.classList.add("toast-out"), 2800);
   setTimeout(() => el.remove(), 3100);
 }
+let modalKeyCleanup = null, passKeyCleanup = null, addUserKeyCleanup = null;
 function showModal(title, body, onConfirm){
   modalTitle.textContent = title;
   modalBody.textContent = body;
   modalOverlay.classList.remove("hidden");
-  const cleanup = () => { modalOverlay.classList.add("hidden"); modalConfirm.onclick = null; };
+  const cleanup = () => {
+    modalOverlay.classList.add("hidden");
+    modalConfirm.onclick = null;
+    if (modalKeyCleanup) { modalKeyCleanup(); modalKeyCleanup = null; }
+  };
   modalCancel.onclick = cleanup;
   modalOverlay.onclick = (e) => { if (e.target === modalOverlay) cleanup(); };
   modalConfirm.onclick = () => { cleanup(); onConfirm(); };
+  modalKeyCleanup = bindModalKeys(modalOverlay, cleanup);
 }
 function showTab(name){
   $("tabUsers").classList.toggle("active", name === "users");
@@ -488,15 +499,18 @@ function openSetPass(wxId) {
   targetWxId = wxId;
   newUserPass.value = "";
   passOverlay.classList.remove("hidden");
-  newUserPass.focus();
+  passKeyCleanup = bindModalKeys(passOverlay, closePass);
 }
 function openAddUser() {
   newUserWxid.value = "";
   newUserPw.value = "";
   addUserOverlay.classList.remove("hidden");
-  newUserWxid.focus();
+  addUserKeyCleanup = bindModalKeys(addUserOverlay, closeAddUser);
 }
-function closeAddUser() { addUserOverlay.classList.add("hidden"); }
+function closeAddUser() {
+  addUserOverlay.classList.add("hidden");
+  if (addUserKeyCleanup) { addUserKeyCleanup(); addUserKeyCleanup = null; }
+}
 addUserCancel.onclick = closeAddUser;
 addUserOverlay.onclick = (e) => { if (e.target === addUserOverlay) closeAddUser(); };
 addUserSave.onclick = async () => {
@@ -517,7 +531,10 @@ addUserSave.onclick = async () => {
     loadUsers();
   } catch (e) { toast(t("networkError"), "error"); }
 };
-function closePass() { passOverlay.classList.add("hidden"); }
+function closePass() {
+  passOverlay.classList.add("hidden");
+  if (passKeyCleanup) { passKeyCleanup(); passKeyCleanup = null; }
+}
 passCancel.onclick = closePass;
 passOverlay.onclick = (e) => { if (e.target === passOverlay) closePass(); };
 passSave.onclick = async () => {

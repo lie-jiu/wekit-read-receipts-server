@@ -38,6 +38,9 @@ data.db-wal
 .cache
 *.tsbuildinfo
 
+# agent workspace memory
+.workbuddy
+
 # IntelliJ based IDEs
 .idea
 

@@ -1,15 +1,19 @@
 import type { BasicSession } from "./types";
 import { safeJson } from "../utils";
+import { themeTokens } from "./shared-style";
 
 /** 独立用户设置页 /account：账户 IP 黑名单 + 修改密码 / 退出登录 / 清除我的（自首页迁移） */
 export function accountPage(session: BasicSession): string {
   return `<!doctype html>
-<html lang="en">
+<html lang="zh-CN" data-theme="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0f172a" />
     <title data-i18n="title">Account Settings</title>
     <style>
+${themeTokens()}
+
       *,
       *::before,
       *::after {
@@ -19,12 +23,12 @@ export function accountPage(session: BasicSession): string {
       }
       body {
         font-family: system-ui, -apple-system, "PingFang SC", sans-serif;
-        background: #0f172a;
+        background: var(--bg);
         background-image:
           radial-gradient(1200px 500px at 80% -10%, rgba(37, 99, 235, 0.18), transparent 60%),
           radial-gradient(900px 400px at -10% 110%, rgba(59, 130, 246, 0.1), transparent 55%);
         background-attachment: fixed;
-        color: #e2e8f0;
+        color: var(--text);
         min-height: 100vh;
         min-height: 100dvh;
         padding: 2rem 1rem;
@@ -48,13 +52,13 @@ export function accountPage(session: BasicSession): string {
       .header h1 {
         font-size: 1.4rem;
         font-weight: 700;
-        color: #f1f5f9;
+        color: var(--text-strong);
       }
       .back-link {
         display: inline-flex;
         align-items: center;
         gap: 0.3rem;
-        color: #94a3b8;
+        color: var(--muted);
         text-decoration: none;
         font-size: 0.8rem;
         font-weight: 500;
@@ -62,7 +66,7 @@ export function accountPage(session: BasicSession): string {
         transition: color 0.15s;
       }
       .back-link:hover {
-        color: #e2e8f0;
+        color: var(--text);
       }
       .back-link svg {
         width: 14px;
@@ -80,15 +84,15 @@ export function accountPage(session: BasicSession): string {
         gap: 0.35rem;
         font-size: 0.75rem;
         font-family: ui-monospace, "Cascadia Code", "JetBrains Mono", monospace;
-        color: #94a3b8;
-        background: #0f172a;
-        border: 1px solid #334155;
+        color: var(--muted);
+        background: var(--bg);
+        border: 1px solid var(--border);
         border-radius: 999px;
         padding: 0.25rem 0.7rem;
       }
       .card {
         background: rgba(30, 41, 59, 0.9);
-        border: 1px solid #334155;
+        border: 1px solid var(--border);
         border-radius: 12px;
         padding: 1.1rem 1.25rem;
         margin-bottom: 1.25rem;
@@ -98,12 +102,12 @@ export function accountPage(session: BasicSession): string {
       .card-title {
         font-size: 0.95rem;
         font-weight: 600;
-        color: #f1f5f9;
+        color: var(--text-strong);
         margin-bottom: 0.35rem;
       }
       .card-hint {
         font-size: 0.78rem;
-        color: #64748b;
+        color: var(--faint);
         line-height: 1.5;
         margin-bottom: 0.85rem;
       }
@@ -125,35 +129,35 @@ export function accountPage(session: BasicSession): string {
         transform: scale(0.97);
       }
       .btn-primary {
-        background: linear-gradient(135deg, #2563eb, #3b82f6);
-        color: #fff;
+        background: linear-gradient(135deg, var(--primary), var(--primary-light));
+        color: var(--on-primary);
         box-shadow: 0 2px 10px rgba(37, 99, 235, 0.35);
       }
       .btn-primary:hover {
-        background: linear-gradient(135deg, #1d4ed8, #2563eb);
+        background: linear-gradient(135deg, var(--primary-hover), var(--primary));
       }
       .btn-secondary {
-        background: #475569;
-        color: #e2e8f0;
+        background: var(--border-strong);
+        color: var(--text);
       }
       .btn-secondary:hover {
-        background: #64748b;
+        background: var(--faint);
       }
       .btn-danger {
-        background: #b91c1c;
-        color: #fff;
+        background: var(--danger-strong);
+        color: var(--on-primary);
       }
       .btn-danger:hover {
-        background: #991b1b;
+        background: var(--danger-hover);
       }
       .btn-outline {
         background: transparent;
-        color: #94a3b8;
-        border: 1px solid #475569;
+        color: var(--muted);
+        border: 1px solid var(--border-strong);
       }
       .btn-outline:hover {
-        background: #1e293b;
-        color: #e2e8f0;
+        background: var(--surface);
+        color: var(--text);
       }
       .btn-sm {
         padding: 0.3rem 0.6rem;
@@ -165,15 +169,31 @@ export function accountPage(session: BasicSession): string {
         padding: 0.2rem 0.45rem;
         border-radius: 4px;
         background: transparent;
-        color: #64748b;
-        border: 1px solid #475569;
+        color: var(--faint);
+        border: 1px solid var(--border-strong);
         cursor: pointer;
         transition: color 0.15s, border-color 0.15s;
         letter-spacing: 0.03em;
       }
       .lang-toggle:hover {
-        color: #e2e8f0;
-        border-color: #94a3b8;
+        color: var(--text);
+        border-color: var(--muted);
+      }
+      .theme-toggle {
+        font-size: 0.7rem;
+        font-weight: 600;
+        padding: 0.2rem 0.45rem;
+        border-radius: 4px;
+        background: transparent;
+        color: var(--faint);
+        border: 1px solid var(--border-strong);
+        cursor: pointer;
+        transition: color 0.15s, border-color 0.15s;
+        letter-spacing: 0.03em;
+      }
+      .theme-toggle:hover {
+        color: var(--text);
+        border-color: var(--muted);
       }
       .ip-list {
         display: flex;
@@ -187,8 +207,8 @@ export function accountPage(session: BasicSession): string {
         justify-content: space-between;
         gap: 0.75rem;
         padding: 0.5rem 0.75rem;
-        background: #0f172a;
-        border: 1px solid #1e293b;
+        background: var(--bg);
+        border: 1px solid var(--surface);
         border-radius: 8px;
       }
       .ip-text {
@@ -199,10 +219,10 @@ export function accountPage(session: BasicSession): string {
       }
       .ip-empty {
         font-size: 0.82rem;
-        color: #475569;
+        color: var(--border-strong);
         padding: 0.9rem 0.25rem;
         text-align: center;
-        border: 1px dashed #334155;
+        border: 1px dashed var(--border);
         border-radius: 8px;
       }
       .add-row {
@@ -214,17 +234,17 @@ export function accountPage(session: BasicSession): string {
         flex: 1;
         min-width: 200px;
         padding: 0.45rem 0.7rem;
-        border: 1px solid #475569;
+        border: 1px solid var(--border-strong);
         border-radius: 6px;
         font-size: 0.85rem;
-        background: #0f172a;
-        color: #e2e8f0;
+        background: var(--bg);
+        color: var(--text);
         outline: none;
         transition: border-color 0.15s;
         font-family: ui-monospace, "Cascadia Code", "JetBrains Mono", monospace;
       }
       .add-row input:focus {
-        border-color: #3b82f6;
+        border-color: var(--primary-light);
       }
       .actions-row {
         display: flex;
@@ -246,8 +266,8 @@ export function accountPage(session: BasicSession): string {
         to { opacity: 1; }
       }
       .modal {
-        background: #1e293b;
-        border: 1px solid #334155;
+        background: var(--surface);
+        border: 1px solid var(--border);
         border-radius: 12px;
         padding: 1.5rem;
         max-width: 400px;
@@ -261,7 +281,7 @@ export function accountPage(session: BasicSession): string {
       }
       .modal p {
         font-size: 0.875rem;
-        color: #94a3b8;
+        color: var(--muted);
         margin-bottom: 1.25rem;
         line-height: 1.5;
       }
@@ -273,17 +293,17 @@ export function accountPage(session: BasicSession): string {
       .modal-form input {
         width: 100%;
         padding: 0.55rem 0.7rem;
-        border: 1px solid #475569;
+        border: 1px solid var(--border-strong);
         border-radius: 6px;
         font-size: 0.9rem;
-        background: #0f172a;
-        color: #e2e8f0;
+        background: var(--bg);
+        color: var(--text);
         outline: none;
         margin-bottom: 0.6rem;
         transition: border-color 0.15s;
       }
       .modal-form input:focus {
-        border-color: #3b82f6;
+        border-color: var(--primary-light);
       }
       .hidden {
         display: none !important;
@@ -302,15 +322,15 @@ export function accountPage(session: BasicSession): string {
         padding: 0.75rem 1rem;
         border-radius: 8px;
         font-size: 0.82rem;
-        background: #1e293b;
-        border: 1px solid #334155;
-        color: #e2e8f0;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        color: var(--text);
         box-shadow: 0 6px 20px rgba(2, 6, 23, 0.5);
         animation: toast-in 0.2s ease-out;
       }
-      .toast-error { border-color: #dc2626; color: #fecaca; }
-      .toast-success { border-color: #059669; color: #a7f3d0; }
-      .toast-info { border-color: #2563eb; color: #bfdbfe; }
+      .toast-error { border-color: var(--danger); color: var(--danger-text); }
+      .toast-success { border-color: var(--ok); color: var(--ok-text); }
+      .toast-info { border-color: var(--primary); color: var(--info-text); }
       .toast-out {
         opacity: 0;
         transform: translateY(6px);
@@ -325,7 +345,7 @@ export function accountPage(session: BasicSession): string {
         .header { flex-direction: column; align-items: stretch; }
         .header .flex { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
         .header .user-chip { grid-column: 1 / -1; justify-content: center; }
-        .header .btn, .header .lang-toggle { width: 100%; justify-content: center; min-height: 40px; }
+        .header .btn, .header .lang-toggle, .header .theme-toggle { width: 100%; justify-content: center; min-height: 40px; }
         .btn { min-height: 40px; }
         .add-row input { min-width: 0; width: 100%; min-height: 44px; }
         .add-row .btn { flex: 1; }
@@ -353,6 +373,7 @@ export function accountPage(session: BasicSession): string {
         <div class="flex">
           <span class="user-chip" id="userChip"></span>
           <button class="lang-toggle" onclick="toggleLang()">中 / EN</button>
+          <button class="theme-toggle" onclick="toggleTheme()"></button>
         </div>
       </div>
 
@@ -378,7 +399,7 @@ export function accountPage(session: BasicSession): string {
 
     <div id="toastContainer" class="toast-container"></div>
     <div id="modalOverlay" class="modal-overlay hidden">
-      <div class="modal">
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
         <h3 id="modalTitle" data-i18n="confirm">Confirm</h3>
         <p id="modalBody"></p>
         <div class="actions">
@@ -388,8 +409,8 @@ export function accountPage(session: BasicSession): string {
       </div>
     </div>
     <div id="passOverlay" class="modal-overlay hidden">
-      <div class="modal">
-        <h3 data-i18n="changePassword">Change Password</h3>
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="passTitle">
+        <h3 id="passTitle" data-i18n="changePassword">Change Password</h3>
         <div class="modal-form">
           <input id="oldPass" type="password" data-i18n-placeholder data-i18n="currentPassword" placeholder="Current password" />
           <input id="newPass" type="password" data-i18n-placeholder data-i18n="newPassword" placeholder="New password" />
@@ -429,6 +450,8 @@ export function accountPage(session: BasicSession): string {
           passFailed: "修改密码失败",
           clearAllTitle: "清除我的所有记录？",
           clearAllBody: "这将永久删除你账号下的所有消息及其读取记录。",
+          themeLight: "浅色",
+          themeDark: "深色",
           clearingAll: "正在清除我的记录…",
           clearedAll: "已清除我的所有记录",
           failedClear: "清除记录失败",
@@ -467,6 +490,8 @@ export function accountPage(session: BasicSession): string {
           passFailed: "Failed to update password",
           clearAllTitle: "Clear all my records?",
           clearAllBody: "This will permanently delete all your messages and their reads.",
+          themeLight: "Light",
+          themeDark: "Dark",
           clearingAll: "Clearing my records…",
           clearedAll: "All my records cleared",
           failedClear: "Failed to clear records",
@@ -575,12 +600,16 @@ export function accountPage(session: BasicSession): string {
 
       /* ── 修改密码（POST /auth/password） ── */
       const passOverlay = $("passOverlay"), oldPass = $("oldPass"), newPass = $("newPass"), newPass2 = $("newPass2");
+      let passKeyCleanup = null;
       function openPasswordModal() {
         oldPass.value = ""; newPass.value = ""; newPass2.value = "";
         passOverlay.classList.remove("hidden");
-        oldPass.focus();
+        passKeyCleanup = bindModalKeys(passOverlay, closePasswordModal);
       }
-      function closePasswordModal() { passOverlay.classList.add("hidden"); }
+      function closePasswordModal() {
+        passOverlay.classList.add("hidden");
+        if (passKeyCleanup) { passKeyCleanup(); passKeyCleanup = null; }
+      }
       $("passCancel").onclick = closePasswordModal;
       passOverlay.onclick = (e) => { if (e.target === passOverlay) closePasswordModal(); };
       async function savePassword() {
@@ -612,14 +641,20 @@ export function accountPage(session: BasicSession): string {
         location.href = "/";
       }
       const modalOverlay = $("modalOverlay"), modalTitle = $("modalTitle"), modalBody = $("modalBody"), modalCancel = $("modalCancel"), modalConfirm = $("modalConfirm");
+      let modalKeyCleanup = null;
       function showModal(title, body, onConfirm) {
         modalTitle.textContent = title;
         modalBody.textContent = body;
         modalOverlay.classList.remove("hidden");
-        const cleanup = () => { modalOverlay.classList.add("hidden"); modalConfirm.onclick = null; };
+        const cleanup = () => {
+          modalOverlay.classList.add("hidden");
+          modalConfirm.onclick = null;
+          if (modalKeyCleanup) { modalKeyCleanup(); modalKeyCleanup = null; }
+        };
         modalCancel.onclick = cleanup;
         modalOverlay.onclick = (e) => { if (e.target === modalOverlay) cleanup(); };
         modalConfirm.onclick = () => { cleanup(); onConfirm(); };
+        modalKeyCleanup = bindModalKeys(modalOverlay, cleanup);
       }
       function showClearAllModal() {
         showModal(t("clearAllTitle"), t("clearAllBody"), deleteAll);
@@ -637,6 +672,7 @@ export function accountPage(session: BasicSession): string {
 
       /* ── init ── */
       $("userChip").textContent = ME.wxId + " · Lv" + ME.level;
+      initTheme();
       applyI18n();
       loadIps();
     </script>

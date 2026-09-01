@@ -1,37 +1,45 @@
+import { themeTokens } from "./shared-style";
+
 export const LOGIN_HTML = `<!doctype html>
-<html lang="en">
+<html lang="zh-CN" data-theme="dark">
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<meta name="theme-color" content="#0f172a"/>
 <title data-i18n="title">Login — Read Receipts</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ctext y='14' font-size='14'%3E%E2%9C%89%EF%B8%8F%3C/text%3E%3C/svg%3E" />
 <style>
+${themeTokens()}
+
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-body{font-family:system-ui,-apple-system,sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh;min-height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1.25rem;padding:1rem;padding-top:max(1rem,env(safe-area-inset-top));padding-bottom:max(1rem,env(safe-area-inset-bottom));padding-left:max(1rem,env(safe-area-inset-left));padding-right:max(1rem,env(safe-area-inset-right))}
-.card{background:#1e293b;border:1px solid #334155;border-radius:12px;padding:2rem;max-width:min(380px,100%);width:100%;box-shadow:0 8px 32px rgba(0,0,0,.5)}
+body{font-family:system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;min-height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1.25rem;padding:1rem;padding-top:max(1rem,env(safe-area-inset-top));padding-bottom:max(1rem,env(safe-area-inset-bottom));padding-left:max(1rem,env(safe-area-inset-left));padding-right:max(1rem,env(safe-area-inset-right))}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:2rem;max-width:min(380px,100%);width:100%;box-shadow:0 8px 32px rgba(0,0,0,.5)}
 h1{font-size:1.25rem;font-weight:700;margin-bottom:.5rem}
-p{font-size:.85rem;color:#94a3b8;margin-bottom:1.25rem}
+p{font-size:.85rem;color:var(--muted);margin-bottom:1.25rem}
 .tabs{display:flex;gap:.4rem;margin-bottom:1.25rem}
-.tab{flex:1;padding:.5rem;border:1px solid #475569;border-radius:6px;background:transparent;color:#94a3b8;font-size:.85rem;font-weight:600;cursor:pointer;transition:background .15s,color .15s,border-color .15s}
-.tab.active{background:#2563eb;border-color:#2563eb;color:#fff}
-input{width:100%;padding:.6rem .8rem;border:1px solid #475569;border-radius:6px;font-size:.9rem;background:#0f172a;color:#e2e8f0;outline:none;margin-bottom:.6rem;transition:border-color .15s}
-input:focus{border-color:#3b82f6}
-button[type=submit]{width:100%;margin-top:.4rem;padding:.6rem;border:none;border-radius:6px;font-size:.9rem;font-weight:600;cursor:pointer;background:#2563eb;color:#fff;transition:background .15s}
-button[type=submit]:hover{background:#1d4ed8}
+.tab{flex:1;padding:.5rem;border:1px solid var(--border-strong);border-radius:6px;background:transparent;color:var(--muted);font-size:.85rem;font-weight:600;cursor:pointer;transition:background .15s,color .15s,border-color .15s}
+.tab.active{background:var(--primary);border-color:var(--primary);color:var(--on-primary)}
+input{width:100%;padding:.6rem .8rem;border:1px solid var(--border-strong);border-radius:6px;font-size:.9rem;background:var(--bg);color:var(--text);outline:none;margin-bottom:.6rem;transition:border-color .15s}
+input:focus{border-color:var(--primary-light)}
+button[type=submit]{width:100%;margin-top:.4rem;padding:.6rem;border:none;border-radius:6px;font-size:.9rem;font-weight:600;cursor:pointer;background:var(--primary);color:var(--on-primary);transition:background .15s}
+button[type=submit]:hover{background:var(--primary-hover)}
 button[type=submit]:disabled{opacity:.6;cursor:not-allowed}
 .msg{margin-top:.9rem;font-size:.8rem;color:#fca5a5;min-height:1.2em;text-align:center}
-.hint{font-size:.72rem;color:#64748b;margin:-.2rem 0 .6rem}
+.hint{font-size:.72rem;color:var(--faint);margin:-.2rem 0 .6rem}
 .hidden{display:none}
-.lang-toggle{position:fixed;top:max(1rem,env(safe-area-inset-top));right:max(1rem,env(safe-area-inset-right));font-size:.7rem;font-weight:600;padding:.25rem .5rem;border-radius:4px;background:transparent;color:#64748b;border:1px solid #475569;cursor:pointer;letter-spacing:.03em}
-.lang-toggle:hover{color:#e2e8f0;border-color:#94a3b8}
-.repo-footer{display:flex;align-items:center;gap:.4rem;font-size:.78rem;color:#64748b;text-decoration:none;padding:.4rem .7rem;border-radius:8px;transition:color .15s,background .15s}
-.repo-footer:hover{color:#e2e8f0;background:#1e293b}
+.lang-toggle{position:fixed;top:max(1rem,env(safe-area-inset-top));right:max(1rem,env(safe-area-inset-right));font-size:.7rem;font-weight:600;padding:.25rem .5rem;border-radius:4px;background:transparent;color:var(--faint);border:1px solid var(--border-strong);cursor:pointer;letter-spacing:.03em}
+.lang-toggle:hover{color:var(--text);border-color:var(--muted)}
+.theme-toggle{position:fixed;top:max(1rem,env(safe-area-inset-top));right:max(3.4rem,env(safe-area-inset-right));font-size:.7rem;font-weight:600;padding:.25rem .5rem;border-radius:4px;background:transparent;color:var(--faint);border:1px solid var(--border-strong);cursor:pointer;letter-spacing:.03em}
+.theme-toggle:hover{color:var(--text);border-color:var(--muted)}
+.repo-footer{display:flex;align-items:center;gap:.4rem;font-size:.78rem;color:var(--faint);text-decoration:none;padding:.4rem .7rem;border-radius:8px;transition:color .15s,background .15s}
+.repo-footer:hover{color:var(--text);background:var(--surface)}
 .repo-footer svg{width:16px;height:16px;flex-shrink:0}
 @media (max-width:480px){.card{padding:1.5rem 1.25rem}.tab,button[type=submit],input{min-height:44px}.lang-toggle{padding:.5rem .6rem}.repo-footer{min-height:44px;padding:.5rem .8rem}}
 </style>
 </head>
 <body>
 <button type="button" class="lang-toggle" onclick="toggleLang()">中 / EN</button>
+<button type="button" class="theme-toggle" onclick="toggleTheme()"></button>
 <div class="card">
 <h1 data-i18n="title">&#128274; Read Receipts</h1>
 <p data-i18n="subtitle">Log in with your wxId account, or register a new one.</p>
@@ -80,6 +88,8 @@ const translations = {
     regFailed: "注册失败",
     passMismatch: "两次输入的密码不一致",
     networkError: "网络错误",
+    themeLight: "浅色",
+    themeDark: "深色",
   },
   en: {
     title: "Read Receipts",
@@ -99,9 +109,30 @@ const translations = {
     regFailed: "Registration failed",
     passMismatch: "Passwords do not match",
     networkError: "Network error",
+    themeLight: "Light",
+    themeDark: "Dark",
   },
 };
 function t(key){ return translations[lang][key] || key; }
+function updateThemeBtn(){
+  const dark = (document.documentElement.dataset.theme || "dark") === "dark";
+  document.querySelector(".theme-toggle").textContent = dark ? t("themeLight") : t("themeDark");
+}
+function setTheme(name){
+  document.documentElement.dataset.theme = name;
+  try { localStorage.setItem("theme", name); } catch {}
+  const m = document.querySelector('meta[name="theme-color"]');
+  if (m) m.setAttribute("content", name === "light" ? "#f1f5f9" : "#0f172a");
+  updateThemeBtn();
+}
+function toggleTheme(){
+  setTheme((document.documentElement.dataset.theme || "dark") === "dark" ? "light" : "dark");
+}
+function initTheme(){
+  let t0 = "dark";
+  try { t0 = localStorage.getItem("theme") || "dark"; } catch {}
+  setTheme(t0);
+}
 function applyI18n(){
   document.querySelectorAll("[data-i18n]").forEach((el) => {
     const key = el.dataset.i18n;
@@ -109,12 +140,14 @@ function applyI18n(){
     else if ("i18nPlaceholder" in el.dataset) el.placeholder = t(key);
     else el.textContent = t(key);
   });
+  updateThemeBtn();
 }
 function toggleLang(){
   lang = lang === "zh-CN" ? "en" : "zh-CN";
   localStorage.setItem("lang", lang);
   applyI18n();
 }
+initTheme();
 applyI18n();
 function switchTab(name){
   $("tabLogin").classList.toggle("active", name === "login");

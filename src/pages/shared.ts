@@ -23,6 +23,30 @@ function t(key, ...args){
   args.forEach((a, i) => { s = s.split("{" + i + "}").join(a); });
   return s;
 }
+/* 模态框键盘可达：Esc 关闭 + Tab 焦点陷阱 + 关闭后焦点还给触发元素。
+   onClose 由调用方提供（真正隐藏 overlay 的那段逻辑）；返回值是清理函数。 */
+function modalFocusables(root){
+  return Array.from(root.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'))
+    .filter((el) => !el.disabled && el.offsetParent !== null);
+}
+function bindModalKeys(overlay, onClose){
+  const prevFocus = document.activeElement;
+  const first = modalFocusables(overlay)[0];
+  (first || overlay).focus();
+  const onKey = (e) => {
+    if (e.key === "Escape") { e.preventDefault(); onClose(); return; }
+    if (e.key !== "Tab") return;
+    const f = modalFocusables(overlay);
+    if (!f.length) return;
+    if (e.shiftKey && document.activeElement === f[0]) { e.preventDefault(); f[f.length - 1].focus(); }
+    else if (!e.shiftKey && document.activeElement === f[f.length - 1]) { e.preventDefault(); f[0].focus(); }
+  };
+  document.addEventListener("keydown", onKey, true);
+  return () => {
+    document.removeEventListener("keydown", onKey, true);
+    if (prevFocus && prevFocus.focus) prevFocus.focus();
+  };
+}
 function applyI18n(){
   document.querySelectorAll("[data-i18n]").forEach((el) => {
     const key = el.dataset.i18n;
@@ -35,5 +59,32 @@ function applyI18n(){
     const ret = ME.retentionMonths > 0 ? ME.retentionMonths : t("unlimited");
     chip.title = t("quotaHint", ME.level, ME.messageQuota, ret);
   }
+  document.documentElement.lang = lang;
+  updateThemeBtn();
+}
+/* 明暗主题：localStorage 持久化 + <html data-theme> 驱动 CSS 变量切换。
+   暗色是默认；页面若在 JS 前闪一下深色，属于设计预期。 */
+function themeBtnLabel(){
+  const dark = (document.documentElement.dataset.theme || "dark") === "dark";
+  return dark ? t("themeLight") : t("themeDark");
+}
+function updateThemeBtn(){
+  document.querySelectorAll(".theme-toggle").forEach((b) => { b.textContent = themeBtnLabel(); });
+}
+function setTheme(name){
+  const h = document.documentElement;
+  h.dataset.theme = name;
+  try { localStorage.setItem("theme", name); } catch {}
+  const m = document.querySelector('meta[name="theme-color"]');
+  if (m) m.setAttribute("content", name === "light" ? "#f1f5f9" : "#0f172a");
+  updateThemeBtn();
+}
+function toggleTheme(){
+  setTheme((document.documentElement.dataset.theme || "dark") === "dark" ? "light" : "dark");
+}
+function initTheme(){
+  let t = "dark";
+  try { t = localStorage.getItem("theme") || "dark"; } catch {}
+  setTheme(t);
 }`;
 }

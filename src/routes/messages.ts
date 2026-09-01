@@ -36,33 +36,40 @@ messagesApp.get("/messages", (c) => {
   const limit = clampLimit(Number(c.req.query("limit") ?? 50));
   const offset = Math.max(Math.floor(Number(c.req.query("offset") ?? 0)) || 0, 0);
 
-  const base = (cond: string): string =>
-    `SELECT m.id, m.content, m.timestamp, (SELECT COUNT(DISTINCT r.ip) FROM reads r WHERE r.id = m.id) AS read_count
-     FROM messages m ${cond} ORDER BY m.timestamp DESC LIMIT ? OFFSET ?`;
-
-  let rows: Array<{ id: string; content: string; timestamp: string; read_count: number }>;
-  if (q) {
+  // 返回 (WHERE 片段, 参数)，SELECT 与 COUNT 共用同一过滤条件，保证总数与列表口径一致。
+  // q>=3 时优先 FTS（短语检索），语法不受支持时退化为 LIKE。
+  const filter = (): { cond: string; params: string[] } => {
+    if (!q) return { cond: "WHERE m.wx_id = ?", params: [user.wxId] };
     if (q.length >= 3) {
       const phrase = q.replaceAll('"', '""');
       try {
-        rows = sqlite
-          .query(
-            `${base("WHERE m.wx_id = ? AND m.rowid IN (SELECT rowid FROM messages_fts WHERE messages_fts MATCH ?)")}`,
-          )
-          .all(user.wxId, `"${phrase}"`, limit, offset) as typeof rows;
+        sqlite
+          .query("SELECT rowid FROM messages_fts WHERE messages_fts MATCH ? LIMIT 1")
+          .get(`"${phrase}"`);
+        return {
+          cond: "WHERE m.wx_id = ? AND m.rowid IN (SELECT rowid FROM messages_fts WHERE messages_fts MATCH ?)",
+          params: [user.wxId, `"${phrase}"`],
+        };
       } catch {
-        rows = sqlite
-          .query(`${base("WHERE m.wx_id = ? AND m.content LIKE ? ESCAPE '\\'")}`)
-          .all(user.wxId, `%${escapeLike(q)}%`, limit, offset) as typeof rows;
+        /* FTS 语法不支持，落到 LIKE */
       }
-    } else {
-      rows = sqlite
-        .query(`${base("WHERE m.wx_id = ? AND m.content LIKE ? ESCAPE '\\'")}`)
-        .all(user.wxId, `%${escapeLike(q)}%`, limit, offset) as typeof rows;
     }
-  } else {
-    rows = sqlite.query(`${base("WHERE m.wx_id = ?")}`).all(user.wxId, limit, offset) as typeof rows;
-  }
+    return {
+      cond: "WHERE m.wx_id = ? AND m.content LIKE ? ESCAPE '\\'",
+      params: [user.wxId, `%${escapeLike(q)}%`],
+    };
+  };
+
+  const { cond, params } = filter();
+  const rows = sqlite
+    .query(
+      `SELECT m.id, m.content, m.timestamp, (SELECT COUNT(DISTINCT r.ip) FROM reads r WHERE r.id = m.id) AS read_count
+       FROM messages m ${cond} ORDER BY m.timestamp DESC LIMIT ? OFFSET ?`,
+    )
+    .all(...params, limit, offset) as Array<{ id: string; content: string; timestamp: string; read_count: number }>;
+  const total = (sqlite.query(`SELECT COUNT(*) AS n FROM messages m ${cond}`).get(...params) as { n: number }).n;
+  // 总数经响应头返回（数组形状保持不变，旧客户端兼容）
+  c.header("X-Total-Count", String(total));
   return c.json(rows.map((r) => ({ id: r.id, content: r.content, reads: r.read_count, timestamp: r.timestamp })));
 });
 

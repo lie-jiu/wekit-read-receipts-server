@@ -6,10 +6,11 @@ import { adminScript } from "./admin/admin-script";
 
 export function adminPage(session: AdminSession): string {
   return `<!doctype html>
-<html lang="en">
+<html lang="zh-CN" data-theme="dark">
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<meta name="theme-color" content="#0f172a"/>
 <title data-i18n="title">Admin — Read Receipts</title>
 ${adminStyle()}
 </head>
@@ -22,6 +23,7 @@ ${adminStyle()}
     </div>
     <div class="flex">
       <button type="button" class="lang-toggle" onclick="toggleLang()">中 / EN</button>
+      <button type="button" class="theme-toggle" onclick="toggleTheme()"></button>
       <a class="btn btn-outline btn-sm" href="/" data-i18n="dashboard">Dashboard</a>
       <button class="btn btn-outline btn-sm" onclick="logout()" data-i18n="logout">Logout</button>
     </div>
@@ -185,7 +187,7 @@ ${adminStyle()}
 
 <div id="toastContainer" class="toast-container"></div>
 <div id="modalOverlay" class="modal-overlay hidden">
-  <div class="modal">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
     <h3 id="modalTitle">Confirm</h3>
     <p id="modalBody"></p>
     <div class="actions">
@@ -195,8 +197,8 @@ ${adminStyle()}
   </div>
 </div>
 <div id="passOverlay" class="modal-overlay hidden">
-  <div class="modal">
-    <h3 data-i18n="setPassword">Set Password</h3>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="passTitle">
+    <h3 id="passTitle" data-i18n="setPassword">Set Password</h3>
     <div class="modal-form">
       <input type="password" id="newUserPass" placeholder="New password (min 8 chars)" data-i18n="newPassPlaceholder" data-i18n-placeholder/>
     </div>
@@ -207,8 +209,8 @@ ${adminStyle()}
   </div>
 </div>
 <div id="addUserOverlay" class="modal-overlay hidden">
-  <div class="modal">
-    <h3 data-i18n="addUserTitle">Add User</h3>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="addUserTitle">
+    <h3 id="addUserTitle" data-i18n="addUserTitle">Add User</h3>
     <div class="modal-form">
       <input id="newUserWxid" placeholder="wxId" data-i18n="addUserWxidPlaceholder" data-i18n-placeholder/>
       <input type="password" id="newUserPw" placeholder="Password (min 8 chars)" data-i18n="newPassPlaceholder" data-i18n-placeholder/>
