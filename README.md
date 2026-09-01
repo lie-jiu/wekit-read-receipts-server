@@ -26,24 +26,46 @@
 
 ## 功能特性
 
-- **轻量打点**：1×1 透明 PNG 像素打点，无状态、无鉴权，打点路径零外部请求
-- **双语 IP 定位**：按需触发，中文 ip-api → ipwho.is，英文 ipwho.is → ipinfo.io，两路并发、失败逐级降级
-- **等级权益公式**：消息保留条数 / IP 定位次数 / 保留时长均由表达式配置，`x` 代表等级
-- **FTS5 全文搜索**：trigram 分词，支持消息内容快速检索
-- **管理后台**：用户管理、等级调整、权益公式在线编辑、消息管理、**僵尸用户自动清理**（`level 0` = 仅禁止注册新消息）
-- **公开消息详情**：发布者本人/管理员可把单条消息详情设为公开（默认关闭）；公开后任何人（含未登录用户）可查看该消息已读明细，未公开消息仅本人与管理员可见
-- **IP 黑名单**：全局（仅管理员，admin 后台唯一入口）/ 单条消息 / 账户三级黑名单；已读详情接口在服务端直接过滤黑名单行（API 响应不返回其 IP/定位/时间数据，仅返回隐藏条数；数据库记录保留不删除）；注册消息自动将来源 IP 写入该消息黑名单；独立账户设置页 `/account` 集中管理账户黑名单与修改密码 / 退出登录 / 清除我的
+### 打点与数据
+
+- **轻量打点**：1×1 透明 PNG，无状态、无鉴权，打点路径零外部请求
+- **双语 IP 定位**：按需触发；中文 ip-api → ipwho.is，英文 ipwho.is → ipinfo.io，两路并发、逐级降级
+- **FTS5 全文搜索**：trigram 分词，消息内容快速检索
+- **等级权益公式**：消息保留条数 / 定位次数 / 保留时长均由 `x`（等级）表达式配置
+- **消息分页**：仪表盘每页 10 条 + 上一页/下一页 + 页码，服务端返回 `X-Total-Count`（与列表过滤口径一致）
+
+### 管理与账户
+
+- **管理后台**：用户管理、等级调整（`level 0` = 仅禁止注册新消息）、权益公式在线编辑、消息管理
+- **僵尸用户自动清理**：「从未注册消息 / 长期沉寂」两类规则，支持预演、立即执行与审计留痕
+- **三级 IP 黑名单**：全局 / 单条消息 / 账户；已读详情在服务端直接过滤黑名单行
+- **公开消息详情**：发布者 / 管理员可把单条消息已读明细设为公开（默认关闭）
+- **账户设置页** `/account`：账户黑名单、修改密码、退出登录、清除我的
+
+### 安全
+
+- **限流**：per-IP 固定窗口 + `/register` per-wxId 双窗口（分钟/天）
+- **安全会话**：30 天；HTTPS 下 `__Host-session` + Secure，HTTP 直连自动降级
+- **可信代理**：CIDR 精确信任，公网直连绝不设置；`X-Forwarded-For` 自右向左取值，抵御反代「追加」模式下的首值伪造
+- **注入防护**：内联脚本数据安全序列化（阻断 `</script>` 逃逸）、前端渲染统一转义、SQL 全参数化
+
+### 界面与部署
+
+- **明暗主题**：6 个页面浅色 / 深色切换，默认跟随系统 `prefers-color-scheme`，选择经 `localStorage` 持久化，`meta theme-color` 随主题联动
+- **键盘可访问性**：`:focus-visible` 焦点环 + `prefers-reduced-motion` 兜底；模态框 Esc 关闭 + Tab 焦点陷阱 + 焦点还原；表格行 Enter / Space 可达
+- **移动端响应式**：`1rem` 字号防 iOS 缩放、`touch-action` 优化、表格横向滚动、关键按钮 40×40 命中区（断点 480 / 640px）
 - **多形态部署**：反向代理 / 公网直连 / Cloudflare Tunnel，内置 HTTPS 支持
 - **跨平台自启**：Linux systemd、Windows 启动文件夹 + 隐藏窗口、无 systemd 回退 nohup
-- **定时任务**：每 10 分钟增量回填统计表，每日清理过期会话、审计日志、孤儿 reads
-- **安全会话**：30 天会话，HTTPS 下 `__Host-session` + Secure，HTTP 直连自动降级
-- **可信代理**：CIDR 精确信任，公网直连绝不设置，防止 IP 伪造；`X-Forwarded-For` 自右向左取值，抵御反代「追加」模式下的首值伪造
-- **注入防护**：内联脚本数据经安全序列化（阻断 `</script>` 逃逸），前端渲染统一转义，SQL 全参数化
-- **明暗主题**：6 个页面内置浅色 / 深色主题切换，默认跟随系统 `prefers-color-scheme` 自动初始化，用户选择经 `localStorage` 持久化，`meta theme-color` 随主题联动
-- **键盘可访问性**：`:focus-visible` 焦点环 + `prefers-reduced-motion` 兜底；模态框统一 Esc 关闭 + Tab 焦点陷阱 + 焦点还原；看板表格行键盘可达（Enter / Space 触发）
-- **移动端响应式**：触屏输入框 `1rem` 字号防 iOS 缩放、全局 `touch-action` 优化、表格横向滚动、关键按钮 40×40 命中区（断点 480 / 640px 适配手机）
-- **仪表盘消息分页**：`/` 消息列表修复超 50 条静默截断，改为每页 10 条 + 上一页/下一页 + 页码指示；服务端返回 `X-Total-Count`（与列表过滤口径一致）
-- **限流**：per-IP 固定窗口 + `/register` per-wxId 双窗口（分钟/天）
+- **定时任务**：每 10 分钟增量回填统计表；每日清理过期会话、审计日志、孤儿 reads
+
+<details>
+<summary><b>IP 黑名单细则</b></summary>
+
+- 三级作用域：全局（仅管理员，admin 后台唯一入口）/ 单条消息 / 账户（跨本人全部消息生效）
+- 已读详情接口在服务端直接过滤黑名单行：API 响应不返回其 IP / 定位 / 时间数据，仅返回隐藏条数；数据库记录保留不删除
+- 注册消息时自动将来源 IP 写入该消息黑名单
+
+</details>
 
 ## 技术栈
 
@@ -56,6 +78,23 @@
 | 依赖 | `hono` | 极简依赖树 |
 
 ## 项目结构
+
+```
+wekit-read-receipts-server/
+├── index.ts          # 服务入口：建表、挂载路由、启动监听、定时任务
+├── src/
+│   ├── app.ts        # Hono 聚合层：全局安全头/限流中间件，挂载子路由
+│   ├── routes/       # 子路由：tracking / auth / messages / reads / stats / admin / account
+│   ├── pages/        # 前端页面：dashboard / admin / account / login（服务端拼接 HTML + 内联 JS）
+│   ├── *.ts          # 核心模块：config / db / auth / geo / levels / rate-limit / stats / retention / utils / http-helpers
+│   └── *.test.ts     # 单元测试：levels / retention / routes / security（bun test）
+└── scripts/
+    ├── manage/       # 管理 CLI 实现：cli / platform / service / env / users / levels
+    └── *.ts          # manage / mkuser / migrate-d1 / backfill-isp / cleanup-orphans / test-preload
+```
+
+<details>
+<summary><b>完整目录树</b></summary>
 
 ```
 wekit-read-receipts-server/
@@ -86,12 +125,12 @@ wekit-read-receipts-server/
 │   │   ├── shared-style.ts       # 共享设计令牌（themeTokens()：24 令牌 + 浅色板 + 焦点环 + reduced-motion）+ 6 页一致的公共 CSS（sharedStyle()）
 │   │   ├── types.ts              # 页面层视图模型类型（BasicSession / DashboardSession 等），路由 → 页面的收窄投影，与 auth.ts SessionUser 解耦
 │   │   ├── index.ts              # 桶文件：重导出各页面模块，路由统一 import { ... } from "../pages"
-│   │   ├── dashboard/            # 仪表盘三页面（由 2973 行的 dashboard.ts 拆分）
+│   │   ├── dashboard/            # 仪表盘三页面
 │   │   │   ├── dashboard-page.ts # 消息仪表盘 htmlPage
 │   │   │   ├── leaderboard-page.ts # 排行榜 leaderboardPage
 │   │   │   ├── read-details-page.ts # 已读详情 readDetailsPage
 │   │   │   └── index.ts          # 桶文件：重导出三个页面
-│   │   ├── admin/                # 管理后台（由 1471 行的 admin.ts 拆分）
+│   │   ├── admin/                # 管理后台
 │   │   │   ├── admin-style.ts    # adminStyle() 内联 CSS
 │   │   │   └── admin-script.ts   # adminScript() 内联 JS（6 大功能模块）
 │   │   ├── admin.ts              # adminPage() 薄组合层（拼 style + script）
@@ -112,6 +151,8 @@ wekit-read-receipts-server/
         ├── users.ts      # 用户管理
         └── levels.ts     # 等级权益公式管理
 ```
+
+</details>
 
 > 限流中间件（`/auth/*`、`/reads/:id/geo`、`/admin/*`）统一在 `app.ts` 顶层注册，子路由模块不重复挂载；`/register` 打点限流在 `routes/tracking.ts` 内直接调用。
 
@@ -153,21 +194,33 @@ bun run test       # bun test：levels / retention / routes / security
 | 端点 | 说明 |
 |---|---|
 | `/login`、`/auth/verify`、`/auth/register`、`/auth/logout`、`/auth/password`、`/auth/status` | 会话管理（30 天；HTTPS 下 `__Host-session` + Secure，HTTP 直连自动降级为普通 cookie） |
-| `/` | 用户仪表盘：消息搜索（FTS5 trigram）、读取明细、删除；消息列表分页（每页 10 条，服务端返回 `X-Total-Count`） |
+| `/` | 用户仪表盘：消息搜索（FTS5 trigram）、读取明细、删除；消息分页（每页 10 条，`X-Total-Count`） |
 | `/messages`、`DELETE /messages` | 本人消息列表 / 清空 |
-| `/reads/:id` | 单条消息读取明细（IP、UA、时间）；`GET /reads/:id/data` 在服务端过滤黑名单 IP 行（响应不含其数据，仅返回 `blockedCount` 隐藏条数与 `visibleTotal` 可见分页数）；`DELETE /reads/:id` 删除该消息（发布者本人或管理员，同事务清理 reads）；`POST /reads/:id/public` 切换公开详情（发布者本人或管理员，默认关闭） |
-| `/reads/:id` 公开详情 | `is_public=1` 时任何人（含未登录用户）均可只读访问详情页与 `/reads/:id/data`（黑名单过滤仍生效）；未公开时仅发布者本人与管理员可见，未登录跳转登录页。匿名访客隐藏删除/公开开关/IP 黑名单等管理功能 |
+| `/reads/:id` | 单条消息已读详情页（IP、UA、时间） |
+| `GET /reads/:id/data` | 已读明细分页数据；服务端过滤黑名单 IP 行（仅返回 `blockedCount` 隐藏条数与 `visibleTotal` 可见数） |
+| `DELETE /reads/:id` | 删除该消息（发布者本人或管理员，同事务清理 reads） |
+| `POST /reads/:id/public` | 切换公开详情（发布者本人或管理员，默认关闭） |
 | `GET/POST/DELETE /reads/:id/block` | 单条消息 IP 黑名单（消息所有者）；`POST` 支持 `{ ip }` 自定义或 `{ "action": "current" }` 一键拉黑当前访问 IP |
-| `/account`、`GET/POST/DELETE /account/ip-block` | 独立账户设置页：账户 IP 黑名单（跨本人全部消息生效，仅自定义添加，无一键拉黑）+ 修改密码 / 退出登录 / 清除我的（自首页迁移） |
-| `GET/POST/DELETE /admin/ip-block` | 全局 IP 黑名单（仅管理员，唯一入口位于管理后台页签；仅支持自定义 IP，无一键拉黑） |
+| `/account`、`GET/POST/DELETE /account/ip-block` | 账户设置页：账户 IP 黑名单（跨本人全部消息生效，仅自定义添加，无一键拉黑）+ 修改密码 / 退出登录 / 清除我的 |
+| `GET/POST/DELETE /admin/ip-block` | 全局 IP 黑名单（仅管理员，admin 后台页签唯一入口；仅自定义 IP，无一键拉黑） |
 | `POST /reads/:id/geo` | 按需 IP 定位：补全省市/运营商双语（幂等，缓存 24h；需登录，本人或管理员；按等级配额累计） |
 | `/leaderboard` | 排行榜：`?metric=reg\|read\|msg` × `?scope=day\|total`（均按 UTC 自然日；wxId 脱敏），无效参数返回 400 |
-| `/admin/*` | 管理后台：用户管理、等级调整、权益公式、消息管理、**僵尸用户清理** |
+| `/admin/*` | 管理后台：用户管理、等级调整、权益公式、消息管理、僵尸用户清理 |
+
+**公开消息详情**：`is_public=1` 时任何人（含未登录用户）均可只读访问详情页与 `/reads/:id/data`（黑名单过滤仍生效）；未公开时仅发布者本人与管理员可见，未登录跳转登录页；匿名访客隐藏删除 / 公开开关 / IP 黑名单等管理功能。
+
+<details>
+<summary><b>僵尸清理端点（/admin/retention/*）</b></summary>
+
+| 端点 | 说明 |
+|---|---|
 | `GET /admin/retention`、`POST /admin/retention` | 读取 / 保存清理策略（两项天数：`newUserDays` 注册后从未注册消息、`dormantDays` 注册后沉寂；均存 `meta` 表，0 = 不清理，保存立即生效）；写审计 `admin_set_retention` |
 | `GET /admin/retention/preview?page=&pageSize=` | 预演：仅统计不删，返回命中数量（never/dormant 拆分）、受豁免数、样例；`page`/`pageSize` 分页（`pageSize` 兼容旧 `limit`，1–100），`purgeable`/`never`/`dormant` 等全量计数跨页不变 |
 | `POST /admin/retention/run` | 立即执行一次清理（与每日任务同一套逻辑），写审计 `admin_run_retention`（含 `by=/deleted=/skipped=`） |
 | `GET /admin/retention/orphans` | 检测孤儿排行榜行：返回 `registration_stats` / `read_stats` / `message_read_stats` 三表「父用户已不存在」的行数（历史遗留：外部/FK 关闭删除用户所致） |
 | `POST /admin/retention/orphans` | 清理孤儿排行榜行（删除三表中 `wx_id` 不在 `users` 的行），写审计 `admin_cleanup_orphans`（含 `by=/total=/逐表计数`）；对应管理后台「僵尸清理」页签的「清理孤儿排行榜」按钮 |
+
+</details>
 
 ## 环境变量
 
