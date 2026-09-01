@@ -40,6 +40,7 @@ data.db-wal
 
 # agent workspace memory
 .workbuddy
+.zcode
 
 # IntelliJ based IDEs
 .idea
