@@ -48,9 +48,13 @@ const RETAINED_304_HEADERS = [
  *   「同一资源的不同传输编码」所要求的语义。反过来顺序会让 ETag 随客户端是否支持
  *   gzip 而变化，同一资源产出两个不同的强 ETag。
  *
- * 页面 HTML 明文 9.6–55 KB，gzip 后省 73–75%。
+ * compress 仅限 Bun 自托管：Workers 上响应还会被 workerd/边缘自动压缩一次，
+ * 叠加 hono compress 会产生双重 gzip（浏览器解一层后仍是二进制，页面整体乱码）。
+ * Workers 的响应压缩交给平台，gzip 后 HTML 省约 73–75% 的效果不变。
  */
-app.use("*", compress());
+if (typeof (globalThis as { Bun?: unknown }).Bun !== "undefined") {
+  app.use("*", compress());
+}
 app.use("*", etag({ retainedHeaders: RETAINED_304_HEADERS }));
 
 /**
