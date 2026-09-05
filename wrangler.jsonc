@@ -1,0 +1,22 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "wekit-read-receipts",
+  "main": "worker/index.ts",
+  "compatibility_date": "2025-09-01",
+  // nodejs_compat：process.env 由 vars/secrets 自动注入（compat date >= 2025-04-01 默认行为）
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true },
+  "triggers": {
+    // 每 10 分钟增量回填统计；每日 0 点（UTC）清理（对应 index.ts 里的两个 Bun.cron）
+    "crons": ["*/10 * * * *", "0 0 * * *"]
+  },
+  "durable_objects": {
+    "bindings": [{ "name": "APP", "class_name": "App" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["App"] }],
+  "vars": {
+    // 免费档单请求 CPU 上限 10ms，2 万次迭代保证登录验证可完成；
+    // 付费计划（30s CPU）可删除本变量，回退代码默认的 100000（见 src/config.ts PBKDF2_ITERATIONS）
+    "PBKDF2_ITERATIONS": "20000"
+  }
+}

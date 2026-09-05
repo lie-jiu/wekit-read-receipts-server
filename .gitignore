@@ -30,6 +30,10 @@ data.db-wal
 *.sqlite-shm
 *.sqlite-wal
 
+# wrangler（本地开发状态与密钥文件）
+.wrangler
+.dev.vars
+
 # manage 脚本生成的运行文件（自启任务/日志）
 .wekit
 

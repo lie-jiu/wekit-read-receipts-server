@@ -1,0 +1,14 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    // Workers 全局类型（Request/Response/DurableObjectState/SqlStorage 等）替代 bun 全局
+    "types": ["@cloudflare/workers-types"]
+  },
+  "include": ["./**/*.ts", "../src/**/*.ts"],
+  "exclude": [
+    // Bun 专属模块（node:fs / bun:sqlite），Workers 类型环境不检查也不打包
+    "../src/backends/**",
+    "../src/levels-env-file.ts",
+    "../src/**/*.test.ts"
+  ]
+}

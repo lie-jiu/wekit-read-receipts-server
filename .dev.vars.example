@@ -1,0 +1,10 @@
+# Deploy to Cloudflare 一键部署会逐项询问下方未注释的变量，填写的值存为 Worker Secrets（不进入代码仓库）。
+# 本地开发可复制为 .dev.vars（已 gitignore）供 `bun run dev:cf` 使用。
+
+# 管理员 wxId：部署后用该微信 ID 在登录页注册，即获管理员权限；多个用英文逗号分隔
+ADMIN=
+# 定时任务（Cron Triggers）转发鉴权密钥：任意随机串，如 `openssl rand -hex 32` 生成；未设置时定时任务拒绝执行
+CRON_KEY=
+
+# 可选：注册邀请码。需要时取消注释并填值，设置后注册必须携带
+# INVITE_CODE=

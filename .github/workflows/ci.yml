@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      # 双运行时类型检查：Bun（根 tsconfig）+ Cloudflare Workers（worker/tsconfig.json）
+      - name: Typecheck
+        run: bun run typecheck
+
+      - name: Test
+        run: bun test
+
+      # 只校验 Workers 构建可打包、不上传；防止改动悄悄破坏 Cloudflare 部署目标
+      - name: Wrangler dry-run
+        run: bun run check:cf
+        env:
+          WRANGLER_SEND_METRICS: "false"

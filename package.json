@@ -8,8 +8,10 @@
     "bun": ">=1.4.0"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250913.0",
     "@types/bun": "1.4.0",
-    "typescript": "^7"
+    "typescript": "^7",
+    "wrangler": "^4"
   },
   "dependencies": {
     "hono": "4.13.5"
@@ -18,11 +20,23 @@
     "dev": "bun --watch index.ts",
     "start": "bun index.ts",
     "test": "bun test",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p worker",
+    "deploy": "wrangler deploy",
+    "dev:cf": "wrangler dev",
+    "check:cf": "wrangler deploy --dry-run",
     "mkuser": "bun scripts/mkuser.ts",
     "manage": "bun scripts/manage.ts",
     "backfill-isp": "bun run scripts/backfill-isp.ts",
     "migrate-d1": "bun scripts/migrate-d1.ts",
     "cleanup-orphans": "bun scripts/cleanup-orphans.ts"
+  },
+  "cloudflare": {
+    "bindings": {
+      "APP": "Durable Object 绑定：承载应用与内置 SQLite 数据库，部署时自动开通，无需手动创建",
+      "ADMIN": "管理员 wxId：部署后用该微信 ID 在登录页注册即获管理员权限，多个用英文逗号分隔",
+      "CRON_KEY": "定时任务（Cron Triggers）转发鉴权密钥，任意随机串（如 `openssl rand -hex 32`），未设置时定时任务拒绝执行",
+      "INVITE_CODE": "可选：注册邀请码，设置后注册必须携带",
+      "PBKDF2_ITERATIONS": "密码哈希迭代次数：默认 20000 适配免费档 10ms CPU 限制，付费计划可删除此变量回退 100000"
+    }
   }
 }

@@ -26,5 +26,7 @@
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "noPropertyAccessFromIndexSignature": false
-  }
+  },
+  // worker/ 使用 Cloudflare Workers 全局类型（worker/tsconfig.json 单独检查），不混入 Bun 类型环境
+  "exclude": ["worker"]
 }
