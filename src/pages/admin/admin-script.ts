@@ -302,7 +302,8 @@ function setLabels() {
       });
     });
   };
-  apply($("userTbody"), ["wxId", t("level"), t("registered"), t("actions")]);
+  // 首列为展开按钮，占位空字符串跳过，保证后续标签与单元格一一对齐
+  apply($("userTbody"), ["", "wxId", t("level"), t("registered"), t("actions")]);
   apply($("msgTbody"), ["wxId", t("message"), t("reads"), t("timestamp"), t("actions")]);
   apply($("retentionTbody"), ["wxId", t("retentionReason"), t("registered"), t("retentionLastReg")]);
   apply($("globalIpTbody"), [t("ipAddressCol"), t("addedAt"), t("actions")]);
