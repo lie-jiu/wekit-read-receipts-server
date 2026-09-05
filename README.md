@@ -22,6 +22,15 @@
   <a href="#从-cf-workers-迁移">迁移</a>
 </p>
 
+<p align="center">
+  <a href="https://deploy.workers.cloudflare.com/?url=https://github.com/lie-jiu/wekit-read-receipts-server">
+    <img src="https://deploy.workers.cloudflare.com/button" alt="Deploy to Cloudflare" width="200">
+  </a>
+</p>
+<p align="center">
+  <sub>一键部署到 Cloudflare Workers（自动创建数据库，见<a href="#d-cloudflare-workers免服务器">部署形态 D</a>；<a href="https://developers.cloudflare.com/workers/platform/deploy-buttons/">官方文档</a>）</sub>
+</p>
+
 ---
 
 ## 功能特性
@@ -54,7 +63,7 @@
 - **明暗主题**：6 个页面浅色 / 深色切换，默认跟随系统 `prefers-color-scheme`，选择经 `localStorage` 持久化，`meta theme-color` 随主题联动
 - **键盘可访问性**：`:focus-visible` 焦点环 + `prefers-reduced-motion` 兜底；模态框 Esc 关闭 + Tab 焦点陷阱 + 焦点还原；表格行 Enter / Space 可达
 - **移动端响应式**：`1rem` 字号防 iOS 缩放、`touch-action` 优化、表格横向滚动、关键按钮 40×40 命中区（断点 480 / 640px）
-- **多形态部署**：反向代理 / 公网直连 / Cloudflare Tunnel，内置 HTTPS 支持
+- **多形态部署**：反向代理 / 公网直连 / Cloudflare Tunnel / Cloudflare Workers（免服务器），内置 HTTPS 支持
 - **跨平台自启**：Linux systemd、Windows 启动文件夹 + 隐藏窗口、无 systemd 回退 nohup
 - **定时任务**：每 10 分钟增量回填统计表；每日清理过期会话、审计日志、孤儿 reads
 
@@ -72,22 +81,25 @@
 | 层 | 技术 | 说明 |
 |---|---|---|
 | 运行时 | Bun 1.4+ | 内置 `bun:sqlite`，单二进制部署 |
+| 备选运行时 | Cloudflare Workers | 同一代码库经适配层运行于单实例 Durable Object（部署形态 D） |
 | 框架 | Hono 4.13.5 | 轻量 Web 框架 |
 | 语言 | TypeScript 7 | 原生编译器 tsgo，仅用于 `tsc --noEmit` 类型检查；运行时由 Bun 转译 |
-| 数据库 | SQLite (WAL) | schema 由手写原生 SQL + `PRAGMA user_version` 版本化迁移维护 |
+| 数据库 | SQLite (WAL) | schema 由手写原生 SQL + 版本化迁移维护；Bun 用 `PRAGMA user_version`，Workers 存 `meta` 表 |
 | 依赖 | `hono` | 极简依赖树 |
 
 ## 项目结构
 
 ```
 wekit-read-receipts-server/
-├── index.ts          # 服务入口：建表、挂载路由、启动监听、定时任务
+├── index.ts          # Bun 服务入口：注入 SQLite 后端与公式存储、建表、启动监听、定时任务
+├── worker/           # Cloudflare Workers 入口：Worker 转发 + 单实例 Durable Object（部署形态 D）
 ├── src/
 │   ├── app.ts        # Hono 聚合层：全局安全头/限流中间件，挂载子路由
 │   ├── routes/       # 子路由：tracking / auth / messages / reads / stats / admin / account
 │   ├── pages/        # 前端页面：dashboard / admin / account / login（服务端拼接 HTML + 内联 JS）
+│   ├── backends/     # SQLite 后端（Bun：bun:sqlite；Workers 后端在 worker/do-sqlite.ts）
 │   ├── *.ts          # 核心模块：config / db / auth / geo / levels / rate-limit / stats / retention / utils / http-helpers
-│   └── *.test.ts     # 单元测试：levels / retention / routes / security（bun test）
+│   └── *.test.ts     # 单元测试：auth / levels / retention / routes / security（bun test）
 └── scripts/
     ├── manage/       # 管理 CLI 实现：cli / platform / service / env / users / levels
     └── *.ts          # manage / mkuser / migrate-d1 / backfill-isp / cleanup-orphans / test-preload
@@ -98,20 +110,29 @@ wekit-read-receipts-server/
 
 ```
 wekit-read-receipts-server/
-├── index.ts              # 服务入口：建表、挂载路由、启动监听、定时任务
+├── index.ts              # Bun 服务入口：注入 SQLite 后端与公式存储、建表、启动监听、定时任务
+├── wrangler.jsonc        # Cloudflare Workers 部署配置（DO 绑定、Cron Triggers、nodejs_compat）
+├── worker/               # Workers 入口（部署形态 D）
+│   ├── index.ts          # Worker 默认导出（fetch 转发 + scheduled）与 App DO 类（惰性迁移、内部 cron 端点）
+│   ├── do-sqlite.ts      # Durable Objects 内置 SQLite 后端（ctx.storage.sql，同步语义对齐 bun:sqlite）
+│   ├── levels-env-db.ts  # meta 表版等级公式存储
+│   └── env.d.ts          # process 最小类型声明（nodejs_compat）
 ├── src/
-│   ├── app.ts            # Hono 聚合层：全局安全头/限流中间件，以 app.route 挂载子路由，导出 app
+│   ├── app.ts            # Hono 聚合层：全局安全头/请求体上限/限流中间件，以 app.route 挂载子路由，导出 app
 │   ├── http-helpers.ts   # 公共 HTTP 辅助：parseBody、clampLimit、鉴权/归属校验等
 │   ├── config.ts         # 环境变量读取、安全头、限流档位、像素常量
-│   ├── db.ts             # SQLite 连接与版本化迁移（PRAGMA user_version）
-│   ├── auth.ts           # 密码哈希/验证、会话（Cookie）签发与审计
+│   ├── db.ts             # SQLite 后端抽象（同步接口）与版本化迁移（Bun: PRAGMA user_version / Workers: meta 表）
+│   ├── backends/
+│   │   └── bun-sqlite.ts # bun:sqlite 后端（打开文件 + PRAGMA 配置 + ensureBunSqlite 幂等初始化）
+│   ├── auth.ts           # 密码哈希/验证（WebCrypto PBKDF2，双运行时一致）、会话（Cookie）签发与审计
 │   ├── geo.ts            # IP 地理解析（双语降级）、运营商分类、结果缓存
-│   ├── levels.ts         # 等级权益公式引擎（x*…/min/max/pow…）与 .env 读写
-│   ├── rate-limit.ts     # per-IP 固定窗口限流 + 可信代理 IP 解析
+│   ├── levels.ts         # 等级权益公式引擎（x*…/min/max/pow…），公式存储按运行时注入
+│   ├── levels-env-file.ts # .env 文件版公式存储（Bun 专用）
+│   ├── rate-limit.ts     # per-IP 固定窗口限流 + 可信代理 / 边缘 IP 解析
 │   ├── stats.ts          # 统计表增量回填、每日清理
 │   ├── retention.ts      # 僵尸用户自动清理：策略读写、预演、执行（含排行榜级联清空）
-│   ├── utils.ts          # 通用工具（utcNow/校验/脱敏/哈希）
-│   ├── *.test.ts         # 单元测试：levels / retention / routes / security（bun test）
+│   ├── utils.ts          # 通用工具（utcNow/校验/脱敏/纯 TS SHA-256）
+│   ├── *.test.ts         # 单元测试：auth / levels / retention / routes / security（bun test）
 │   ├── routes/           # 按业务职责拆分的子路由模块
 │   │   ├── tracking.ts   # /pixel、/count、/register 客户端打点
 │   │   ├── auth.ts       # /auth/*、/login 认证与会话
@@ -241,7 +262,11 @@ bun run test       # bun test：levels / retention / routes / security
 | `REGISTER_PER_WXID_PER_MIN` | `30` | `/register` 单个 wxId 每分钟注册条数上限（公开端点，无鉴权） |
 | `REGISTER_PER_WXID_PER_DAY` | `500` | `/register` 单个 wxId 每天注册条数上限 |
 | `PBKDF2_MAX_ITER` | `1000000` | PBKDF2 哈希迭代次数上限（拒绝被污染/恶意构造的超大 iter，防登录 DoS） |
+| `PBKDF2_ITERATIONS` | `100000` | 新哈希的 PBKDF2 迭代次数（下限 1000）。**Workers 免费档（10ms CPU）应设 `20000`**，付费档保持默认；`wrangler.jsonc` 已为 Workers 预置 `20000` |
+| `CRON_KEY` | 无 | **仅 Workers 形态**：Cron Triggers 转发进 DO 的鉴权密钥（`wrangler secret put CRON_KEY`），未设置时定时任务拒绝执行 |
 | `AUDIT_RETENTION_DAYS` | `30` | 审计日志保留天数（`0` = 不清理，长期留存） |
+
+> **仅 Bun 部署适用**：`PORT` / `BIND_HOST` / `TLS_CERT` / `TLS_KEY` / `DB_PATH` / `TRUSTED_PROXY`。Workers 形态恒为边缘 HTTPS、真实 IP 由边缘注入 `CF-Connecting-IP`，这些变量不适用（见部署形态 D）。
 
 <details>
 <summary><b>配额与限流详情</b></summary>
@@ -257,7 +282,7 @@ bun run test       # bun test：levels / retention / routes / security
 | 保留时长（月） | `RETENTION_MONTHS_FORMULA` | `x` | 超时自动删除；结果 0 表示不限制 |
 
 - **公式语法**：变量 `x`；运算符 `+ - * / % ^`；括号、一元正负号；函数 `floor / ceil / round / abs / min(a,b) / max(a,b) / pow(a,b)`。结果取整、负值归 0。示例：`x*2-1`、`min(x*100, 1000)`、`max(20, x*50)`
-- **修改方式**：管理后台「等级权益」页签可查看公式与 1-20 级预览、在线编辑（写 `.env`，重启生效）；或用命令 `bun run manage levels set message=x*2 geo=x*5 retention=x`（`manage levels show` 查看，空公式恢复默认 `x`）
+- **修改方式**：管理后台「等级权益」页签可查看公式与 1-20 级预览、在线编辑（Bun 写 `.env`、Workers 写 meta 表，**保存即生效**，无需重启）；或用命令 `bun run manage levels set message=x*2 geo=x*5 retention=x`（`manage levels show` 查看，空公式恢复默认 `x`，重启后生效）
 
 ### 限流（per-IP 固定窗口，非等级权益）
 
@@ -315,6 +340,7 @@ bun run test       # bun test：levels / retention / routes / security
 | A. 公网服务器 + 反代（推荐） | 默认 | `127.0.0.1/32`（同机） | `X-Forwarded-For`（自右向左首个非受信 IP） | 反代终止（自动证书） |
 | B. 公网服务器直连 | `0.0.0.0` | **不设** | 直连公网 IP | 内置 TLS / 裸 HTTP |
 | C. 无公网 IP + Cloudflare Tunnel | 默认 / `0.0.0.0` | `127.0.0.1/32`（同机） | `CF-Connecting-IP` | CF 终止 |
+| D. Cloudflare Workers（免服务器） | 不适用 | 不适用 | `CF-Connecting-IP`（边缘写入，不可伪造） | 边缘终止（恒 HTTPS） |
 
 生产建议：`DB_PATH` 指向持久化磁盘、`ADMIN` 声明受保护账号、`INVITE_CODE` 开启邀请码、`NODE_ENV=production`。
 
@@ -399,6 +425,58 @@ sudo bun run manage install
    sudo cloudflared service install
    ```
 5. 验证：手机流量访问 `https://rr.example.com/pixel?wxId=<wxid>&id=<64位hex>`，服务端查询 `reads` 应记录运营商公网 IP（优先取 `CF-Connecting-IP`，客户端不可伪造）。
+
+### D. Cloudflare Workers（免服务器）
+
+> **⚠️ 一键部署为 Cloudflare 开放测试（Open Beta）功能**，部署流程与资源开通行为以[官方文档](https://developers.cloudflare.com/workers/platform/deploy-buttons/)为准。
+
+#### 一键部署（推荐）
+
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/lie-jiu/wekit-read-receipts-server)
+
+点击按钮后 Cloudflare 会：把仓库克隆到你的 GitHub/GitLab 账号并建立 CI/CD（后续 push 自动重新部署）；读取 `wrangler.jsonc` **自动开通资源——包括 Durable Object 及其内置 SQLite 数据库**（无需单独创建数据库，schema 在首次请求时自动建表）；按仓库根目录 `.dev.vars.example` **逐项询问机密**（`ADMIN`、`CRON_KEY`，可选 `INVITE_CODE`），填写的值存为 Worker Secrets。
+
+部署完成后：打开分配的 `*.workers.dev` 地址 → 以 `ADMIN` 声明的 wxId 在登录页注册即获管理员权限。
+
+<details>
+<summary><b>一键部署后核对清单</b></summary>
+
+- **数据库**：由 Durable Object 自动开通（`durable_objects` + `migrations` 配置），首次访问任一页面即自动建表（schema v1→v7）；无需（也不支持）用 `wrangler d1` 操作
+- **机密**：若部署时未填写，随时可在 Dashboard → Worker → Settings → Variables 补设，或 `wrangler secret put ADMIN` / `wrangler secret put CRON_KEY`。`CRON_KEY` 未设置时定时任务不会执行
+- **免费计划必读**：`PBKDF2_ITERATIONS` 变量已默认 `20000` 以适配免费档 10ms CPU 限制；付费计划可删除该变量（回退 10 万迭代）
+- **大陆访问**：`*.workers.dev` 在大陆普遍不可达，绑定自有域名（Worker → Settings → Domains & Routes）
+- **验证**：登录后台 → 注册消息 → 打点像素后查看已读数；`wrangler tail` 观察 Cron Triggers 日志
+
+</details>
+
+#### 手动部署
+
+同一代码库经适配层运行于 **单实例 Durable Object**：Worker 只做转发，Hono 应用与全部业务逻辑整体在 DO 内执行，数据库为 DO 内置 SQLite（同步 API 与 `bun:sqlite` 语义对齐，FTS5 全文搜索可用）。单实例还让进程内限流与定位缓存恢复「全局唯一进程」语义。
+
+```bash
+bun install
+bunx wrangler login
+bun run deploy                      # 首次部署（配置见 wrangler.jsonc）
+bunx wrangler secret put ADMIN      # 管理员 wxId
+bunx wrangler secret put CRON_KEY   # 定时任务鉴权密钥（openssl rand -hex 32 自取）
+bunx wrangler secret put INVITE_CODE  # 可选：注册邀请码
+```
+
+- 首次请求自动建表（schema v1→v7，版本存 `meta` 表）；数据从零开始，`mkuser` / `manage` 脚本不可用：先用 `wrangler secret put ADMIN=<wxId>` 声明管理员，再在登录页以该 wxId 注册，即获管理员权限
+- 定时任务由 Cron Triggers（每 10 分钟统计回填 / 每日 UTC 0 点清理）经 `CRON_KEY` 鉴权转发进 DO 执行
+- 等级公式持久化在 meta 表，管理后台保存即时生效
+
+<details>
+<summary><b>与 Bun 形态的差异与注意事项</b></summary>
+
+- **恒 HTTPS**：会话 cookie 恒为 `__Host-session` + Secure，HSTS 恒下发；`PORT` / `BIND_HOST` / `TLS_*` / `DB_PATH` / `TRUSTED_PROXY` 等变量不适用
+- **免费档 CPU 上限 10ms/请求**：登录验证的 PBKDF2 计算约需 30–50ms（10 万次迭代）。`wrangler.jsonc` 已预置 `PBKDF2_ITERATIONS=20000` 适配免费档；付费档（$5/月，30s CPU）建议删除该变量回退 10 万迭代
+- **计费**：按请求数 + CPU + SQLite 行读写计费；每次 `/pixel` 命中写一行 `reads`（含索引约 3 rows written），个人规模月成本可忽略
+- **大陆可达性**：`workers.dev` 域名在大陆普遍不可用，正式使用请在 CF 托管的域名上绑定**自定义域**（Workers → Settings → Domains & Routes）
+- **单 DO 软上限约 1000 req/s**；DO 实例被平台回收重启后，内存中的限流窗口与定位缓存会清空（无数据风险，数据全在 SQLite），限流短暂放宽属预期行为
+- **本地开发**：`bun run dev:cf`（miniflare 模拟 DO SQLite，数据存 `.wrangler/`）；机密写入 `.dev.vars`（已 gitignore），如 `CRON_KEY=xxx`。类型检查 `bun run typecheck` 同时覆盖 Bun 与 Workers 两套 tsconfig
+
+</details>
 
 ## 从 CF Workers 迁移
 
