@@ -27,19 +27,22 @@ button[type=submit]:disabled{opacity:.6;cursor:not-allowed}
 .msg{margin-top:.9rem;font-size:.8rem;color:#fca5a5;min-height:1.2em;text-align:center}
 .hint{font-size:.72rem;color:var(--faint);margin:-.2rem 0 .6rem}
 .hidden{display:none}
-.lang-toggle{position:fixed;top:max(1rem,env(safe-area-inset-top));right:max(1rem,env(safe-area-inset-right));font-size:.7rem;font-weight:600;padding:.25rem .5rem;min-height:40px;min-width:40px;border-radius:4px;background:transparent;color:var(--faint);border:1px solid var(--border-strong);cursor:pointer;letter-spacing:.03em}
+.floating-toggles{position:fixed;top:max(1rem,env(safe-area-inset-top));right:max(1rem,env(safe-area-inset-right));display:flex;gap:.4rem;z-index:10}
+.lang-toggle{font-size:.7rem;font-weight:600;padding:.25rem .5rem;min-height:40px;min-width:40px;border-radius:4px;background:transparent;color:var(--faint);border:1px solid var(--border-strong);cursor:pointer;letter-spacing:.03em}
 .lang-toggle:hover{color:var(--text);border-color:var(--muted)}
-.theme-toggle{position:fixed;top:max(1rem,env(safe-area-inset-top));right:max(3.4rem,env(safe-area-inset-right));font-size:.7rem;font-weight:600;padding:.25rem .5rem;min-height:40px;min-width:40px;border-radius:4px;background:transparent;color:var(--faint);border:1px solid var(--border-strong);cursor:pointer;letter-spacing:.03em}
+.theme-toggle{font-size:.7rem;font-weight:600;padding:.25rem .5rem;min-height:40px;min-width:40px;border-radius:4px;background:transparent;color:var(--faint);border:1px solid var(--border-strong);cursor:pointer;letter-spacing:.03em}
 .theme-toggle:hover{color:var(--text);border-color:var(--muted)}
 .repo-footer{display:flex;align-items:center;gap:.4rem;font-size:.78rem;color:var(--faint);text-decoration:none;padding:.4rem .7rem;border-radius:8px;transition:color .15s,background .15s}
 .repo-footer:hover{color:var(--text);background:var(--surface)}
 .repo-footer svg{width:16px;height:16px;flex-shrink:0}
-@media (max-width:640px){.card{padding:1.5rem 1.25rem}.tab,button[type=submit],input{min-height:44px}.lang-toggle{padding:.5rem .6rem}.repo-footer{min-height:44px;padding:.5rem .8rem}}
+@media (max-width:640px){.card{padding:1.5rem 1.25rem}.tab,button[type=submit],input{min-height:44px}.lang-toggle,.theme-toggle{padding:.5rem .6rem}.repo-footer{min-height:44px;padding:.5rem .8rem}}
 </style>
 </head>
 <body>
-<button type="button" class="lang-toggle" onclick="toggleLang()">中 / EN</button>
+<div class="floating-toggles">
 <button type="button" class="theme-toggle" onclick="toggleTheme()"></button>
+<button type="button" class="lang-toggle" onclick="toggleLang()">中 / EN</button>
+</div>
 <div class="card">
 <h1 data-i18n="title">&#128274; Read Receipts</h1>
 <p data-i18n="subtitle">Log in with your wxId account, or register a new one.</p>
