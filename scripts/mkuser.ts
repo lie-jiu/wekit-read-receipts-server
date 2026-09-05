@@ -1,6 +1,9 @@
 import { sqlite, migrate } from "../src/db";
+import { ensureBunSqlite } from "../src/backends/bun-sqlite";
 import { hashPassword } from "../src/auth";
 import { isValidWxId, utcNow } from "../src/utils";
+
+ensureBunSqlite();
 
 const [wxIdArg, password, levelArg] = process.argv.slice(2);
 const wxId = wxIdArg ?? "";

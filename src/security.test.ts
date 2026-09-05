@@ -1,7 +1,39 @@
 import { describe, expect, test } from "bun:test";
-import { safeJson } from "./utils";
+import { computeId, safeJson, sha256Hex } from "./utils";
 import { ipInCidr, isValidIp, overLimitWxId, resolveXffIp } from "./rate-limit";
 import { REGISTER_PER_WXID_PER_MIN } from "./config";
+
+describe("sha256Hex / computeId（纯 TS SHA-256，跨运行时一致）", () => {
+  test("FIPS 标准测试向量", () => {
+    expect(sha256Hex("")).toBe("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
+    expect(sha256Hex("abc")).toBe("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+    expect(
+      sha256Hex("abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq"),
+    ).toBe("248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1");
+  });
+
+  test("与 Bun.CryptoHasher 随机输入逐位一致（含多块与多字节 UTF-8）", () => {
+    const alphabet = "ab中文🔥xyz01";
+    for (let n = 0; n < 200; n++) {
+      const len = Math.floor(Math.random() * 200); // 覆盖 <55 / >64 多块、边界长度
+      let s = "";
+      for (let i = 0; i < len; i++) s += alphabet[Math.floor(Math.random() * alphabet.length)];
+      expect(sha256Hex(s)).toBe(new Bun.CryptoHasher("sha256").update(s).digest("hex"));
+    }
+  });
+
+  test("computeId 与流式 CryptoHasher 拼接语义一致", () => {
+    const id = computeId("wxid_demo", "消息内容 hello", "1757000000123");
+    const expectId = new Bun.CryptoHasher("sha256")
+      .update("wxid_demo")
+      .update(new Uint8Array([0]))
+      .update("消息内容 hello")
+      .update(new Uint8Array([0]))
+      .update("1757000000123")
+      .digest("hex");
+    expect(id).toBe(expectId);
+  });
+});
 
 describe("safeJson（内联 <script> 安全序列化）", () => {
   test("阻断 </script> 逃逸", () => {

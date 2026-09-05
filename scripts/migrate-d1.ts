@@ -14,6 +14,7 @@
  */
 
 import { migrate, sqlite } from "../src/db";
+import { ensureBunSqlite } from "../src/backends/bun-sqlite";
 
 const ACCOUNT_ID = process.env.CF_ACCOUNT_ID?.trim() ?? "";
 const DATABASE_ID = process.env.CF_D1_DATABASE_ID?.trim() ?? "";
@@ -23,6 +24,8 @@ if (!ACCOUNT_ID || !DATABASE_ID || !API_TOKEN) {
   console.error("缺少环境变量：CF_ACCOUNT_ID / CF_D1_DATABASE_ID / CF_API_TOKEN");
   process.exit(1);
 }
+
+ensureBunSqlite();
 
 const API = `https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/d1/database/${DATABASE_ID}/query`;
 

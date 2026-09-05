@@ -1,11 +1,3 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-
-/** 项目根目录（与 cwd 无关，兼容 systemd/任意启动目录） */
-const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
-const ENV_FILE = join(ROOT, ".env");
-
 /** 未设置公式时的默认公式：x（权益值 = 用户等级） */
 export const DEFAULT_FORMULA = "x";
 
@@ -213,6 +205,43 @@ export function computeValues(formula: string): number[] {
   });
 }
 
+/* ────────────── 公式持久化存储（按运行时注入） ──────────────
+ * Workers 构建不可含 node:fs，因此存储实现不在本模块静态引用：
+ *   - Bun 部署：index.ts 注入 envFileStore()（.env 文件，src/levels-env-file.ts）
+ *   - Workers 部署：worker/index.ts 注入 meta 表存储（worker/levels-env-db.ts）
+ *   - 默认内存版：测试 / 未注入时兜底（管理端保存仅进程内生效）
+ */
+export type FormulaStore = {
+  /** 读取持久化的公式（键 → 公式串） */
+  read(): Record<string, string>;
+  /** 保存公式；空串表示移除该键（回退默认公式 x） */
+  write(updates: Record<string, string>): void;
+};
+
+const memoryData = new Map<string, string>();
+const memoryStore: FormulaStore = {
+  read: () => Object.fromEntries(memoryData),
+  write: (updates) => {
+    for (const [k, v] of Object.entries(updates)) {
+      if (v.trim() === "") memoryData.delete(k);
+      else memoryData.set(k, v.trim());
+    }
+  },
+};
+
+let formulaStore: FormulaStore = memoryStore;
+
+export function setFormulaStore(store: FormulaStore): void {
+  formulaStore = store;
+  reloadLevelConfigs();
+}
+
+/* ────────────── 生效配置（惰性求值 + 可失效重载） ──────────────
+ * 生效值始终来自 process.env：Bun 启动时自动把 .env 载入 process.env（真实环境变量优先），
+ * Workers 经 nodejs_compat 由 vars/secrets 注入。模块顶层改为惰性求值，
+ * 是因为 Workers 上 process.env 要到请求处理阶段才可用。
+ */
+
 export type LevelSource = "formula" | "default";
 
 export type LevelConfig = {
@@ -220,6 +249,17 @@ export type LevelConfig = {
   source: LevelSource;
   values: number[];
 };
+
+/** 各权益维度与对应环境变量键 */
+export const LEVEL_ENV_KEYS = {
+  message: "MESSAGE_QUOTA_FORMULA",
+  geo: "GEO_QUOTA_FORMULA",
+  retentionMonths: "RETENTION_MONTHS_FORMULA",
+} as const;
+
+export type LevelDim = keyof typeof LEVEL_ENV_KEYS;
+
+type DimConfigs = Record<LevelDim, LevelConfig>;
 
 function buildConfig(formula: string | null, label: string): LevelConfig {
   if (formula === null || formula.trim() === "") {
@@ -233,89 +273,61 @@ function buildConfig(formula: string | null, label: string): LevelConfig {
   }
 }
 
+let _configs: DimConfigs | null = null;
+
 function envFormula(key: string): string | null {
   const v = (process.env[key] ?? "").trim();
   return v === "" ? null : v;
 }
 
-/** 各权益维度与对应环境变量键 */
-export const LEVEL_ENV_KEYS = {
-  message: "MESSAGE_QUOTA_FORMULA",
-  geo: "GEO_QUOTA_FORMULA",
-  retentionMonths: "RETENTION_MONTHS_FORMULA",
-} as const;
+function configs(): DimConfigs {
+  if (!_configs) {
+    _configs = {
+      message: buildConfig(envFormula(LEVEL_ENV_KEYS.message), LEVEL_ENV_KEYS.message),
+      geo: buildConfig(envFormula(LEVEL_ENV_KEYS.geo), LEVEL_ENV_KEYS.geo),
+      retentionMonths: buildConfig(envFormula(LEVEL_ENV_KEYS.retentionMonths), LEVEL_ENV_KEYS.retentionMonths),
+    };
+  }
+  return _configs;
+}
 
-export type LevelDim = keyof typeof LEVEL_ENV_KEYS;
-
-const MESSAGE = buildConfig(envFormula(LEVEL_ENV_KEYS.message), LEVEL_ENV_KEYS.message);
-const GEO = buildConfig(envFormula(LEVEL_ENV_KEYS.geo), LEVEL_ENV_KEYS.geo);
-const RETENTION = buildConfig(envFormula(LEVEL_ENV_KEYS.retentionMonths), LEVEL_ENV_KEYS.retentionMonths);
+/** 使运行时配置失效重载。保存公式后调用即即时生效（Bun 无需重启，Workers 无需换实例） */
+export function reloadLevelConfigs(): void {
+  _configs = null;
+}
 
 /** 消息保留条数（超出自动删除最早消息） */
 export function quotaFor(level: number): number {
-  return MESSAGE.values[level] ?? 0;
+  return configs().message.values[level] ?? 0;
 }
 
 /** IP 定位次数（/reads/:id/geo 累计可用次数） */
 export function geoQuotaFor(level: number): number {
-  return GEO.values[level] ?? 0;
+  return configs().geo.values[level] ?? 0;
 }
 
 /** 消息保留时长（月），0 表示不限制 */
 export function retentionMonthsFor(level: number): number {
-  return RETENTION.values[level] ?? 0;
+  return configs().retentionMonths.values[level] ?? 0;
 }
 
-/* ────────────── .env 读写（等级公式持久化，管理后台使用） ────────────── */
-
-export function readEnvFile(): Record<string, string> {
-  if (!existsSync(ENV_FILE)) return {};
-  const out: Record<string, string> = {};
-  for (const line of readFileSync(ENV_FILE, "utf8").split(/\r?\n/)) {
-    const m = /^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/.exec(line.trim());
-    if (m) out[m[1]!] = m[2]!;
-  }
-  return out;
-}
-
-function writeEnvFile(env: Record<string, string>): void {
-  const lines: string[] = [];
-  const seen = new Set<string>();
-  if (existsSync(ENV_FILE)) {
-    for (const line of readFileSync(ENV_FILE, "utf8").split(/\r?\n/)) {
-      const m = /^([A-Za-z_][A-Za-z0-9_]*)\s*=/.exec(line.trim());
-      const key = m?.[1];
-      if (key !== undefined && key in env) {
-        lines.push(`${key}=${env[key]}`);
-        seen.add(key);
-      } else {
-        lines.push(line);
-      }
-    }
-  }
-  for (const [k, v] of Object.entries(env)) {
-    if (!seen.has(k)) lines.push(`${k}=${v}`);
-  }
-  writeFileSync(ENV_FILE, lines.filter((l) => l.trim() !== "").join("\n") + "\n");
-}
-
-/** 保存公式：空串移除对应键（回退默认公式 x），其余覆盖 */
+/** 保存公式：空串移除对应键（回退默认公式 x），其余覆盖。同时更新进程内环境与持久化存储，保存即生效 */
 export function saveLevelFormulas(updates: Record<string, string>): void {
-  const env = readEnvFile();
+  formulaStore.write(updates);
   for (const [k, v] of Object.entries(updates)) {
-    if (v.trim() === "") delete env[k];
-    else env[k] = v.trim();
+    if (v.trim() === "") delete process.env[k];
+    else process.env[k] = v.trim();
   }
-  writeEnvFile(env);
+  reloadLevelConfigs();
 }
 
-/** 根据 .env 中的持久化配置构建各维度配置（与进程内生效值可能不同，保存后需重启） */
+/** 根据持久化配置构建各维度配置（管理后台展示用；与运行时生效值独立） */
 export function persistedLevelConfigs(): Record<LevelDim, LevelConfig> {
-  const env = readEnvFile();
+  const persisted = formulaStore.read();
   return {
-    message: buildConfig(env[LEVEL_ENV_KEYS.message] ?? null, LEVEL_ENV_KEYS.message),
-    geo: buildConfig(env[LEVEL_ENV_KEYS.geo] ?? null, LEVEL_ENV_KEYS.geo),
-    retentionMonths: buildConfig(env[LEVEL_ENV_KEYS.retentionMonths] ?? null, LEVEL_ENV_KEYS.retentionMonths),
+    message: buildConfig(persisted[LEVEL_ENV_KEYS.message] ?? null, LEVEL_ENV_KEYS.message),
+    geo: buildConfig(persisted[LEVEL_ENV_KEYS.geo] ?? null, LEVEL_ENV_KEYS.geo),
+    retentionMonths: buildConfig(persisted[LEVEL_ENV_KEYS.retentionMonths] ?? null, LEVEL_ENV_KEYS.retentionMonths),
   };
 }
 

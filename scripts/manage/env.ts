@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { ENV_FILE } from "./platform";
 
-/** 读取 .env 为键值对象（用于运行脚本，与 src/levels.ts 的 readEnvFile 实现一致） */
+/** 读取 .env 为键值对象（用于运行脚本，与 src/levels-env-file.ts 的实现一致） */
 export function loadEnv(): Record<string, string> {
   const out: Record<string, string> = {};
   if (existsSync(ENV_FILE)) {

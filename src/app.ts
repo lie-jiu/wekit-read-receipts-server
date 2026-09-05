@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { compress } from "hono/compress";
 import { etag } from "hono/etag";
-import { HSTS_HEADER, SECURITY_HEADERS } from "./config";
+import { HSTS_HEADER, MAX_BODY_BYTES, SECURITY_HEADERS } from "./config";
 import { isSecureRequest } from "./auth";
 import { rateLimit } from "./rate-limit";
 import { trackingApp } from "./routes/tracking";
@@ -52,6 +52,19 @@ const RETAINED_304_HEADERS = [
  */
 app.use("*", compress());
 app.use("*", etag({ retainedHeaders: RETAINED_304_HEADERS }));
+
+/**
+ * 请求体上限。Bun 模式下 Bun.serve 的 maxRequestBodySize 已在更早阶段拦截，这里属冗余兜底；
+ * Workers 模式没有等价配置（平台上限 100MB），公开端点 /pixel、/count、/register 防内存/CPU
+ * 放大必须由应用层承担。仅校验 content-length 头（分块请求无该头，由平台自身上限兜底）。
+ */
+app.use("*", async (c, next) => {
+  const len = Number(c.req.header("content-length") ?? "0");
+  if (Number.isFinite(len) && len > MAX_BODY_BYTES) {
+    return c.json({ error: "payload too large" }, 413);
+  }
+  await next();
+});
 
 /* /auth/* 限流须在 /auth/status 之前注册，保证所有认证端点统一受 5/分 限制 */
 app.use("/auth/*", rateLimit("auth"));

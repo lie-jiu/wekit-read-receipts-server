@@ -1,6 +1,9 @@
 import { migrate, sqlite } from "../../src/db";
+import { ensureBunSqlite } from "../../src/backends/bun-sqlite";
 import { hashPassword } from "../../src/auth";
 import { isValidWxId } from "../../src/utils";
+
+ensureBunSqlite();
 
 export async function userAdd(wxId: string, password: string, level: number): Promise<void> {
   if (!isValidWxId(wxId)) {

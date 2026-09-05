@@ -6,8 +6,10 @@
  * 运行：bun run backfill-isp
  */
 import { migrate, sqlite } from "../src/db";
+import { ensureBunSqlite } from "../src/backends/bun-sqlite";
 import { classifyIsp } from "../src/geo";
 
+ensureBunSqlite();
 migrate();
 
 const CN_TO_EN: Record<string, string> = {

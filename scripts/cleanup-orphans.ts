@@ -10,6 +10,9 @@
  * 用法: bun run cleanup-orphans [--dry-run]   （默认执行删除，--dry-run 仅统计）
  */
 import { sqlite, migrate } from "../src/db";
+import { ensureBunSqlite } from "../src/backends/bun-sqlite";
+
+ensureBunSqlite();
 
 const DRY = process.argv.includes("--dry-run");
 

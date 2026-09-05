@@ -118,11 +118,16 @@ export function resolveXffIp(xff: string, trusted: string[]): string | null {
   return parts.length > 0 ? parts[parts.length - 1]! : null;
 }
 
-/** 直连方地址（Bun server.requestIP + ::ffff: 归一化），不信任任何代理头。
- * c.env 仅由 Bun.serve 注入，缺失时（如 app.request 测试）回退 "unknown"。 */
+/** 直连方地址：Bun 下为 server.requestIP + ::ffff: 归一化（c.env 仅由 Bun.serve 注入）；
+ * Cloudflare Workers 下无对端套接字信息，改用边缘注入的 CF-Connecting-IP（不可伪造）。
+ * 两者皆缺失时（如 app.request 测试）回退 "unknown"。 */
 export function peerIp(c: Context): string {
   const env = c.env as { requestIP?: (req: Request) => { address: string } | null } | undefined;
-  return normalizeIp(env?.requestIP?.(c.req.raw)?.address ?? "unknown");
+  if (env?.requestIP) {
+    return normalizeIp(env.requestIP(c.req.raw)?.address ?? "unknown");
+  }
+  const cf = c.req.header("cf-connecting-ip");
+  return cf ? normalizeIp(cf.trim()) : "unknown";
 }
 
 export function clientIp(c: Context): string {

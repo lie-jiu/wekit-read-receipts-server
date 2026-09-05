@@ -1,6 +1,3 @@
-import { Database } from "bun:sqlite";
-import { DB_PATH } from "./config";
-
 /** 64 位小写 hex 校验（id = SHA-256 hex） */
 const HEX_CHECK = "length(id) = 64 AND id NOT GLOB '*[^0-9a-f]*'";
 const DATE_CHECK = "date GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'";
@@ -147,16 +144,54 @@ ALTER TABLE messages ADD COLUMN is_public INTEGER NOT NULL DEFAULT 0 CHECK (is_p
 `,
 ];
 
-export const sqlite = new Database(DB_PATH, { create: true });
+/* ────────────── 同步 SQLite 后端抽象 ──────────────
+ * 业务代码面向本接口编写，运行时由入口注入具体后端：
+ *   - Bun 部署：src/backends/bun-sqlite.ts（bun:sqlite，WAL/PRAGMA 等本地优化）
+ *   - Cloudflare Workers：worker/do-sqlite.ts（Durable Objects 内置 SQLite，ctx.storage.sql）
+ * 两个后端语义对齐：同步 get/all/run、同步事务（回调抛异常即回滚）、run().changes。
+ */
 
-sqlite.exec("PRAGMA journal_mode = WAL");
-sqlite.exec("PRAGMA synchronous = NORMAL");
-sqlite.exec("PRAGMA busy_timeout = 10000");
-sqlite.exec("PRAGMA foreign_keys = ON");
-sqlite.exec("PRAGMA mmap_size = 268435456");
-sqlite.exec("PRAGMA cache_size = -65536");
-sqlite.exec("PRAGMA temp_store = MEMORY");
-sqlite.exec("PRAGMA wal_autocheckpoint = 1000");
+export type SqliteRunResult = { changes: number; lastInsertRowid?: number | bigint };
+
+export interface SqliteStmt {
+  get(...params: unknown[]): unknown;
+  all(...params: unknown[]): unknown[];
+  run(...params: unknown[]): SqliteRunResult;
+}
+
+export interface SqliteBackend {
+  query(sql: string): SqliteStmt;
+  prepare(sql: string): SqliteStmt;
+  /** 多语句脚本（迁移 DDL），不支持绑定参数 */
+  exec(sql: string): void;
+  /** 同步事务：与 bun:sqlite 一致，返回待调用的事务函数，回调抛异常即回滚 */
+  transaction<T>(fn: () => T): () => T;
+  close(): void;
+  /** schema 版本存取：bun 后端用 PRAGMA user_version，DO 后端用 meta 表 */
+  getVersion(): number;
+  setVersion(version: number): void;
+}
+
+let _backend: SqliteBackend | null = null;
+
+/**
+ * 注入 SQLite 后端。所有运行时入口（index.ts / worker/index.ts / 测试预载 / 脚本）必须在使用前调用。
+ * 允许重复注入：Workers 上 DO 实例被平台回收重建是常态（模块级状态可能留存），新实例必须重绑自己的 storage。
+ */
+export function setSqliteBackend(backend: SqliteBackend): void {
+  _backend = backend;
+  sqlite = backend;
+  /* 预编译语句捕获的是旧后端的连接/storage，重绑后必须失效重取（见 stmt()） */
+  _stmt = null;
+}
+
+/** 当前注入的后端（未注入时为 null），供 ensure* 幂等初始化判断 */
+export function getSqliteBackend(): SqliteBackend | null {
+  return _backend;
+}
+
+/** 全局数据库句柄（ESM live binding：setSqliteBackend 重赋值后所有导入方即时可见） */
+export let sqlite: SqliteBackend;
 
 /** 预编译高频 statement（懒加载，确保 migrate() 完成后才 prepare） */
 let _stmt: {
@@ -182,22 +217,16 @@ export function stmt() {
   return _stmt;
 }
 
-function currentVersion(): number {
-  const row = sqlite.query("PRAGMA user_version").get() as { user_version: number };
-  return row.user_version;
-}
-
 export function migrate(): void {
-  let current = currentVersion();
+  const current = sqlite.getVersion();
   if (!Number.isInteger(current) || current < 0) {
-    console.error(`[migrate] 非法 user_version: ${current}，拒绝迁移`);
-    process.exit(1);
+    throw new Error(`[migrate] 非法 schema 版本: ${current}，拒绝迁移`);
   }
   for (let v = current; v < MIGRATIONS.length; v++) {
     try {
       sqlite.transaction(() => {
         sqlite.exec(MIGRATIONS[v]!);
-        sqlite.exec(`PRAGMA user_version = ${v + 1}`);
+        sqlite.setVersion(v + 1);
       })();
       console.log(`[migrate] v${v + 1} 完成`);
     } catch (e) {

@@ -1,5 +1,8 @@
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
+import { ensureBunSqlite } from "./src/backends/bun-sqlite";
+import { envFileStore } from "./src/levels-env-file";
+import { setFormulaStore } from "./src/levels";
 import { migrate, sqlite } from "./src/db";
 import { backfillStats, dailyCleanup } from "./src/stats";
 import app from "./src/app";
@@ -13,6 +16,9 @@ import {
 } from "./src/config";
 import { PID_FILE } from "./scripts/manage/platform";
 
+/* Bun 部署的初始化：本地 SQLite 后端 + .env 文件版公式存储（Workers 由 worker/index.ts 注入对应实现） */
+ensureBunSqlite();
+setFormulaStore(envFileStore());
 migrate();
 console.log("SQLite " + (sqlite.query("SELECT sqlite_version() v").get() as { v: string }).v);
 
