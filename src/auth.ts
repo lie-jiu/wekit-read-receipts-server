@@ -1,10 +1,18 @@
 import type { Context } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
-import { pbkdf2Sync, timingSafeEqual } from "node:crypto";
-import { isAdmin, PBKDF2_MAX_ITER, SESSION_TTL_DAYS, SESSION_TTL_MS, TRUSTED_PROXY } from "./config";
+import {
+  isAdmin,
+  PBKDF2_ITERATIONS,
+  PBKDF2_KEY_LEN,
+  PBKDF2_MAX_ITER,
+  PBKDF2_SALT_BYTES,
+  SESSION_TTL_DAYS,
+  SESSION_TTL_MS,
+  TRUSTED_PROXY,
+} from "./config";
 import { ipInCidr, peerIp } from "./rate-limit";
 import { sqlite } from "./db";
-import { sha256Hex, utcNow } from "./utils";
+import { timingSafeEqual, sha256Hex, utcNow } from "./utils";
 
 export type SessionUser = {
   wxId: string;
@@ -32,9 +40,31 @@ export function audit(wxId: string | null, action: string, detail: string | null
     .run(wxId, action, detail, ip, utcNow());
 }
 
+function bytesToHex(bytes: Uint8Array): string {
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+function hexToBytes(hex: string): Uint8Array<ArrayBuffer> {
+  const out = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < out.length; i++) out[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+  return out;
+}
+
+/** PBKDF2-HMAC-SHA256 派生（WebCrypto）：Bun 与 Workers 行为逐位一致 */
+async function pbkdf2Hex(password: string, salt: Uint8Array<ArrayBuffer>, iterations: number): Promise<string> {
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(password), "PBKDF2", false, [
+    "deriveBits",
+  ]);
+  const bits = new Uint8Array(
+    await crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt, iterations }, key, PBKDF2_KEY_LEN * 8),
+  );
+  return bytesToHex(bits);
+}
+
 /**
- * 密码验证：兼容 Workers 端 PBKDF2-SHA256 哈希（pbkdf2$iter$salt_hex$hash_hex），
- * 其余（argon2id/bcrypt，Bun 内置）走 Bun.password.verify；未知格式返回 false。
+ * 密码验证。本项目的规范哈希格式为 pbkdf2$iter$salt_hex$hash_hex
+ * （PBKDF2-HMAC-SHA256 / 32 字节输出，双运行时统一，见 config.ts PBKDF2_ITERATIONS）；
+ * 兼容分支：argon2id/bcrypt 哈希仅在 Bun 运行时可验证（Bun.password，Workers 上没有），未知格式返回 false。
  */
 export async function verifyPassword(password: string, stored: string): Promise<boolean> {
   if (stored.startsWith("pbkdf2$")) {
@@ -53,16 +83,21 @@ export async function verifyPassword(password: string, stored: string): Promise<
       }
       return false;
     }
-    const derived = pbkdf2Sync(password, Buffer.from(saltHex, "hex"), iterations, 32, "sha256").toString("hex");
-    const a = Buffer.from(derived);
-    const b = Buffer.from(expected);
-    return a.length === b.length && timingSafeEqual(a, b);
+    const derived = await pbkdf2Hex(password, hexToBytes(saltHex), iterations);
+    return timingSafeEqual(derived, expected.toLowerCase());
   }
-  try {
-    return await Bun.password.verify(password, stored);
-  } catch {
-    return false;
+  /* argon2id/bcrypt 兼容分支：Bun 运行时专属能力。经 globalThis 探测而非直接引用 Bun 全局，
+   * 使本文件可同时通过 Workers 类型环境（那里没有 Bun 类型）——Workers 上安全返回 false。 */
+  const bun = (globalThis as { Bun?: { password?: { verify(password: string, hash: string): Promise<boolean> } } })
+    .Bun;
+  if (bun?.password) {
+    try {
+      return await bun.password.verify(password, stored);
+    } catch {
+      return false;
+    }
   }
+  return false;
 }
 
 export async function login(wxId: string, password: string): Promise<boolean> {
@@ -70,11 +105,26 @@ export async function login(wxId: string, password: string): Promise<boolean> {
     .query("SELECT password_hash, level FROM users WHERE wx_id = ?")
     .get(wxId) as { password_hash: string; level: number } | undefined;
   if (!row) return false;
-  return verifyPassword(password, row.password_hash);
+  if (!(await verifyPassword(password, row.password_hash))) return false;
+  /* 存量 argon2id 哈希透明升级为 pbkdf2$（双运行时可验证）：升级仅发生在升级前的一次登录，
+   * 失败（如只读库）不影响本次登录结果。 */
+  if (!row.password_hash.startsWith("pbkdf2$")) {
+    try {
+      sqlite
+        .query("UPDATE users SET password_hash = ? WHERE wx_id = ?")
+        .run(await hashPassword(password), wxId);
+    } catch (e) {
+      console.error("[auth] 密码哈希升级失败（不影响本次登录）:", e);
+    }
+  }
+  return true;
 }
 
+/** 新哈希统一为 pbkdf2$ 格式：WebCrypto 实现，Bun / Workers 产出逐位一致 */
 export async function hashPassword(password: string): Promise<string> {
-  return Bun.password.hash(password);
+  const salt = crypto.getRandomValues(new Uint8Array(PBKDF2_SALT_BYTES));
+  const hash = await pbkdf2Hex(password, salt, PBKDF2_ITERATIONS);
+  return `pbkdf2$${PBKDF2_ITERATIONS}$${bytesToHex(salt)}$${hash}`;
 }
 
 /** 请求是否走 TLS：直连 HTTPS，或经受信代理转发（X-Forwarded-Proto） */

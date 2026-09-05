@@ -32,6 +32,21 @@ export const SESSION_TTL_MS = SESSION_TTL_DAYS * 24 * 3600 * 1000;
 /** PBKDF2 迭代次数上限：拒绝被污染/恶意构造的哈希（超大 iter 会同步阻塞事件循环） */
 export const PBKDF2_MAX_ITER = Number(process.env.PBKDF2_MAX_ITER ?? 1_000_000);
 
+/**
+ * 新哈希参数：PBKDF2-HMAC-SHA256，输出格式 pbkdf2$iter$salt_hex$hash_hex。
+ * 这是本项目跨运行时的唯一哈希格式（Bun 与 Cloudflare Workers 共用同一 WebCrypto 实现），
+ * iter 内联在格式中可随时间提升而无需改格式；算法与输出长度是该格式的隐式常量，不可单独变更。
+ *
+ * Workers 免费档单请求 CPU 上限 10ms，PBKDF2 验证约为每次迭代 ~0.3µs CPU，
+ * 默认 100k 迭代约需 30-50ms，付费档（30s CPU）无压力；免费档部署应设 PBKDF2_ITERATIONS=20000。
+ */
+const rawPbkdf2Iter = Number(process.env.PBKDF2_ITERATIONS ?? 100_000);
+export const PBKDF2_ITERATIONS = Number.isFinite(rawPbkdf2Iter)
+  ? Math.min(PBKDF2_MAX_ITER, Math.max(1000, rawPbkdf2Iter))
+  : 100_000;
+export const PBKDF2_SALT_BYTES = 16;
+export const PBKDF2_KEY_LEN = 32;
+
 /** 审计日志保留天数（0 = 不清理，长期留存） */
 export const AUDIT_RETENTION_DAYS = Number(process.env.AUDIT_RETENTION_DAYS ?? 30);
 
