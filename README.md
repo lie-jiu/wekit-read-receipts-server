@@ -302,7 +302,8 @@ bun run test       # bun test：levels / retention / routes / security
 
 - 时间统一以 UTC 存储（`YYYY-MM-DD HH:MM:SS`）；Web 中文界面显示北京时间（UTC+8），英文界面显示 UTC；消息 id = `SHA-256(wxId + \x00 + content + \x00 + createTime)`，createTime 为客户端 13 位毫秒十进制字符串，绝不数值化/截断
 - 已读明细默认记录 `ip`、`user_agent`、时间；**定位为按需触发**——在已读详情中点「定位」按钮才调用免费接口补全省市/运营商（不含经纬度），结果仅本人/管理员可见，`ENABLE_GEO=0` 可整体关闭
-- 定位结果**双语存储**：中文取自 ip-api(zh) → ipwho.is(zh)，英文取自 ipwho.is(en) → ipinfo.io，两路并发、失败逐级降级；已读明细的「地区+运营商」随页面语言切换展示（英文缺失时回退中文）
+- 定位结果**双语存储**：中文取自 ip-api(zh,需开 `GEO_ALLOW_HTTP`) → ipwho.is(zh)，英文取自 ipwho.is(en) → ipinfo.io → api.ip.sb → freeipapi（对数据中心/共享出口宽容的备用源），两路并发、失败逐级降级，中文缺失时以英文结果兜底；已读明细的「地区+运营商」随页面语言切换展示
+- **Workers 部署注意**：免费定位接口对共享出口限流较严，失败结果有 1 小时缓存；定位失败时可稍后重试或切换网络，外呼失败也会消耗当日定位配额（防刷设计）
 - 运营商显示为双语短名（如 中国移动 / China Mobile），国外 ISP 仅在英文视图显示原文
 - 存量数据的运营商短名可通过 `bun run backfill-isp` 一次性补齐；已定位但缺英文的行会在下次点「定位」时自动重查补齐
 - `reads` 表无外键、无 wxId，删用户/删消息由服务端在同一事务内清理对应 reads；残留孤儿 reads 由每日任务清理（保留 7 天）

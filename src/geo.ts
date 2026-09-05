@@ -118,7 +118,10 @@ const ZH_PROVIDERS: Provider[] = [
     : []),
 ];
 
-/** 英文来源：ipwho.is 默认 en；ipinfo.io 仅英文 */
+/** 英文来源：ipwho.is 默认 en；ipinfo.io 仅英文。
+ * 追加对服务端/数据中心流量宽容的免费备用源——ipwho.is 与 ipinfo 对共享出口
+ * （尤其 Cloudflare Workers）限流严格，常被整源快速拒绝（429/403）。
+ * 备用源为英文数据，中文缺失时由 lookupIpLocation 的单语言兜底逻辑回填。 */
 const EN_PROVIDERS: Provider[] = [
   async (ip) => {
     const d = await fetchJson(`https://ipwho.is/${encodeURIComponent(ip)}`);
@@ -142,6 +145,26 @@ const EN_PROVIDERS: Provider[] = [
       isp: classifyIsp(org.split(" ").slice(1).join(" ")).en,
     };
   },
+  async (ip) => {
+    const d = await fetchJson(`https://api.ip.sb/geoip/${encodeURIComponent(ip)}`);
+    if (!d.country && !d.city) return null;
+    return {
+      country: String(d.country ?? ""),
+      region: String(d.region ?? ""),
+      city: String(d.city ?? ""),
+      isp: classifyIsp(String(d.isp ?? d.organization ?? "")).en,
+    };
+  },
+  async (ip) => {
+    const d = await fetchJson(`https://freeipapi.com/api/json/${encodeURIComponent(ip)}`);
+    if (!d.countryName) return null;
+    return {
+      country: String(d.countryName ?? ""),
+      region: cleanEnRegion(String(d.regionName ?? "")),
+      city: String(d.cityName ?? ""),
+      isp: "",
+    };
+  },
 ];
 
 async function resolve(ip: string, providers: Provider[]): Promise<GeoInfo | null> {
@@ -149,8 +172,11 @@ async function resolve(ip: string, providers: Provider[]): Promise<GeoInfo | nul
     try {
       const info = await provider(ip);
       if (info) return info;
-    } catch {
-      /* 静默降级到下一接口 */
+      /* 正常响应但解析不出结果（限流 JSON、形状变更等）：留日志便于排查外呼问题 */
+      console.warn(`[geo] provider returned no data for ${ip}`);
+    } catch (e) {
+      /* 静默降级到下一接口；留一行运行日志便于在 Workers 可观测性里定位外呼问题 */
+      console.warn(`[geo] provider failed for ${ip}:`, e instanceof Error ? e.message : e);
     }
   }
   return null;
