@@ -19,6 +19,37 @@ const { utcDateDaysAgo, utcDaysAgo } = await import("./utils");
 
 migrate();
 
+/**
+ * 全量清库。
+ *
+ * 本文件的断言是**全库精确计数**（preview.never === 1、purgeable === 25 等），
+ * 不能容忍其它测试文件的夹具残留。bun test 的文件执行顺序随平台/文件系统而异：
+ * Windows（NTFS 按名字序）本文件先于 routes.test.ts 跑，全绿；Linux（CI）上
+ * routes.test.ts 可能先执行，其模块顶层夹具（admin_wx 等 5 个 created_at=2026-01-01
+ * 的用户）会撞 users.wx_id 唯一键并使计数全部偏大。
+ *
+ * 每个测试文件都在**自己的模块顶层**重建夹具，因此这里的清空对任何执行顺序都安全：
+ * 先于本文件的文件已执行完毕，后于本文件的文件届时会重新插入自己的夹具。
+ */
+function hardReset(): void {
+  sqlite.exec(`
+    DELETE FROM reads;
+    DELETE FROM ip_block_message;
+    DELETE FROM messages;
+    DELETE FROM sessions;
+    DELETE FROM registration_stats;
+    DELETE FROM read_stats;
+    DELETE FROM message_read_stats;
+    DELETE FROM ip_block_account;
+    DELETE FROM ip_block_global;
+    DELETE FROM audit_logs;
+    DELETE FROM meta;
+    DELETE FROM users;
+  `);
+}
+
+hardReset();
+
 /** 解析响应 JSON 并断言为特定类型（app.request 的 .json() 在 TS 下为 unknown） */
 async function j<T>(res: Response | Promise<Response>): Promise<T> {
   return (await res).json() as T;
