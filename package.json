@@ -8,7 +8,7 @@
     "bun": ">=1.4.0"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20250913.0",
+    "@cloudflare/workers-types": "^5.20260911.1",
     "@types/bun": "1.4.2",
     "typescript": "^7",
     "wrangler": "4.131.0"
