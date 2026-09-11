@@ -4,7 +4,7 @@
 
 <p align="center">
   <img alt="Bun" src="https://img.shields.io/badge/Bun-1.4%2B-f9f1e1?logo=bun&logoColor=000">
-  <img alt="Hono" src="https://img.shields.io/badge/Hono-4.13.5-e36002?logo=hono&logoColor=fff">
+  <img alt="Hono" src="https://img.shields.io/badge/Hono-4.13.7-e36002?logo=hono&logoColor=fff">
   <img alt="SQLite" src="https://img.shields.io/badge/SQLite-WAL-003b57?logo=sqlite&logoColor=fff">
   <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-7-3178c6?logo=typescript&logoColor=fff">
   <img alt="license" src="https://img.shields.io/badge/license-AGPL--3.0-blue">
@@ -82,7 +82,7 @@
 |---|---|---|
 | 运行时 | Bun 1.4+ | 内置 `bun:sqlite`，单二进制部署 |
 | 备选运行时 | Cloudflare Workers | 同一代码库经适配层运行于单实例 Durable Object（部署形态 D） |
-| 框架 | Hono 4.13.5 | 轻量 Web 框架 |
+| 框架 | Hono 4.13.7 | 轻量 Web 框架 |
 | 语言 | TypeScript 7 | 原生编译器 tsgo，仅用于 `tsc --noEmit` 类型检查；运行时由 Bun 转译 |
 | 数据库 | SQLite (WAL) | schema 由手写原生 SQL + 版本化迁移维护；Bun 用 `PRAGMA user_version`，Workers 存 `meta` 表 |
 | 依赖 | `hono` | 极简依赖树 |
