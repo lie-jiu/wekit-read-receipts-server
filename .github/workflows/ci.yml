@@ -13,7 +13,8 @@ jobs:
 
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          # 固定版本：latest 漂移曾导致 CI 与本地行为不一致（文件执行顺序差异被放大）
+          bun-version: "1.4.2"
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
