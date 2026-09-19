@@ -3,6 +3,7 @@ import { CSP } from "../config";
 import { audit, getSessionUser, requireUser } from "../auth";
 import { sqlite } from "../db";
 import { clientIp, isValidIp } from "../rate-limit";
+import { clampLimit, queryAudit } from "../http-helpers";
 import { utcNow } from "../utils";
 import { accountPage } from "../pages";
 
@@ -56,4 +57,17 @@ accountApp.delete("/account/ip-block", (c) => {
   if (res.changes === 0) return c.json({ error: "not found" }, 404);
   audit(user.wxId, "account_block_remove", ip, clientIp(c));
   return c.json({ ok: true });
+});
+
+/**
+ * 本人操作留痕。管理员端有 /admin/audit，但普通用户不该因此就只能看到空白 ——
+ * 改密码、拉黑 IP、清除消息这些动作正好是他们最需要回看自己做过什么的地方。
+ * wxId 一律取会话里的值，不接受查询参数，避免变成探测他人的口子。
+ */
+accountApp.get("/account/audit", (c) => {
+  const user = requireUser(c);
+  if (!user) return c.json({ error: "unauthorized" }, 401);
+  const pageSize = clampLimit(Number(c.req.query("pageSize") ?? 50), 1, 200);
+  const page = Math.max(Math.floor(Number(c.req.query("page") ?? 1)) || 1, 1);
+  return c.json(queryAudit({ wxId: user.wxId, page, pageSize }));
 });

@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { CSP, isAdmin } from "../config";
 import { audit, hashPassword, requireAdmin } from "../auth";
 import { sqlite } from "../db";
+import { STAT_TABLES } from "../stats";
 import { clientIp, isValidIp } from "../rate-limit";
 import {
   LEVEL_ENV_KEYS,
@@ -11,7 +12,7 @@ import {
   validateFormula,
 } from "../levels";
 import { escapeLike, isValidId, isValidWxId, utcNow } from "../utils";
-import { adminOr, clampLimit, readRow, type ReadRow } from "../http-helpers";
+import { adminOr, clampLimit, queryAudit, readRow, type ReadRow } from "../http-helpers";
 import {
   MAX_RETENTION_DAYS,
   getRetentionSettings,
@@ -81,7 +82,19 @@ adminApp.get("/admin/users", (c) => {
     totalRegMsgs: number;
   }>;
 
-  return c.json({ rows, total, page, pageSize, totalPages: Math.max(1, Math.ceil(total / pageSize)) });
+  return c.json({
+    rows: rows.map((r) => ({
+      ...r,
+      /** env ADMIN 名单不是 DB 列，只能返回前逐行标注（一页最多 100 行） */
+      isAdmin: isAdmin(r.wxId),
+      /** level 0 的语义是"仅禁止注册新消息"，历史数据仍在 */
+      canRegister: r.level > 0,
+    })),
+    total,
+    page,
+    pageSize,
+    totalPages: Math.max(1, Math.ceil(total / pageSize)),
+  });
 });
 
 adminApp.post("/admin/users", async (c) => {
@@ -158,11 +171,13 @@ adminApp.delete("/admin/users/:wxId", (c) => {
     sqlite.query("DELETE FROM reads WHERE id IN (SELECT id FROM messages WHERE wx_id = ?)").run(wxId);
     sqlite.query("DELETE FROM messages WHERE wx_id = ?").run(wxId);
     sqlite.query("DELETE FROM sessions WHERE wx_id = ?").run(wxId);
-    // 显式清理排行榜三表与账户级 IP 黑名单：不依赖外键级联（级联仅在开启 foreign_keys 的连接上生效，
-    // 外部工具或旧版服务删除用户时可能未开启，会留下孤儿排行榜行）
-    sqlite.query("DELETE FROM registration_stats WHERE wx_id = ?").run(wxId);
-    sqlite.query("DELETE FROM read_stats WHERE wx_id = ?").run(wxId);
-    sqlite.query("DELETE FROM message_read_stats WHERE wx_id = ?").run(wxId);
+    // 显式清理各统计表与账户级 IP 黑名单：不依赖外键级联（级联仅在开启 foreign_keys 的连接上生效，
+    // 外部工具或旧版服务删除用户时可能未开启，会留下孤儿排行榜行）。
+    // 表清单用 stats.ts 的 STAT_TABLES —— 写死三张表的话，v8 新加的 hour_stats / ua_stats
+    // 就成了"删了用户但总览还在算他的量"的漏网之鱼。
+    for (const t of STAT_TABLES) {
+      sqlite.query(`DELETE FROM ${t} WHERE wx_id = ?`).run(wxId);
+    }
     sqlite.query("DELETE FROM ip_block_account WHERE wx_id = ?").run(wxId);
     sqlite.query("DELETE FROM users WHERE wx_id = ?").run(wxId);
   })();
@@ -368,9 +383,10 @@ adminApp.post("/admin/retention/run", (c) => {
   return c.json({ ok: true, ...result });
 });
 
-/* ── 手动清理孤儿排行榜（历史遗留：外部/FK 关闭删除用户导致三表残留已删用户的孤儿行） ── */
+/* ── 手动清理孤儿排行榜（历史遗留：外部/FK 关闭删除用户会让各统计表残留已删用户的行） ── */
 
-const ORPHAN_STAT_TABLES = ["registration_stats", "read_stats", "message_read_stats"] as const;
+/** 表清单只在 stats.ts 维护一份（STAT_TABLES），这里只是别名 */
+const ORPHAN_STAT_TABLES = STAT_TABLES;
 
 function countOrphanStats(): Record<string, number> {
   const out: Record<string, number> = {};
@@ -455,4 +471,15 @@ adminApp.delete("/admin/ip-block", (c) => {
   if (res.changes === 0) return c.json({ error: "not found" }, 404);
   audit(requireAdmin(c)!.wxId, "global_block_remove", ip, clientIp(c));
   return c.json({ ok: true });
+});
+
+/* ── 操作留痕（仅管理员）：audit_logs 一直在写，原先没有任何读端点 ── */
+
+adminApp.get("/admin/audit", (c) => {
+  const denied = adminOr(c);
+  if (denied) return denied;
+  const pageSize = clampLimit(Number(c.req.query("pageSize") ?? 50), 1, 200);
+  const page = Math.max(Math.floor(Number(c.req.query("page") ?? 1)) || 1, 1);
+  const q = (c.req.query("wxId") ?? "").trim();
+  return c.json(queryAudit({ wxId: q || null, page, pageSize }));
 });

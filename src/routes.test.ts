@@ -212,6 +212,107 @@ describe("publicReadOr（/reads/:id/data）", () => {
   });
 });
 
+/* ── /reads/:id/data 的全量汇总与身份字段（SPA 钻取页用） ── */
+
+describe("GET /reads/:id/data summary", () => {
+  const id = sha256Hex("summary-msg");
+  const pubId = sha256Hex("summary-msg-public");
+  insertUser("sum_wx", 3);
+  insertMessage(id, "sum_wx", "summary content");
+  insertMessage(pubId, "sum_wx", "summary public", 1);
+  const put = (ip: string, ts: string, ua: string, country = "", isp = "") =>
+    sqlite
+      .query("INSERT INTO reads (id, ip, timestamp, user_agent, country, region, city, isp) VALUES (?, ?, ?, ?, ?, '', '', ?)")
+      .run(id, ip, ts, ua, country, isp);
+
+  // 时间刻意选在 2026-01：后面的「stats 游标」用例断言的是回填后游标停在自己的
+  // 2026-02-01 上，而游标取的是全库 MAX(timestamp) —— 这里放更晚的时间会把它们改掉（共享 :memory: 库）
+  put("10.40.0.1", "2026-01-04 05:00:00", "Mozilla/5.0 (iPhone) MicroMessenger/8.0.49", "中国", "中国电信");
+  put("10.40.0.2", "2026-01-04 05:30:00", "Mozilla/5.0 (iPhone) MicroMessenger/8.0.49");
+  put("10.40.0.3", "2026-01-04 22:00:00", "Mozilla/5.0 (Windows NT 10.0) Chrome/128", "美国", "AWS");
+  put("10.40.0.4", "2026-01-05 01:00:00", "curl/8.9.0");
+  // 拉黑一条：它既不该出现在表格里，也不该出现在图里
+  sqlite.query("INSERT INTO ip_block_message (id, ip, created_at) VALUES (?, ?, ?)").run(id, "10.40.0.2", "2026-01-04 06:00:00");
+
+  type Payload = {
+    sentAt: string;
+    isPublic: boolean;
+    isOwner: boolean;
+    canManage: boolean;
+    ownerWxId: string | null;
+    total: number;
+    blockedCount: number;
+    visibleTotal: number;
+    reads: Array<{ ip: string }>;
+    summary: {
+      hours: Array<{ hour: number; count: number }>;
+      regions: Array<{ country: string; region: string; count: number }>;
+      isps: Array<{ isp: string; count: number }>;
+      userAgents: Array<{ kind: string; count: number }>;
+      located: { count: number; ratio: number | null };
+      firstReadSeconds: number | null;
+    };
+  };
+  const get = async (msgId: string, wxId?: string): Promise<Payload> => {
+    currentIp = freshIp();
+    const res = await app.request(`/reads/${msgId}/data`, wxId ? { headers: authCookie(wxId) } : undefined);
+    return (await res.json()) as Payload;
+  };
+
+  test("汇总覆盖全部可见行，不受分页影响", async () => {
+    const p = await get(id, "sum_wx");
+    expect(p.total).toBe(4);
+    expect(p.blockedCount).toBe(1);
+    expect(p.visibleTotal).toBe(3);
+    expect(p.reads.length).toBe(3);
+    const hourSum = p.summary.hours.reduce((a, h) => a + h.count, 0);
+    expect(hourSum).toBe(3); // 被拉黑的那次不算
+    expect(p.summary.hours[5]?.count).toBe(1);
+    expect(p.summary.hours[22]?.count).toBe(1);
+    expect(p.summary.hours[1]?.count).toBe(1);
+    // 分桶与 ua_stats 用的是同一个 UA_KIND_SQL：微信内优先于 iOS
+    expect(new Map(p.summary.userAgents.map((u) => [u.kind, u.count]))).toEqual(
+      new Map([["wechat", 1], ["desktop", 1], ["other", 1]]),
+    );
+    // 发出 2026-01-01 00:00 → 最早可见已读 2026-01-04 05:00
+    expect(p.summary.firstReadSeconds).toBe(3 * 86_400 + 5 * 3_600);
+  });
+
+  test("地域/运营商只统计已定位行，并给出覆盖比值", async () => {
+    const p = await get(id, "sum_wx");
+    expect(p.summary.located.count).toBe(2);
+    expect(p.summary.located.ratio).toBeCloseTo(2 / 3, 5);
+    expect(p.summary.regions.map((r) => r.country)).toEqual(["中国", "美国"]);
+    expect(p.summary.isps.map((i) => i.isp).sort()).toEqual(["AWS", "中国电信"]);
+  });
+
+  test("身份字段：owner / admin / 无关用户各有各的可见范围", async () => {
+    const mine = await get(id, "sum_wx");
+    expect([mine.isOwner, mine.canManage, mine.ownerWxId, mine.isPublic]).toEqual([true, true, "sum_wx", false]);
+    const admin = await get(id, "admin_wx");
+    expect([admin.isOwner, admin.canManage, admin.ownerWxId]).toEqual([false, true, "sum_wx"]);
+    // 别人的公开消息：能看，但不因此拿到 wxId 或管理权
+    const visitor = await get(pubId, "other_wx");
+    expect([visitor.isOwner, visitor.canManage, visitor.ownerWxId, visitor.isPublic]).toEqual([
+      false,
+      false,
+      null,
+      true,
+    ]);
+  });
+
+  test("匿名访问私有消息仍是 401，不会漏出汇总", async () => {
+    currentIp = freshIp();
+    const res = await app.request(`/reads/${id}/data`);
+    expect(res.status).toBe(401);
+  });
+
+  test("sentAt 回的是消息发出时间", async () => {
+    const p = await get(id, "sum_wx");
+    expect(p.sentAt).toBe("2026-01-01 00:00:00"); // insertMessage 的固定夹具时间
+  });
+});
+
 /* ── stats 游标 ── */
 
 describe("stats 游标", () => {
@@ -272,6 +373,13 @@ describe("stats 游标", () => {
       (sqlite.query("SELECT COALESCE(SUM(count), 0) AS s FROM read_stats").get() as { s: number }).s;
     expect(total).toBe(expectedTotal);
     expect(statCount("stat_b")).toBe(1);
+    // v8 的两张新表必须一起重建：aggregateSince(0) 是 DO UPDATE 累加，
+    // 漏清就会在旧值上再加一遍（这两张与 read_stats 同为「按 reads 行数」口径，
+    // message_read_stats 是「按当日去重消息数」口径，不能一起比）。
+    for (const table of ["hour_stats", "ua_stats"]) {
+      const sum = (sqlite.query(`SELECT COALESCE(SUM(count), 0) AS s FROM ${table}`).get() as { s: number }).s;
+      expect([table, sum]).toEqual([table, expectedTotal]);
+    }
     // 游标推进到复用行的时间戳
     expect(getCursor().ts).toBe("2030-01-01 00:00:00");
 

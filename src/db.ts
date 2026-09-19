@@ -142,6 +142,40 @@ CREATE TABLE ip_block_account (
   `
 ALTER TABLE messages ADD COLUMN is_public INTEGER NOT NULL DEFAULT 0 CHECK (is_public IN (0,1));
 `,
+  /* v8：总览统计的预聚合 rollup。
+
+   * 为什么不实时扫 reads：/stats/overview 要出 24 小时分布与客户端分布，
+   * 这两张图按现有 read_stats 的粒度算不出来，只能回表；而 Workers 免费档
+   * 单次请求只有 10ms CPU（config.ts 里 PBKDF2 迭代数就是为此降到 20000 的），
+   * 首屏拿整段区间的 reads 做 GROUP BY 随时可能超预算。
+   * 所以沿用 backfillStats 已有的游标机制，把这两维预聚合成定长小表：
+   *   hour_stats  每小时 1 行 × 24 = 每用户每天最多 24 行
+   *   ua_stats    客户端类型 5 个桶 = 每用户每天最多 5 行
+   * 主键即聚合粒度，ON CONFLICT 累加，与 read_stats 完全同构。
+   *
+   * 地域/运营商分布刻意不进 rollup：IP 归属地是点「定位」才写的按需数据
+   * （见 reads.ts 里 lookupIpLocation 的唯一调用点），量本来就小，
+   * 加一张按 country/isp 展开的表收益低、基数还不可控。改为下面的
+   * 部分索引 + 查询时只扫「已定位」那一小撮行。 */
+  `
+CREATE TABLE hour_stats (
+  date TEXT NOT NULL CHECK (${DATE_CHECK}),
+  wx_id TEXT NOT NULL REFERENCES users(wx_id) ON DELETE CASCADE,
+  hour INTEGER NOT NULL CHECK (hour BETWEEN 0 AND 23),
+  count INTEGER NOT NULL DEFAULT 0 CHECK (count >= 0),
+  PRIMARY KEY (date, wx_id, hour)
+) STRICT;
+
+CREATE TABLE ua_stats (
+  date TEXT NOT NULL CHECK (${DATE_CHECK}),
+  wx_id TEXT NOT NULL REFERENCES users(wx_id) ON DELETE CASCADE,
+  kind TEXT NOT NULL CHECK (kind IN ('wechat','ios','android','desktop','other')),
+  count INTEGER NOT NULL DEFAULT 0 CHECK (count >= 0),
+  PRIMARY KEY (date, wx_id, kind)
+) STRICT;
+
+CREATE INDEX idx_reads_located ON reads(timestamp) WHERE country <> '';
+`,
 ];
 
 /* ────────────── 同步 SQLite 后端抽象 ──────────────

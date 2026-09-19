@@ -4,6 +4,7 @@ import { audit, requireUser } from "../auth";
 import { sqlite } from "../db";
 import { lookupIpLocation } from "../geo";
 import { clientIp, isValidIp } from "../rate-limit";
+import { UA_KIND_SQL } from "../stats";
 import { isValidId, utcDate, utcNow } from "../utils";
 import {
   clampLimit,
@@ -72,6 +73,88 @@ function blockSetFor(id: string, ownerWxId: string | null): Set<string> {
   return set;
 }
 
+/** 一条消息的「可见行」过滤条件：黑名单命中的行既不出现在表格里，也不参与汇总。
+ *  表格与图必须同一口径，否则会出现"明细 117 行、地域图加起来 120"这种对不上的数。 */
+function visibleFilter(id: string, ownerWxId: string | null): { where: string; params: string[] } {
+  const parts = [
+    "r.id = ?",
+    "r.ip NOT IN (SELECT ip FROM ip_block_global)",
+    "r.ip NOT IN (SELECT ip FROM ip_block_message WHERE id = ?)",
+  ];
+  const params = [id, id];
+  if (ownerWxId) {
+    parts.push("r.ip NOT IN (SELECT ip FROM ip_block_account WHERE wx_id = ?)");
+    params.push(ownerWxId);
+  }
+  return { where: parts.join(" AND "), params };
+}
+
+/**
+ * 单条消息的全量汇总（不是当页）。
+ *
+ * 为什么放到服务器算：明细是分页的，前端手上只有第 N 页；拿页里的行做聚合，
+ * 得到的是"最近 50 次已读的分布"，可它在页面上看起来就和"这条消息的分布"一样。
+ *
+ * hours 保持 UTC 桶，展示时区由前端轮转（最多 24 个桶，成本可忽略，
+ * 接口也就不用为了显示偏好多接一个参数）。
+ */
+function messageSummary(id: string, ownerWxId: string | null, sentAt: string) {
+  const vis = visibleFilter(id, ownerWxId);
+  const hours = Array.from({ length: 24 }, (_, hour) => ({ hour, count: 0 }));
+  const hourRows = sqlite
+    .query(
+      `SELECT CAST(substr(r.timestamp, 12, 2) AS INTEGER) AS hour, COUNT(*) AS count
+       FROM reads r WHERE ${vis.where} GROUP BY 1`,
+    )
+    .all(...vis.params) as Array<{ hour: number; count: number }>;
+  for (const h of hourRows) {
+    const slot = h.hour >= 0 && h.hour < 24 ? hours[h.hour] : undefined;
+    if (slot) slot.count += h.count;
+  }
+  // 一趟标量聚合拿齐"可见数 / 已定位数 / 首读延迟"，不必再各扫一遍
+  const scalars = sqlite
+    .query(
+      `SELECT COUNT(*) AS visible,
+              SUM(CASE WHEN r.country <> '' THEN 1 ELSE 0 END) AS located,
+              CAST(strftime('%s', MIN(r.timestamp)) - strftime('%s', ?) AS INTEGER) AS first_seconds
+       FROM reads r WHERE ${vis.where}`,
+    )
+    .get(sentAt, ...vis.params) as {
+    visible: number | null;
+    located: number | null;
+    first_seconds: number | null;
+  };
+  const visible = scalars.visible ?? 0;
+  const located = scalars.located ?? 0;
+  return {
+    hours,
+    regions: sqlite
+      .query(
+        `SELECT r.country AS country, r.region AS region, COUNT(*) AS count
+         FROM reads r WHERE ${vis.where} AND r.country <> ''
+         GROUP BY 1, 2 ORDER BY 3 DESC LIMIT 20`,
+      )
+      .all(...vis.params) as Array<{ country: string; region: string; count: number }>,
+    isps: sqlite
+      .query(
+        `SELECT r.isp AS isp, COUNT(*) AS count
+         FROM reads r WHERE ${vis.where} AND r.isp <> ''
+         GROUP BY 1 ORDER BY 2 DESC LIMIT 20`,
+      )
+      .all(...vis.params) as Array<{ isp: string; count: number }>,
+    userAgents: sqlite
+      .query(
+        `SELECT ${UA_KIND_SQL} AS kind, COUNT(*) AS count
+         FROM reads r WHERE ${vis.where} GROUP BY 1 ORDER BY 2 DESC`,
+      )
+      .all(...vis.params) as Array<{ kind: string; count: number }>,
+    /** 归属地是按需数据：分部图只是"已定位这部分"的结构，比值先于图给出 */
+    located: { count: located, ratio: visible > 0 ? located / visible : null },
+    /** 首读延迟按可见行算（被拉黑的访问不该把一个消息"显得"很快被读）；无可见行为 null */
+    firstReadSeconds: scalars.first_seconds === null ? null : Math.max(0, scalars.first_seconds),
+  };
+}
+
 /** 已读详情分页 JSON 接口：默认每页 50 条，上限 200（与 /messages 一致）。
  * 黑名单 IP 行在后端直接过滤，API 响应不返回其任何数据（仅返回 blockedCount 数字）。 */
 readsApp.get("/reads/:id/data", (c) => {
@@ -87,34 +170,42 @@ readsApp.get("/reads/:id/data", (c) => {
     .get(id) as { total: number };
   // 账户黑名单仅在查看者为消息 owner 时参与判定（公开消息的匿名访客不应用 owner 的账户黑名单）
   const ownerWxId = user && msg.wx_id === user.wxId ? user.wxId : null;
-  const blockedSet = blockSetFor(id, ownerWxId);
-  // blockedCount 基于全量 reads 计算，不能用分页行数推算
-  let blockedCount = 0;
-  for (const r of sqlite
-    .query("SELECT ip FROM reads WHERE id = ?")
-    .all(id) as Array<{ ip: string }>) {
-    if (blockedSet.has(r.ip)) blockedCount++;
-  }
+  const vis = visibleFilter(id, ownerWxId);
   // SQL 层过滤黑名单行：分页基于可见行数，命中行不出现在响应中
   const rows = sqlite
     .query(
-      `SELECT ip, timestamp, user_agent, country, region, city, isp, country_en, region_en, city_en, isp_en
-       FROM reads WHERE id = ?
-         AND ip NOT IN (SELECT ip FROM ip_block_global)
-         AND ip NOT IN (SELECT ip FROM ip_block_message WHERE id = ?)
-         ${ownerWxId ? "AND ip NOT IN (SELECT ip FROM ip_block_account WHERE wx_id = ?)" : ""}
-       ORDER BY timestamp DESC LIMIT ? OFFSET ?`,
+      `SELECT r.ip, r.timestamp, r.user_agent, r.country, r.region, r.city, r.isp,
+              r.country_en, r.region_en, r.city_en, r.isp_en
+       FROM reads r WHERE ${vis.where}
+       ORDER BY r.timestamp DESC LIMIT ? OFFSET ?`,
     )
-    .all(...(ownerWxId ? [id, id, ownerWxId, pageSize, offset] : [id, id, pageSize, offset])) as ReadRow[];
+    .all(...vis.params, pageSize, offset) as ReadRow[];
+  const visibleTotal = (sqlite
+    .query(`SELECT COUNT(*) AS n FROM reads r WHERE ${vis.where}`)
+    .get(...vis.params) as { n: number }).n;
+  // 差额就是被黑名单命中的行数：按"全量 − 可见"算，比再扫一遍 IP 便宜，也不会和分页打架
+  const blockedCount = total - visibleTotal;
+  const isOwner = !!user && msg.wx_id === user.wxId;
   return c.json({
     id,
     content: msg.content,
+    /** 发出时间：首读延迟按它算。钻取页可以直接用 URL 打开，不能依赖列表已经加载 */
+    sentAt: msg.timestamp,
+    isPublic: msg.is_public === 1,
+    isOwner,
+    /** 管理动作（公开开关 / 黑名单 / 删除）只对 owner 与管理员开放，判定留在服务器 */
+    canManage: isOwner || !!user?.isAdmin,
+    /** 别人的 wxId 不给匿名访客与普通登录用户看；管理员要它才能定位是哪个账号 */
+    ownerWxId: isOwner || user?.isAdmin ? msg.wx_id : null,
     total,
     blockedCount,
-    visibleTotal: total - blockedCount,
+    visibleTotal,
     page,
     pageSize,
+    /** 服务器眼中的访问者 IP：抽屉里「拉黑当前访问 IP」按它来，前端自己猜不出来 */
+    viewerIp: clientIp(c),
     reads: rows.map(readRow),
+    summary: messageSummary(id, ownerWxId, msg.timestamp),
   });
 });
 

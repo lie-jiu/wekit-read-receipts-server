@@ -91,11 +91,17 @@ export function readsMessageOr(c: Context, id: string): Response | null {
 export function publicReadOr(
   c: Context,
   id: string,
-): { msg: { wx_id: string; content: string; is_public: number }; anon: boolean; user: SessionUser | null } | Response {
+): {
+  msg: { wx_id: string; content: string; is_public: number; timestamp: string };
+  anon: boolean;
+  user: SessionUser | null;
+} | Response {
   if (!isValidId(id)) return c.json({ error: "invalid id" }, 400);
   const msg = sqlite
-    .query("SELECT wx_id, content, is_public FROM messages WHERE id = ?")
-    .get(id) as { wx_id: string; content: string; is_public: number } | undefined;
+    .query("SELECT wx_id, content, is_public, timestamp FROM messages WHERE id = ?")
+    .get(id) as
+    | { wx_id: string; content: string; is_public: number; timestamp: string }
+    | undefined;
   if (!msg) return c.json({ error: "not found" }, 404);
   if (msg.is_public === 1) {
     // 公开消息：已登录用户（无论是否为 owner/admin）保留会话以便按访问者扣定位配额；仅真正匿名才按匿名只读处理
@@ -120,3 +126,41 @@ export function adminOr(c: Context): Response | null {
   if (!user) return c.json({ error: "forbidden" }, 403);
   return null;
 }
+
+/**
+ * 读 audit_logs。抽出来是因为要同时服务两个可见性完全不同的端点，
+ * SQL 只该有一份：
+ *   GET /admin/audit    管理员看全站（可按 wxId 过滤）
+ *   GET /account/audit  普通用户只看自己那几行
+ * 表一直在写（见 auth.ts 的 audit()），缺的只是读的那一半。
+ */
+export function queryAudit(opts: { wxId: string | null; page: number; pageSize: number }): {
+  rows: Array<{ wxId: string | null; action: string; detail: string | null; ip: string | null; timestamp: string }>
+  total: number
+  page: number
+  pageSize: number
+  totalPages: number
+} {
+  const where = opts.wxId ? "WHERE wx_id = ?" : "";
+  const params = opts.wxId ? [opts.wxId] : [];
+  const total = (
+    sqlite.query(`SELECT COUNT(*) AS n FROM audit_logs ${where}`).get(...params) as { n: number }
+  ).n;
+  const offset = (opts.page - 1) * opts.pageSize;
+  const rows = sqlite
+    .query(
+      `SELECT wx_id AS wxId, action, detail, ip, timestamp
+       FROM audit_logs ${where}
+       ORDER BY timestamp DESC, id DESC
+       LIMIT ? OFFSET ?`,
+    )
+    .all(...params, opts.pageSize, offset) as Array<{
+    wxId: string | null
+    action: string
+    detail: string | null
+    ip: string | null
+    timestamp: string
+  }>
+  return { rows, total, page: opts.page, pageSize: opts.pageSize, totalPages: Math.max(1, Math.ceil(total / opts.pageSize)) }
+}
+

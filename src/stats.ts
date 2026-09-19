@@ -6,6 +6,37 @@ import { purgeIdleUsers } from "./retention";
 const CURSOR_KEY = "stats_cursor";
 const EPOCH = "0000-00-00 00:00:00";
 
+/**
+ * 由 aggregateSince() 从 reads 推导出来的滚表清单 —— 唯一权威列表。
+ *
+ * 新增 rollup 只改这里加一行。backfillStats() 的全量重建分支必须清空本表
+ * 每一张表：aggregateSince(0) 用的是 ON CONFLICT DO UPDATE SET count = count + excluded.count，
+ * 漏清的那张会在既有数值上再加一遍，而且误差永久留在表里（实测踩过：
+ * 漏清 hour_stats / ua_stats 时，8 行 reads 被统计成 9）。
+ */
+const DERIVED_STAT_TABLES = ["read_stats", "message_read_stats", "hour_stats", "ua_stats"] as const;
+
+/**
+ * 全部按 (date, wx_id) 聚合的统计表；比上一表多一张 registration_stats（写入时自增，不可从 reads 重算）。
+ * 导出给删除用户与孤儿清理路径复用：任何"删用户"或"清孤儿"的实现漏掉其中一张表，
+ * 那张表里的幽灵行就永远没人清了。
+ */
+export const STAT_TABLES = ["registration_stats", ...DERIVED_STAT_TABLES] as const;
+
+/**
+ * UA → 客户端类别的 SQL 表达式，**要求 reads 别名为 r**（回填与单条消息汇总共用）。
+ * 判定顺序与前端 uaKind() 逐条对应（微信内置优先，否则 Windows 上的微信客户端会被算成桌面端）；
+ * SQLite 的 LIKE 对 ASCII 大小写不敏感，正好等价于前端的 /i。
+ * 只接受固定别名、不接收列名参数：这段字符串要拼进 SQL，不能让它碰到任何外部输入。
+ */
+export const UA_KIND_SQL = `CASE
+           WHEN r.user_agent LIKE '%MicroMessenger%' THEN 'wechat'
+           WHEN r.user_agent LIKE '%iPhone%' OR r.user_agent LIKE '%iPad%' THEN 'ios'
+           WHEN r.user_agent LIKE '%Android%' THEN 'android'
+           WHEN r.user_agent LIKE '%Windows%' OR r.user_agent LIKE '%Macintosh%' OR r.user_agent LIKE '%Linux%' THEN 'desktop'
+           ELSE 'other'
+         END`;
+
 type StatsCursor = { rid: number; ts: string };
 
 /**
@@ -59,6 +90,34 @@ function aggregateSince(rid: number): void {
     )
     .run(rid);
 
+  /* 总览用的两维预聚合（v8）。与上面两张表同一个游标、同一个事务，
+   * 所以不新增任务也不新增水位线：崩溃即整体回滚，不会重复累计。
+   * hour 取 substr(timestamp,12,2) —— reads.timestamp 是 UTC 的
+   * "YYYY-MM-DD HH:MM:SS"，与 date 维度同一时区口径，展示层再按语言偏移量换算。 */
+  sqlite
+    .query(
+      `INSERT INTO hour_stats (date, wx_id, hour, count)
+       SELECT substr(r.timestamp, 1, 10), m.wx_id, CAST(substr(r.timestamp, 12, 2) AS INTEGER), COUNT(*)
+       FROM reads r JOIN messages m ON m.id = r.id
+       WHERE r.rowid > ?
+       GROUP BY 1, 2, 3
+       ON CONFLICT (date, wx_id, hour) DO UPDATE SET count = count + excluded.count`,
+    )
+    .run(rid);
+
+  /* 客户端分桶（v8）。判定表达式见 UA_KIND_SQL —— 它和 /reads/:id/data 的
+   * 单条消息汇总共享同一份定义，两处算出不同的类别就是数据事故。 */
+  sqlite
+    .query(
+      `INSERT INTO ua_stats (date, wx_id, kind, count)
+       SELECT substr(r.timestamp, 1, 10), m.wx_id, ${UA_KIND_SQL}, COUNT(*)
+       FROM reads r JOIN messages m ON m.id = r.id
+       WHERE r.rowid > ?
+       GROUP BY 1, 2, 3
+       ON CONFLICT (date, wx_id, kind) DO UPDATE SET count = count + excluded.count`,
+    )
+    .run(rid);
+
   // 事务内（写入锁）重新取游标，避免事务执行期间新写入的 reads
   // 被本次统计但游标未推进，下次运行重复累计
   const maxRow = sqlite
@@ -72,7 +131,7 @@ function aggregateSince(rid: number): void {
 }
 
 /**
- * 增量回填 read_stats / message_read_stats。游标与统计更新在同一事务内，
+ * 增量回填派生滚表（DERIVED_STAT_TABLES 的四张表）。游标与统计更新在同一事务内，
  * 进程崩溃也不会重复累计。
  */
 export function backfillStats(): number {
@@ -101,8 +160,10 @@ export function backfillStats(): number {
       .query("SELECT COUNT(*) AS n FROM reads WHERE rowid <= ? AND timestamp > ?")
       .get(cur.rid, cur.ts) as { n: number };
     if (reused.n > 0) {
-      sqlite.query("DELETE FROM read_stats").run();
-      sqlite.query("DELETE FROM message_read_stats").run();
+      // 必须清全部派生表：漏一张就会被 aggregateSince(0) 重算成「旧值 + 全量」
+      for (const table of DERIVED_STAT_TABLES) {
+        sqlite.query(`DELETE FROM ${table}`).run();
+      }
       aggregateSince(0);
     } else {
       aggregateSince(cur.rid);
@@ -143,10 +204,11 @@ export function dailyCleanup(): void {
 
   sqlite.transaction(() => {
     // 清理因外部工具 / 旧版服务（未开启 foreign_keys）删除用户而残留的孤儿统计行。
-    // 关键不对称：backfillStats 在检测到大量删除时会全量重建 read_stats / message_read_stats，
-    // 孤儿行随之自然消失；但 registration_stats 不参与重建，其孤儿行会永久残留。
-    // 故这里对三张统计表统一显式清理，保证「注册消息排行榜」不残留已删用户。
-    for (const t of ["registration_stats", "read_stats", "message_read_stats"]) {
+    // 关键不对称：backfillStats 在检测到大量删除时会全量重建派生表，
+    // 那些表里的孤儿行随之自然消失；但 registration_stats 不参与重建，其孤儿行会永久残留。
+    // 故这里对全部统计表（STAT_TABLES 是它们的并集）统一显式清理，
+    // 保证「注册消息排行榜」与总览都不残留已删用户。
+    for (const t of STAT_TABLES) {
       sqlite.query(`DELETE FROM ${t} WHERE wx_id NOT IN (SELECT wx_id FROM users)`).run();
     }
     sqlite.query("DELETE FROM sessions WHERE expires_at <= ?").run(utcDaysAgo(0));

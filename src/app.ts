@@ -6,9 +6,11 @@ import { isSecureRequest } from "./auth";
 import { rateLimit } from "./rate-limit";
 import { trackingApp } from "./routes/tracking";
 import { authApp } from "./routes/auth";
+import { sessionApp } from "./routes/session";
 import { messagesApp } from "./routes/messages";
 import { readsApp } from "./routes/reads";
 import { statsApp } from "./routes/stats";
+import { overviewApp } from "./routes/overview";
 import { adminApp } from "./routes/admin";
 import { accountApp } from "./routes/account";
 
@@ -78,9 +80,11 @@ app.use("/admin/*", rateLimit("admin"));
 /* 按业务职责挂载子路由 */
 app.route("/", trackingApp);
 app.route("/", authApp);
+app.route("/", sessionApp);
 app.route("/", messagesApp);
 app.route("/", readsApp);
 app.route("/", statsApp);
+app.route("/", overviewApp);
 app.route("/", adminApp);
 app.route("/", accountApp);
 

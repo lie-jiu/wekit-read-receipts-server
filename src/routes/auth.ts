@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { CSP, INVITE_CODE, loginDelayMs } from "../config";
+import { CSP, INVITE_CODE, RATE_LIMITS, loginDelayMs } from "../config";
 import {
   audit,
   createSession,
@@ -19,7 +19,20 @@ import { LOGIN_HTML } from "../pages";
 /** 认证 / 用户（统一受 /auth/* 5/分 限流，由 app.ts 顶层中间件控制） */
 export const authApp = new Hono();
 
-authApp.get("/auth/status", (c) => c.json({ auth_required: true, invite_required: !!INVITE_CODE }));
+/**
+ * 前端要不要显示「邀请码」输入框、以及被限流后该倒数几秒，都由这里给出。
+ * retry_after_seconds 必须来自服务器配置：把 60 写死在前端，等运维改了
+ * RATE_LIMITS.auth.windowMs，倒计时就和真实解封时间不一致了。
+ * （429 响应本身没有 Retry-After 头 —— 限流器是进程内固定窗口，
+ *  给的是「窗口长度」这个上界，不是本 IP 的精确剩余时间。）
+ */
+authApp.get("/auth/status", (c) =>
+  c.json({
+    auth_required: true,
+    invite_required: !!INVITE_CODE,
+    retry_after_seconds: RATE_LIMITS.auth.windowMs / 1000,
+  }),
+);
 
 authApp.post("/auth/register", async (c) => {
   const ip = clientIp(c);
