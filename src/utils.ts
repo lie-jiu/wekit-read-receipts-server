@@ -151,3 +151,23 @@ export function maskContent(content: string): string {
   if (s.length < 5) return s;
   return s.slice(0, 2) + "***" + s.slice(-2);
 }
+
+/**
+ * 读者 IP 的对外掩码：IPv4 去掉最后一段（留 /24），IPv6 保留前 3 组（留 /48）。
+ * 留前缀而不是全掩，是因为公开链接那页唯一有用的信息就是"哪个网络来的"；
+ * 去掉主机位才是身份泄露的那一半。
+ *
+ * IPv6 只取 `::` 之前的部分：压缩记法里 `fe80::1` 冒号分隔的前三个 token 是
+ * ["fe80","1"]，照 token 数切会把尾部的主机段当成前缀留下。
+ * 解析不出来的脏值一律全掩 —— 宁可少给也不误给。
+ */
+export function maskIp(ip: string): string {
+  if (ip.includes(":")) {
+    const groups = (ip.split("::")[0] ?? "").split(":").filter(Boolean).slice(0, 3);
+    return groups.length > 0 ? groups.join(":") + "::*" : "*:*";
+  }
+  const parts = ip.split(".");
+  const octetsOk = parts.length === 4 && parts.every((p) => /^\d{1,3}$/.test(p) && Number(p) <= 255);
+  if (!octetsOk) return "*.*.*.*";
+  return `${parts[0]}.${parts[1]}.${parts[2]}.*`;
+}

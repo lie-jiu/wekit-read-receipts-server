@@ -54,6 +54,12 @@ export type ReadsPayloadDto = {
   pageSize: number
   /** 服务器看到的访问者 IP（抽屉里「拉黑当前访问 IP」用它） */
   viewerIp: string
+  /**
+   * true = 本响应的 ip / userAgent 已被服务器掩码（匿名公开链接视角）。
+   * 此时 userAgent 装的是 UA 类别 token（wechat/desktop/mobile/other），
+   * 显示前必须过 labelOfUa()，原样贴出来就是一行英文代号。
+   */
+  masked: boolean
   reads: ReadRowDto[]
   summary: ReadSummaryDto
 }

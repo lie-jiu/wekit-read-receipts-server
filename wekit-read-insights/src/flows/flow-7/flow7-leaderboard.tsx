@@ -99,6 +99,7 @@ import { ResponsiveTable } from '../shared/responsive-table'
 import type { DataTableColumn } from 'sparkdesign'
 import type { LeaderboardMetric, LeaderboardRow, LeaderboardScope, ReadRecord, Session } from '../shared/types'
 import { useResource } from '../../data/hooks'
+import { labelOfUa } from '../../data/overview'
 import { leaderboardUrl, myRankUrl, toBoardRows } from '../../data/leaderboard'
 import type { BoardRowDto, MyRankDto } from '../../data/leaderboard'
 import { toReadRecords, type ReadsPayloadDto } from '../../data/reads'
@@ -874,7 +875,15 @@ export function Screen3_PublicReadonly({
     {
       key: 'userAgent',
       header: t(lang, 'userAgent'),
-      cell: (r) => <span className="block max-w-40 truncate text-text-tertiary">{r.userAgent}</span>,
+      /**
+       * 匿名视角服务器不给原始 UA（只给类别 token），所以这里过一遍 labelOfUa；
+       * 万一后端哪天不再掩码（masked=false），这行也会照原样显示，不会把真 UA 截成代号。
+       */
+      cell: (r) => (
+        <span className="block max-w-40 truncate text-text-tertiary">
+          {payload?.masked ? labelOfUa(r.userAgent, lang) : r.userAgent}
+        </span>
+      ),
     },
     {
       key: 'locate',
@@ -935,8 +944,8 @@ export function Screen3_PublicReadonly({
           </AlertTitle>
           <AlertDescription>
             {lang === 'zh'
-              ? '作者主动开放了这条消息的已读明细，无需登录即可查看。同样地，你的 IP、客户端标识与读取时间也会展示给其他访客。'
-              : 'The author published this read log — no sign-in required. Your IP, user agent and read time are shown to other visitors too.'}
+              ? '作者主动开放了这条消息的已读明细，无需登录即可查看。同样地，你的读取记录也会出现在这一页 —— 其他访客看到的是你 IP 的网段（末段已隐去）与客户端类别，不是完整 IP 和原始 UA。'
+              : 'The author published this read log — no sign-in required. Your read row shows up here too: other visitors see your network prefix (last octet removed) and a coarse client type, not your full IP or raw user agent.'}
           </AlertDescription>
         </Alert>
 

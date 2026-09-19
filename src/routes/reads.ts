@@ -6,7 +6,7 @@ import { sqlite, syncMessageCount } from "../db";
 import { lookupIpLocation } from "../geo";
 import { clientIp, isValidIp, UNKNOWN_IP } from "../rate-limit";
 import { UA_KIND_SQL } from "../stats";
-import { isValidId, utcDate, utcNow } from "../utils";
+import { isValidId, maskIp, utcDate, utcNow } from "../utils";
 import {
   clampLimit,
   emptyReadRow,
@@ -150,20 +150,31 @@ readsApp.get("/reads/:id/data", (c) => {
   const ownerWxId = user && msg.wx_id === user.wxId ? user.wxId : null;
   const vis = visibleFilter(id, ownerWxId);
   // SQL 层过滤黑名单行：分页基于可见行数，命中行不出现在响应中
+  // ua_kind 由服务器现算（和 summary 的客户端分布同一份 UA_KIND_SQL，避免两处判定漂移），
+  // 匿名视角要用它替换掉原始 UA 字符串
   const rows = sqlite
     .query(
       `SELECT r.ip, r.timestamp, r.user_agent, r.country, r.region, r.city, r.isp,
-              r.country_en, r.region_en, r.city_en, r.isp_en
+              r.country_en, r.region_en, r.city_en, r.isp_en, ${UA_KIND_SQL} AS ua_kind
        FROM reads r WHERE ${vis.where}
        ORDER BY r.timestamp DESC LIMIT ? OFFSET ?`,
     )
-    .all(...vis.params, pageSize, offset) as ReadRow[];
+    .all(...vis.params, pageSize, offset) as Array<ReadRow & { ua_kind: string }>;
   const visibleTotal = (sqlite
     .query(`SELECT COUNT(*) AS n FROM reads r WHERE ${vis.where}`)
     .get(...vis.params) as { n: number }).n;
   // 差额就是被黑名单命中的行数：按"全量 − 可见"算，比再扫一遍 IP 便宜，也不会和分页打架
   const blockedCount = total - visibleTotal;
   const isOwner = !!user && msg.wx_id === user.wxId;
+  /**
+   * 匿名访客（没有会话）看到的是掩码后的读者身份：IP 去掉主机位、UA 换成粗粒度类别。
+   * 公开链接是把"谁读了我的消息"广播给任意拿到 URL 的人，原文 IP + UA 足够定位到具体某台设备。
+   *
+   * 只掩匿名，不掩"已登录的非 owner"：后者要能看见完整 IP 才能用 /reads/:id/geo
+   * 消耗自己的配额去定位某一行，一并掩掉等于悄悄废掉那个功能。
+   * 归属地（国/省/市/运营商）保持原样 —— 那是聚合图已经在公开的量，不含主机位。
+   */
+  const anon = !user;
   return c.json({
     id,
     content: msg.content,
@@ -175,6 +186,8 @@ readsApp.get("/reads/:id/data", (c) => {
     canManage: isOwner || !!user?.isAdmin,
     /** 别人的 wxId 不给匿名访客与普通登录用户看；管理员要它才能定位是哪个账号 */
     ownerWxId: isOwner || user?.isAdmin ? msg.wx_id : null,
+    /** 本响应里的 ip / userAgent 已被掩码，前端据此改用类别文案而不是原样显示 */
+    masked: anon,
     total,
     blockedCount,
     visibleTotal,
@@ -182,7 +195,10 @@ readsApp.get("/reads/:id/data", (c) => {
     pageSize,
     /** 服务器眼中的访问者 IP：抽屉里「拉黑当前访问 IP」按它来，前端自己猜不出来 */
     viewerIp: clientIp(c),
-    reads: rows.map(readRow),
+    reads: rows.map((r) => {
+      const row = readRow(r);
+      return anon ? { ...row, ip: maskIp(r.ip), userAgent: r.ua_kind } : row;
+    }),
     summary: messageSummary(id, ownerWxId, msg.timestamp),
   });
 });

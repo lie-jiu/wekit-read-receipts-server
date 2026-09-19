@@ -685,3 +685,67 @@ describe("GET /leaderboard 与 GET /leaderboard/me", () => {
     expect((await app.request("/leaderboard/me")).status).toBe(401);
   });
 });
+
+/* ── 匿名公开链接的读者身份掩码（产品决策：不给原文 IP 与 UA） ── */
+
+describe("GET /reads/:id/data 的匿名掩码", () => {
+  type Payload = { masked: boolean; isOwner: boolean; reads: Array<{ ip: string; userAgent: string; city: string }> };
+  const id = sha256Hex("anon-mask-msg");
+  // 时间必须早于「GET /reads/:id/data summary」那批夹具的 2026-01-04：
+  // 共享 :memory: 库里的 stats 游标取的是全库 MAX(timestamp)，放更晚会把游标用例改掉
+  const at = "2025-06-01 00:00:00";
+  insertUser("mask_wx", 5);
+  insertMessage(id, "mask_wx", "公开给匿名访客看", 1);
+  sqlite
+    .query("INSERT INTO reads (id, ip, timestamp, user_agent, country, region, city, isp) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+    .run(id, "203.0.113.77", at, "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0) MicroMessenger/8.0.49", "中国", "广东", "深圳", "中国电信");
+  sqlite
+    .query("INSERT INTO reads (id, ip, timestamp, user_agent, country, region, city, isp) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+    .run(id, "2001:db8:1234:5678::a", at, "curl/8.9.0", "", "", "", "");
+
+  const get = async (headers?: Record<string, string>): Promise<Payload> => {
+    const res = await app.request(`/reads/${id}/data`, headers ? { headers } : undefined);
+    expect(res.status).toBe(200);
+    return (await res.json()) as Payload;
+  };
+
+  test("匿名：IP 去掉主机位、UA 换成类别、归属地保留", async () => {
+    const p = await get();
+    expect(p.masked).toBe(true);
+    expect(p.isOwner).toBe(false);
+    const v4 = p.reads.find((r) => r.city === "深圳");
+    const v6 = p.reads.find((r) => r.city === "");
+    expect(v4?.ip).toBe("203.0.113.*");
+    expect(v4?.userAgent).toBe("wechat"); // 原始 UA 不再出现
+    expect(v6?.ip).toBe("2001:db8:1234::*");
+    expect(v6?.userAgent).toBe("other");
+    // 归属地是聚合图本来就在公开的量，不含主机位，保持原样
+    expect(p.reads.some((r) => r.userAgent.includes("MicroMessenger") || r.userAgent.includes("curl"))).toBe(false);
+  });
+
+  test("owner 与已登录的非 owner 都不掩（geo 定位要靠完整 IP）", async () => {
+    const owner = await get(authCookie("mask_wx"));
+    expect(owner.masked).toBe(false);
+    expect(owner.reads.map((r) => r.ip)).toContain("203.0.113.77");
+    expect(owner.reads.some((r) => r.userAgent.includes("MicroMessenger"))).toBe(true);
+
+    insertUser("mask_viewer", 3);
+    const other = await get(authCookie("mask_viewer"));
+    expect(other.masked).toBe(false);
+    expect(other.isOwner).toBe(false);
+    expect(other.reads.map((r) => r.ip)).toContain("203.0.113.77");
+  });
+});
+
+describe("maskIp", () => {
+  test("IPv4 留 /24，IPv6 留 `::` 之前的前 3 组，脏值全掩", async () => {
+    const { maskIp } = await import("./utils");
+    expect(maskIp("203.0.113.77")).toBe("203.0.113.*");
+    expect(maskIp("2001:db8:1234:5678::a")).toBe("2001:db8:1234::*");
+    expect(maskIp("fe80::1")).toBe("fe80::*");
+    expect(maskIp("unknown")).toBe("*.*.*.*");
+    expect(maskIp("")).toBe("*.*.*.*");
+    expect(maskIp("1.2.3")).toBe("*.*.*.*");
+    expect(maskIp("1.2.3.999")).toBe("*.*.*.*");
+  });
+});
