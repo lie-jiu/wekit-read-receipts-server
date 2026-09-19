@@ -204,7 +204,13 @@ cd wekit-read-insights && bun run dev  # vite 开发服务器（5173）
 
 > vite 把 `/auth`、`/me`、`/messages`、`/reads`、`/stats`、`/leaderboard`、`/rank`、`/admin`、`/account`、`/pixel`、`/count` 代理到 `http://127.0.0.1:8787`（`VITE_DEV_API_TARGET` 可改），**服务端要先起来**；同源才不用动 `SameSite=Lax` 的会话 cookie。改完 `src/*.ts` 要重启 8787（无热重载），否则 SPA 会静默拿到旧接口形状。
 >
-> 部署前 `bun run web:build` 是必做步骤：Bun 形态直接读磁盘上的 `SPA_DIST`；Workers 形态由 `wrangler deploy` 把 `assets.directory` 打进版本 —— 忘了构建不会报错，只会让 `/insights/` 返回 JSON 404（启动日志与 CI 都会提示）。
+> 部署前 `bun run web:build` 是必做步骤：Bun 形态直接读磁盘上的 `SPA_DIST`；Workers 形态由 `wrangler deploy` 把 `assets.directory` 打进版本 —— 忘了构建不会报错，只会让 `/` 返回 JSON 404（启动日志与 CI 都会提示）。
+
+### 为什么 vite.config 里把 lottie-react / react-markdown 打成了桩件
+
+`sparkdesign@0.4.11` 的 JS 入口是**单个** 576 kB 的 `dist/spark-design.es.js`，顶层就静态 import 了整条 AI 聊天 / markdown 链（`react-markdown` + `remark-gfm`/`remark-math` + `rehype-katex`(→`katex`) + `lottie-react`(→`lottie-web`) + `prism-react-renderer`）。它的 `exports` 只暴露 `.` 与几个 CSS，所以既不能深路径导入、bundler 也没法把没用到的组件从那一个文件里摇掉 —— 本项目一个都不渲染它们，主包却因此虚胖。`vite.config.ts` 的 `STUBBED_DEPS` 把这些整体指向 `src/stubs/no-render.tsx`（渲染 null），主包从 2,781 kB / gzip 745 kB 降到 1,561 kB / gzip 456 kB。
+
+代价与护栏：以后真要用 Spark 的 markdown / lottie 组件，症状会是"那块区域空白"，所以 `forbidStubbedDeps()` 插件在构建期就拦 —— 这些包（含 `katex`/`lottie-web`/`refractor`/`shiki` 这些传递依赖）一旦被真实解析，构建直接失败并说明两条出路（补 alias，或改用 sparkdesign 的逐组件 CLI 把组件源码落地）。**不要靠删桩件来"修好"空白**，那等于把 745 kB 请回来。
 
 ## 端点
 
@@ -246,7 +252,11 @@ cd wekit-read-insights && bun run dev  # vite 开发服务器（5173）
 
 归属判定只有 `src/spa.ts` 的 `resolveStatic()` 一份：Bun 侧由 `staticFallback` 中间件读 `SPA_DIST`（注册在全部业务路由**之后**，所以任何 JSON 端点与旧路径重定向都优先于产物）；Workers 侧由 `worker/index.ts` 在边缘查 `ASSETS` 绑定（`run_worker_first: true`），命中不到文件时落回 DO 给 JSON 404。
 
-**公开消息详情**：`is_public=1` 时任何人（含未登录用户）均可只读访问 `/#/reads/:id` 与 `/reads/:id/data`（黑名单过滤仍生效）；未公开时匿名拿 401、其他登录用户拿 403，SPA 据此显示对应的说明而不是空白页。⚠️ 已知未决产品问题：匿名访客拿到的明细包含读者完整 IP 与 UA，且**不**并入账户级黑名单（服务端只在查看者是 owner 时才 union）—— 界面已把这一点写在页面提示里，但要改的是服务端语义，尚未定。
+**公开消息详情**：`is_public=1` 时任何人（含未登录用户）均可只读访问 `/#/reads/:id` 与 `/reads/:id/data`（黑名单过滤仍生效）；未公开时匿名拿 401、其他登录用户拿 403，SPA 据此显示对应的说明而不是空白页。
+
+**匿名访客看不到读者的完整身份**（响应里 `masked: true`）：IP 去掉主机位（IPv4 留 /24、IPv6 留 `::` 之前的前 3 组），`userAgent` 换成粗粒度类别 token（`wechat`/`desktop`/`mobile`/`other`，与 summary 的客户端分布同一份 `UA_KIND_SQL`）。只掩匿名视角 —— 已登录的非 owner 仍看完整 IP，否则 `/reads/:id/geo` 那套"消耗自己配额定位某一行"就没有输入了。归属地（国/省/市/运营商）不掩，它不含主机位且聚合图本来就在给。
+
+⚠️ 仍未决：账户级黑名单对公开链接的匿名访问**不**生效（服务端只在查看者就是 owner 时才 union），所以 owner 在账户级拉黑的人仍会出现在分享出去的链接里。界面已把这点写在页面上，但改语义要单独定。
 
 <details>
 <summary><b>僵尸清理端点（/admin/retention/*）</b></summary>
