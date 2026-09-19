@@ -41,7 +41,6 @@ import { Flow6_Account } from '../flows/flow-6/flow6-account'
 import { Flow7_Leaderboard } from '../flows/flow-7/flow7-leaderboard'
 import type { BoardPhase, Flow7Stage } from '../flows/flow-7/flow7-leaderboard'
 import { Screen3_PublicReadonly } from '../flows/flow-7/flow7-leaderboard'
-import { mockMessageById, mockMessages } from '../flows/shared/mock-data'
 import type { IpBlockList, Message } from '../flows/shared/types'
 import { useApp, useSession } from './app-context'
 import type { ApiError } from '../data/api'
@@ -49,9 +48,6 @@ import { AppShell } from './app-shell'
 import { OVERVIEW_PATH, ROUTE_ACCOUNT, ROUTE_LOGIN, ROUTE_ONBOARDING } from './nav'
 import { useReviewParam } from './dev-dock'
 import { useDocTitle } from './use-doc-title'
-
-/** 兜底消息：路由里没有 :id 时（直接进入 /messages）取已读最多的一条 */
-const topMessage = (): Message => [...mockMessages].sort((a, b) => b.reads - a.reads)[0]
 
 /** 明细表的服务端分页大小（与服务器 /reads/:id/data 的默认值一致） */
 const PAGE_SIZE = 50
@@ -262,11 +258,8 @@ function LeaderboardPage() {
   const session = useSession()
   const { lang, appearance, setAppearance } = useApp()
   const navigate = useNavigate()
-  const [publicMsg, setPublicMsg] = useState<Message | null>(null)
   const stage = useReviewParam('stage', 'board') as Flow7Stage
   const phase = useReviewParam('phase', 'ready') as BoardPhase
-  // TODO(数据层 F7)：榜体数据仍是 mock。真接口 GET /leaderboard 只回前 10 名，
-  // 自己的名次要单独问一次（服务端没有"我的排名"字段），榜页的 MyRankCard 依赖它。
 
   return (
     <Flow7_Leaderboard
@@ -275,13 +268,9 @@ function LeaderboardPage() {
       session={session}
       stage={stage}
       phase={phase}
-      publicMessage={publicMsg ?? undefined}
       onAppearanceChange={setAppearance}
-      onOpenMessage={(m) => navigate(`/messages/${m.id}`)}
-      onOpenPublicLink={(m) => {
-        setPublicMsg(m)
-        navigate(`/reads/${m.id}`)
-      }}
+      onOpenMessage={(id) => navigate(`/messages/${id}`)}
+      onOpenPublicLink={(id) => navigate(`/reads/${id}`)}
       onSignIn={() => navigate(ROUTE_LOGIN)}
     />
   )
@@ -292,16 +281,36 @@ function PublicReadPage() {
   const { lang, appearance, setAppearance } = useApp()
   const navigate = useNavigate()
   const { id } = useParams()
-  const message = (id ? mockMessageById.get(id) : undefined) ?? mockMessages.find((m) => m.isPublic) ?? topMessage()
+  const msgId = id ?? ''
+  // 与 F3 同一个端点：publicReadOr() 对 is_public=1 的消息放行匿名只读访问，
+  // 所以这里不需要"公开版接口"，只要不带会话地请求同一个 URL
+  const data = useResource<ReadsPayloadDto>(msgId ? readsDataUrl(msgId, 1, PAGE_SIZE) : null)
+  const payload = data.data
+  const state = payload
+    ? 'ready'
+    : data.error
+      ? data.error.forbidden || data.error.unauthorized
+        ? 'forbidden'
+        : 'error'
+      : 'loading'
+
   // [NEW] 原服务端把这页的 <title> 写死成 "Read Details"，同时开好几条公开链接时
   // 标签页完全分不开。改成取消息前 18 字：内容本来就整页可见，所以标题不额外泄露什么，
-  // 但浏览器历史里会留下片段 —— 公共机器上这是要权衡的，接回工程时若在意可退回固定标题。
-  useDocTitle(`${message.content.slice(0, 18)}${message.content.length > 18 ? '…' : ''}`)
+  // 但浏览器历史里会留下片段 —— 若在意可退回固定标题。
+  useDocTitle(
+    payload
+      ? `${payload.content.slice(0, 18)}${payload.content.length > 18 ? '…' : ''}`
+      : lang === 'zh'
+        ? '已读明细'
+        : 'Read details',
+  )
+
   return (
     <Screen3_PublicReadonly
       lang={lang}
       appearance={appearance}
-      message={message}
+      payload={payload}
+      state={state}
       onAppearanceChange={setAppearance}
       onSignIn={() => navigate(ROUTE_LOGIN)}
     />

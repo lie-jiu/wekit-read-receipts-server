@@ -575,3 +575,113 @@ describe("删除消息后 users.message_count 不漂移", () => {
     expect(stored("mc_target")).toBe(actual("mc_target"));
   });
 });
+
+/* ── 排行榜：榜（前 10）与"我的名次"必须同源 ── */
+
+describe("GET /leaderboard 与 GET /leaderboard/me", () => {
+  type BoardRow = { wxId?: string; id?: string; content?: string; count: number; me: boolean; isPublic?: boolean };
+  type MeResp = { rank: number | null; count: number; total: number };
+
+  const board = async (q: string, wxId: string): Promise<BoardRow[]> =>
+    (await (await app.request(`/leaderboard${q}`, { headers: authCookie(wxId) })).json()) as BoardRow[];
+  const myRank = async (q: string, wxId: string): Promise<MeResp> =>
+    (await (await app.request(`/leaderboard/me${q}`, { headers: authCookie(wxId) })).json()) as MeResp;
+
+  /** 注册榜：一条 registration_stats 行就是一个账号的计数 */
+  const seedReg = (wxId: string, count: number): void => {
+    insertUser(wxId, 3);
+    sqlite
+      .query("INSERT INTO registration_stats (date, wx_id, count) VALUES (?, ?, ?)")
+      .run("2026-06-06", wxId, count);
+  };
+
+  // 数量级刻意远大于其它夹具（它们都是个位数），这样"谁在前面"由本用例说了算
+  seedReg("lb_first", 900_000_000);
+  seedReg("lb_second", 800_000_000);
+  seedReg("lb_tie_a", 700_000_000);
+  seedReg("lb_tie_b", 700_000_000);
+  insertUser("lb_none", 3);
+
+  test("榜的响应形状不变（旧 /rank 页面按裸数组解析）", async () => {
+    const rows = await board("?metric=reg&scope=total", "lb_first");
+    expect(Array.isArray(rows)).toBe(true);
+    expect(rows.length).toBeLessThanOrEqual(10);
+    expect(Object.keys(rows[0] ?? {}).sort()).toEqual(["count", "me", "wxId"]);
+    expect(rows[0]?.me).toBe(true); // 9e8 排在最前，第一行就是我
+  });
+
+  test("名次与榜内位置一致；并列共享名次；计数大的名次靠前", async () => {
+    const first = await myRank("?metric=reg&scope=total", "lb_first");
+    expect(first.rank).toBe(1);
+    expect(first.count).toBe(900_000_000);
+    // 榜上第一行的位置就是名次 1
+    const rows = await board("?metric=reg&scope=total", "lb_first");
+    if (first.rank === null) throw new Error("用例前提不成立：lb_first 应当有名次");
+    expect(rows.findIndex((r) => r.me)).toBe(first.rank - 1);
+
+    const second = await myRank("?metric=reg&scope=total", "lb_second");
+    expect(second.rank).toBe(2);
+
+    const tieA = await myRank("?metric=reg&scope=total", "lb_tie_a");
+    const tieB = await myRank("?metric=reg&scope=total", "lb_tie_b");
+    expect(tieA.rank).toBe(tieB.rank);
+    expect(tieA.rank).toBe(3); // 竞赛名次：前面只有 9e8 与 8e8 两个更大的
+  });
+
+  test("没有计数 → rank null，而不是「第 0 名」或「查不到」", async () => {
+    const none = await myRank("?metric=reg&scope=total", "lb_none");
+    expect(none.rank).toBeNull();
+    expect(none.count).toBe(0);
+    expect(none.total).toBeGreaterThan(0); // 榜上有人，只是我没数据 —— 两者不是一回事
+  });
+
+  test("日榜按 UTC 今日过滤，与总榜互串即是错", async () => {
+    // 夹具写在 2026-06-06：日榜（今天）里不该有它的计数
+    const day = await myRank("?metric=reg&scope=day", "lb_first");
+    expect(day.rank).toBeNull();
+    expect(day.count).toBe(0);
+  });
+
+  test("消息榜：我的名次取最好的一条，行带 isPublic 供钻取判定", async () => {
+    insertUser("lb_msg_wx", 9);
+    const weak = sha256Hex("lb-msg-weak");
+    const strong = sha256Hex("lb-msg-strong");
+    for (const [id, pub] of [[weak, 0], [strong, 1]] as Array<[string, number]>) {
+      sqlite
+        .query("INSERT INTO messages (id, wx_id, content, timestamp, is_public) VALUES (?, ?, ?, ?, ?)")
+        .run(id, "lb_msg_wx", `消息榜夹具 ${id.slice(0, 4)}`, "2026-06-06 00:00:00", pub);
+    }
+    for (let i = 0; i < 3; i++) {
+      sqlite
+        .query("INSERT INTO reads (id, ip, timestamp, user_agent) VALUES (?, ?, '2026-06-06 01:00:00', '')")
+        .run(weak, `203.0.${i}.1`);
+    }
+    for (let i = 0; i < 7; i++) {
+      sqlite
+        .query("INSERT INTO reads (id, ip, timestamp, user_agent) VALUES (?, ?, '2026-06-06 01:00:00', '')")
+        .run(strong, `203.1.${i}.1`);
+    }
+
+    const me = await myRank("?metric=msg&scope=total", "lb_msg_wx");
+    expect(me.count).toBe(7); // 最好的一条（而不是平均或求和）决定我的位置
+    expect(me.rank).not.toBeNull();
+
+    const rows = await board("?metric=msg&scope=total", "lb_msg_wx");
+    const mine = rows.filter((r) => r.me);
+    expect(mine.length).toBeGreaterThanOrEqual(1);
+    expect(mine.map((r) => r.isPublic).sort()).toEqual([false, true]);
+    expect(typeof mine[0]?.id).toBe("string");
+  });
+
+  test("非法 metric / scope 两个端点都回 400", async () => {
+    for (const path of ["/leaderboard", "/leaderboard/me"]) {
+      const res = await app.request(`${path}?metric=bogus`, { headers: authCookie("lb_first") });
+      expect(res.status).toBe(400);
+    }
+  });
+
+  test("未登录两个端点都回 401", async () => {
+    expect((await app.request("/leaderboard")).status).toBe(401);
+    expect((await app.request("/leaderboard/me")).status).toBe(401);
+  });
+});

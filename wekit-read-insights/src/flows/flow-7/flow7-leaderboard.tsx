@@ -92,21 +92,16 @@ import {
   Trophy,
   UserRound,
 } from 'lucide-react'
-import {
-  displayTime,
-  maskWxId,
-  mockLeaderboards,
-  mockMessageById,
-  mockPublicMessage,
-  mockReadDetailsFor,
-  mockSession,
-  myRankOf,
-} from '../shared/mock-data'
+import { displayTime, maskWxId } from '../shared/mock-data'
 import { fmtNum, t } from '../shared/i18n'
 import type { Lang } from '../shared/i18n'
 import { ResponsiveTable } from '../shared/responsive-table'
 import type { DataTableColumn } from 'sparkdesign'
-import type { LeaderboardMetric, LeaderboardRow, LeaderboardScope, Message, ReadRecord, Session } from '../shared/types'
+import type { LeaderboardMetric, LeaderboardRow, LeaderboardScope, ReadRecord, Session } from '../shared/types'
+import { useResource } from '../../data/hooks'
+import { leaderboardUrl, myRankUrl, toBoardRows } from '../../data/leaderboard'
+import type { BoardRowDto, MyRankDto } from '../../data/leaderboard'
+import { toReadRecords, type ReadsPayloadDto } from '../../data/reads'
 
 /** 榜单的非 happy path 画面；评审时用底部选择器直接落位 */
 export type BoardPhase = 'ready' | 'loading' | 'empty' | 'error'
@@ -236,25 +231,40 @@ function CountCell({
    ================================================ */
 export function Screen1_Leaderboard({
   lang,
-  session = mockSession,
+  session,
   phase = 'ready',
   onOpenMessage,
   onOpenPublicLink,
 }: {
   lang: Lang
-  session?: Session
-  /** 评审用：直接落到某个非 happy path 画面 */
+  session: Session
+  /** 评审用：直接落到某个非 happy path 画面。真实取数失败/为空时以真实状态为准 */
   phase?: BoardPhase
-  onOpenMessage?: (msg: Message) => void
-  onOpenPublicLink?: (msg: Message) => void
+  /** 参数是消息 id：榜上只有脱敏摘要，凑不出一个完整 Message 对象 */
+  onOpenMessage?: (id: string) => void
+  onOpenPublicLink?: (id: string) => void
 }) {
   const [metric, setMetric] = useState<LeaderboardMetric>('reg')
   const [scope, setScope] = useState<LeaderboardScope>('total')
 
-  const rows = mockLeaderboards[`${metric}-${scope}`]
-  const myRank = myRankOf(metric, scope)
+  const board = useResource<BoardRowDto[]>(leaderboardUrl(metric, scope))
+  const mine = useResource<MyRankDto>(myRankUrl(metric, scope))
+
+  const rows = board.data ? toBoardRows(board.data) : []
+  const myRank = mine.data?.rank ?? null
   const top = rows[0]?.count ?? 0
   const myRow = rows.find((r) => r.isMe)
+
+  // 真实状态优先于评审开关：phase 只在数据确实是 ready 时才允许被人为替换，
+  // 否则一次取数失败会被"评审态"盖掉，看起来像界面正常
+  const livePhase: BoardPhase =
+    board.loading && rows.length === 0 ? 'loading' : board.error ? 'error' : rows.length === 0 ? 'empty' : 'ready'
+  const shownPhase: BoardPhase = livePhase === 'ready' ? phase : livePhase
+
+  const refresh = () => {
+    board.reload()
+    mine.reload()
+  }
 
   const scopeHint =
     scope === 'day'
@@ -275,12 +285,33 @@ export function Screen1_Leaderboard({
           </h1>
           <TypographyMuted className="mt-1 text-sm">{scopeHint}</TypographyMuted>
         </div>
-        <TypographyMuted className="text-xs tabular-nums">
-          {lang === 'zh' ? `更新于 ${displayTime('2026-09-18 09:12:44', lang)}` : `Updated ${displayTime('2026-09-18 09:12:44', lang)}`}
-        </TypographyMuted>
+        <div className="flex items-center gap-2">
+          <TypographyMuted className="text-xs tabular-nums">
+            {board.fetchedAt === null
+              ? lang === 'zh'
+                ? '尚未取到数据'
+                : 'Not loaded yet'
+              : lang === 'zh'
+                ? `取数于 ${displayTime(new Date(board.fetchedAt).toISOString().slice(0, 19).replace('T', ' '), lang)}`
+                : `Fetched ${new Date(board.fetchedAt).toISOString().slice(0, 19).replace('T', ' ')} UTC`}
+          </TypographyMuted>
+          <Button variant="ghost" size="sm" loading={board.loading} onClick={refresh} aria-label={lang === 'zh' ? '刷新榜单' : 'Refresh board'}>
+            <RefreshCw className="size-3.5" />
+          </Button>
+        </div>
       </div>
 
-      <MyRankCard lang={lang} metric={metric} scope={scope} rank={myRank} row={myRow} session={session} rows={rows} />
+      <MyRankCard
+        lang={lang}
+        metric={metric}
+        scope={scope}
+        rank={myRank}
+        row={myRow}
+        session={session}
+        rows={rows}
+        total={mine.data?.total ?? null}
+        loading={mine.loading && !mine.data}
+      />
 
       <Card>
         <CardHeader>
@@ -333,10 +364,12 @@ export function Screen1_Leaderboard({
                     scope={scope}
                     rows={rows}
                     top={top}
-                    phase={phase}
+                    phase={shownPhase}
+                    isAdmin={session.isAdmin}
                     onOpenMessage={onOpenMessage}
                     onOpenPublicLink={onOpenPublicLink}
                     onToTotal={() => setScope('total')}
+                    onRetry={refresh}
                   />
                 )}
               </TabsContent>
@@ -363,9 +396,11 @@ function BoardTable({
   rows,
   top,
   phase,
+  isAdmin,
   onOpenMessage,
   onOpenPublicLink,
   onToTotal,
+  onRetry,
 }: {
   lang: Lang
   metric: LeaderboardMetric
@@ -373,9 +408,12 @@ function BoardTable({
   rows: LeaderboardRow[]
   top: number
   phase: BoardPhase
-  onOpenMessage?: (msg: Message) => void
-  onOpenPublicLink?: (msg: Message) => void
+  /** publicReadOr() 允许管理员看任意消息，钻取判定要跟着这条真实规则走 */
+  isAdmin: boolean
+  onOpenMessage?: (id: string) => void
+  onOpenPublicLink?: (id: string) => void
   onToTotal?: () => void
+  onRetry?: () => void
 }) {
   if (phase === 'loading') {
     return (
@@ -386,7 +424,7 @@ function BoardTable({
       </div>
     )
   }
-  if (phase === 'error') return <BoardError lang={lang} metric={metric} scope={scope} onRetry={() => undefined} />
+  if (phase === 'error') return <BoardError lang={lang} metric={metric} scope={scope} onRetry={onRetry} />
   if (phase === 'empty' || rows.length === 0)
     return <BoardEmpty lang={lang} metric={metric} scope={scope} onToTotal={onToTotal} />
 
@@ -435,7 +473,13 @@ function BoardTable({
               </TableCell>
               {isMsg && (
                 <TableCell className="text-right">
-                  <DrillAction row={r} lang={lang} onOpenMessage={onOpenMessage} onOpenPublicLink={onOpenPublicLink} />
+                  <DrillAction
+                  row={r}
+                  lang={lang}
+                  isAdmin={isAdmin}
+                  onOpenMessage={onOpenMessage}
+                  onOpenPublicLink={onOpenPublicLink}
+                />
                 </TableCell>
               )}
             </TableRow>
@@ -450,23 +494,24 @@ function BoardTable({
 function DrillAction({
   row,
   lang,
+  isAdmin,
   onOpenMessage,
   onOpenPublicLink,
 }: {
   row: LeaderboardRow
   lang: Lang
-  onOpenMessage?: (msg: Message) => void
-  onOpenPublicLink?: (msg: Message) => void
+  isAdmin: boolean
+  onOpenMessage?: (id: string) => void
+  onOpenPublicLink?: (id: string) => void
 }) {
-  const target = row.messageId ? mockMessageById.get(row.messageId) : undefined
-  if (!target) return <span className="text-xs text-text-tertiary">—</span>
+  const id = row.messageId
+  if (!id) return <span className="text-xs text-text-tertiary">—</span>
 
   /**
    * 权限判定读 row.isMessagePublic —— 这是本设计对 /leaderboard 提的唯一新增字段
-   * （[NEW]，见 types.ts）。不查 mockMessageById，因为真实前端拿不到别人的消息对象，
-   * 只有服务端在聚合时顺手能带出 is_public。
+   * （[NEW]，见 types.ts）：服务端聚合时顺手带得出，前端拿不到别人的消息对象。
    */
-  const allowed = row.isMe || row.isMessagePublic === true
+  const allowed = row.isMe || isAdmin || row.isMessagePublic === true
   if (!allowed)
     return (
       <Tooltip
@@ -493,7 +538,7 @@ function DrillAction({
    */
   if (row.isMe)
     return (
-      <Button variant="text" size="sm" onClick={() => onOpenMessage?.(target)}>
+      <Button variant="text" size="sm" onClick={() => onOpenMessage?.(id)}>
         {/* → FLOW 3 屏 1 */}
         {lang === 'zh' ? '查看' : 'View'}
         <ChevronRight className="size-3.5" />
@@ -501,7 +546,7 @@ function DrillAction({
     )
 
   return (
-    <Button variant="text" size="sm" onClick={() => onOpenPublicLink?.(target)}>
+    <Button variant="text" size="sm" onClick={() => onOpenPublicLink?.(id)}>
       {/* → 屏 3 匿名只读视图 */}
       <Globe className="size-3.5" />
       {lang === 'zh' ? '公开链接' : 'Public link'}
@@ -519,6 +564,8 @@ function MyRankCard({
   row,
   session,
   rows,
+  total,
+  loading,
 }: {
   lang: Lang
   metric: LeaderboardMetric
@@ -527,6 +574,9 @@ function MyRankCard({
   row?: LeaderboardRow
   session: Session
   rows: LeaderboardRow[]
+  /** 榜上有名有姓的实体总数（/leaderboard/me 一并给出），让 rank>10 那句说得出"在多少家里排第几" */
+  total: number | null
+  loading: boolean
 }) {
   const unit = countUnit(metric, lang)
   const ahead = rank !== null && rank > 1 ? rows.find((r) => r.rank === rank - 1) : undefined
@@ -539,8 +589,11 @@ function MyRankCard({
         <CardDescription className="font-mono text-xs">{maskWxId(session.wxId)}</CardDescription>
       </CardHeader>
       <CardContent>
+        {/* STATE: 名次是独立一次请求，取数中不能显示成"没有数据" */}
+        {loading && <Skeleton className="h-9 w-40" />}
+
         {/* STATE: 进入前 10 —— 表内同一行同时高亮 */}
-        {rank !== null && row && (
+        {!loading && rank !== null && row && (
           <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
             <span className="text-3xl font-semibold tabular-nums text-text">#{rank}</span>
             <span className="text-sm tabular-nums text-text-secondary">
@@ -563,17 +616,24 @@ function MyRankCard({
         )}
 
         {/* STATE: rank > 10 —— 后端 LIMIT 10 不返回你，但名次仍然算得出来 */}
-        {rank !== null && !row && (
+        {!loading && rank !== null && !row && (
           <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
             <span className="text-3xl font-semibold tabular-nums text-text">#{rank}</span>
             <span className="text-sm text-text-secondary">
               {lang === 'zh' ? '未进入公开的前 10 名' : 'Outside the published top 10'}
             </span>
+            {total !== null && (
+              <span className="text-xs text-text-tertiary tabular-nums">
+                {lang === 'zh'
+                  ? `共 ${fmtNum(total)} ${metric === 'msg' ? '条消息在榜' : '个账号在榜'}`
+                  : `${fmtNum(total)} ${metric === 'msg' ? 'messages' : 'accounts'} ranked`}
+              </span>
+            )}
           </div>
         )}
 
         {/* STATE: 本时间窗内无计数 —— 与「查不到」是两件事，要分开说 */}
-        {rank === null && (
+        {!loading && rank === null && (
           <div className="flex flex-col gap-1">
             <span className="text-sm font-medium text-text">
               {scope === 'day'
@@ -777,18 +837,21 @@ function BoardError({
 export function Screen3_PublicReadonly({
   lang,
   appearance = 'light',
-  message = mockPublicMessage,
+  payload,
+  state = 'ready',
   onSignIn,
   onAppearanceChange,
 }: {
   lang: Lang
   appearance?: Appearance
-  message?: Message
+  /** GET /reads/:id/data 的匿名响应体；null = 还没取到或取不到 */
+  payload: ReadsPayloadDto | null
+  state?: 'loading' | 'ready' | 'error' | 'forbidden'
   onSignIn?: () => void
   onAppearanceChange?: (next: Appearance) => void
 }) {
-  const payload = mockReadDetailsFor(message)
   const dark = appearance === 'dark'
+  const reads = payload ? toReadRecords(payload.reads, payload.sentAt) : []
 
   /** 宽屏 5 列照旧；窄屏由 ResponsiveTable 按 primary / compactHidden 重排 */
   const readColumns: DataTableColumn<ReadRecord>[] = [
@@ -877,36 +940,87 @@ export function Screen3_PublicReadonly({
           </AlertDescription>
         </Alert>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">{message.content}</CardTitle>
-            <CardDescription className="tabular-nums">
-              {displayTime(message.timestamp, lang)} · {t(lang, 'reads')} {fmtNum(payload.visibleTotal)}
-              {payload.blockedCount > 0
-                ? lang === 'zh'
-                  ? ` · 另有 ${fmtNum(payload.blockedCount)} 条被作者屏蔽`
-                  : ` · ${fmtNum(payload.blockedCount)} hidden by the author`
-                : ''}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {/*
-             * 移动端把 5 列表换成「一读者一卡片」：
-             * 实测宽屏表格在 390px 下要 503px 横向滚动，读者得左右滑才看得全，
-             * 而这一屏是收信人在微信里点开的唯一一屏 —— 它必须是手机优先的。
-             * 标题取地区（读者最关心的量），时间放右上角做 meta，
-             * UA 与定位两列窄屏收起：定位列对匿名访客整列都是 disabled 按钮，
-             * 本来就不该在手机上占掉一列宽度。宽屏两列照旧全给。
-             */}
-            <ResponsiveTable
-              columns={readColumns}
-              data={payload.reads}
-              primary="location"
-              compactHidden={['userAgent', 'locate']}
-              metaKey="readAt"
-            />
-          </CardContent>
-        </Card>
+        {state === 'loading' && (
+          <Card>
+            <CardContent className="flex flex-col gap-2 py-6">
+              <Skeleton className="h-5 w-2/3" />
+              <Skeleton className="h-4 w-1/3" />
+              {Array.from({ length: 4 }).map((_, i) => (
+                <Skeleton key={i} className="h-10 w-full" />
+              ))}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* 链接失效与"这条消息没人读过"是两件事：前者要给出登录出口，后者照常渲染空表 */}
+        {(state === 'forbidden' || state === 'error') && (
+          <Card>
+            <CardContent className="flex flex-col gap-3 py-6">
+              <CardTitle className="text-base">
+                {state === 'forbidden'
+                  ? lang === 'zh'
+                    ? '这条链接已经不再公开'
+                    : 'This link is no longer public'
+                  : lang === 'zh'
+                    ? '暂时读不到这条消息的明细'
+                    : 'Could not load this read log'}
+              </CardTitle>
+              <TypographyMuted className="text-sm">
+                {state === 'forbidden'
+                  ? lang === 'zh'
+                    ? '作者随时可以关掉公开开关，关掉的瞬间起匿名访客就会拿到 401/403。如果你就是作者，登录后可以重新打开。'
+                    : 'The author can unpublish at any time and it takes effect immediately. If you are the author, sign in to turn it back on.'
+                  : lang === 'zh'
+                    ? '服务暂时不可用或链接里的消息 id 不存在。稍后重试，不必刷新整个页面。'
+                    : 'The server is unavailable or the id in this link does not exist. Try again later.'}
+              </TypographyMuted>
+              <div>
+                <Button variant="secondary" size="sm" onClick={onSignIn}>
+                  {lang === 'zh' ? '登录' : 'Sign in'}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {state === 'ready' && payload && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">{payload.content}</CardTitle>
+              <CardDescription className="tabular-nums">
+                {displayTime(payload.sentAt, lang)} · {t(lang, 'reads')} {fmtNum(payload.visibleTotal)}
+                {payload.blockedCount > 0
+                  ? lang === 'zh'
+                    ? ` · 另有 ${fmtNum(payload.blockedCount)} 条被作者屏蔽`
+                    : ` · ${fmtNum(payload.blockedCount)} hidden by the author`
+                  : ''}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {/*
+               * 移动端把 5 列表换成「一读者一卡片」：
+               * 实测宽屏表格在 390px 下要 503px 横向滚动，读者得左右滑才看得全，
+               * 而这一屏是收信人在微信里点开的唯一一屏 —— 它必须是手机优先的。
+               * 标题取地区（读者最关心的量），时间放右上角做 meta，
+               * UA 与定位两列窄屏收起：定位列对匿名访客整列都是 disabled 按钮，
+               * 本来就不该在手机上占掉一列宽度。宽屏两列照旧全给。
+               */}
+              {reads.length === 0 ? (
+                <TypographyMuted className="py-6 text-center text-sm">
+                  {lang === 'zh' ? '还没有人读过这条消息' : 'Nobody has read this message yet'}
+                </TypographyMuted>
+              ) : (
+                <ResponsiveTable
+                  columns={readColumns}
+                  data={reads}
+                  primary="location"
+                  compactHidden={['userAgent', 'locate']}
+                  metaKey="readAt"
+                />
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         {/* 作者视角的隐私边界：公开前必须知道的两个后端事实 */}
         <Card>
@@ -959,10 +1073,11 @@ export type Flow7Stage = 'board' | 'states' | 'public'
 export function Flow7_Leaderboard({
   lang = 'zh',
   appearance = 'light',
-  session = mockSession,
+  session,
   stage = 'board',
   phase = 'ready',
-  publicMessage,
+  publicPayload = null,
+  publicState = 'loading',
   onOpenMessage,
   onOpenPublicLink,
   onSignIn,
@@ -970,14 +1085,16 @@ export function Flow7_Leaderboard({
 }: {
   lang?: Lang
   appearance?: Appearance
-  session?: Session
+  session: Session
   /** 评审用：直接落到某一屏 */
   stage?: Flow7Stage
   phase?: BoardPhase
-  /** 屏 3 展示哪条公开消息；缺省用 mockPublicMessage */
-  publicMessage?: Message
-  onOpenMessage?: (msg: Message) => void
-  onOpenPublicLink?: (msg: Message) => void
+  /** 屏 3 的匿名只读数据。真实入口是 /reads/:id 这条路由（PublicReadPage 自己取数），
+   *  这里只是给评审开关留一个位置，所以默认是"还没取到"而不是编一条假消息 */
+  publicPayload?: ReadsPayloadDto | null
+  publicState?: 'loading' | 'ready' | 'error' | 'forbidden'
+  onOpenMessage?: (id: string) => void
+  onOpenPublicLink?: (id: string) => void
   onSignIn?: () => void
   onAppearanceChange?: (next: Appearance) => void
 }) {
@@ -986,7 +1103,8 @@ export function Flow7_Leaderboard({
       <Screen3_PublicReadonly
         lang={lang}
         appearance={appearance}
-        message={publicMessage}
+        payload={publicPayload}
+        state={publicState}
         onSignIn={onSignIn}
         onAppearanceChange={onAppearanceChange}
       />

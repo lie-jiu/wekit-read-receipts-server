@@ -13,6 +13,12 @@ export type Resource<T> = {
   error: ApiError | null;
   /** 首次加载（无数据可显示）。重取时为 true 但 data 仍在，页面可以只让刷新图标转 */
   loading: boolean;
+  /**
+   * 最近一次成功取数的时刻（epoch ms），换 URL 即归 null。
+   * 页面写「更新于 X」时用它，而不是拿渲染时刻冒充数据时刻 —— 后者会随每次重绘漂移，
+   * 看起来像刚刷新过，实际上显示的还是上一次的结果。
+   */
+  fetchedAt: number | null;
   reload: () => void;
 };
 
@@ -37,12 +43,13 @@ export function useResource<T>(path: string | null): Resource<T> {
     data: T | null;
     error: ApiError | null;
     loading: boolean;
-  }>({ key: path, data: null, error: null, loading: path !== null });
+    fetchedAt: number | null;
+  }>({ key: path, data: null, error: null, loading: path !== null, fetchedAt: null });
   const [nonce, setNonce] = useState(0);
 
   useEffect(() => {
     if (path === null) {
-      setState({ key: null, data: null, error: null, loading: false });
+      setState({ key: null, data: null, error: null, loading: false, fetchedAt: null });
       return;
     }
     const controller = new AbortController();
@@ -52,17 +59,25 @@ export function useResource<T>(path: string | null): Resource<T> {
       data: s.key === path ? s.data : null,
       error: null,
       loading: true,
+      // 换 URL 时旧时刻不属于新数据；同 URL 重取时留着，等成功回来再刷新
+      fetchedAt: s.key === path ? s.fetchedAt : null,
     }));
     api.get<T>(path, controller.signal).then(
       (data) => {
         if (!active) return;
-        setState({ key: path, data, error: null, loading: false });
+        setState({ key: path, data, error: null, loading: false, fetchedAt: Date.now() });
       },
       (e: unknown) => {
         // 组件卸载 / URL 变更导致的中断不是错误，不该渲染成红条
         if (!active || (e as Error)?.name === "AbortError") return;
         const error = toApiError(e);
-        setState((s) => ({ key: path, data: s.key === path ? s.data : null, error, loading: false }));
+        setState((s) => ({
+          key: path,
+          data: s.key === path ? s.data : null,
+          error,
+          loading: false,
+          fetchedAt: s.key === path ? s.fetchedAt : null,
+        }));
       },
     );
     return () => {
@@ -72,7 +87,13 @@ export function useResource<T>(path: string | null): Resource<T> {
   }, [path, nonce]);
 
   const reload = useCallback(() => setNonce((n) => n + 1), []);
-  return { data: state.data, error: state.error, loading: state.loading, reload };
+  return {
+    data: state.data,
+    error: state.error,
+    loading: state.loading,
+    fetchedAt: state.fetchedAt,
+    reload,
+  };
 }
 
 export type ListResource<T> = Resource<T[]> & { total: number | null };
@@ -89,12 +110,13 @@ export function useList<T>(path: string | null): ListResource<T> {
     total: number | null;
     error: ApiError | null;
     loading: boolean;
-  }>({ key: path, items: null, total: null, error: null, loading: path !== null });
+    fetchedAt: number | null;
+  }>({ key: path, items: null, total: null, error: null, loading: path !== null, fetchedAt: null });
   const [nonce, setNonce] = useState(0);
 
   useEffect(() => {
     if (path === null) {
-      setState({ key: null, items: null, total: null, error: null, loading: false });
+      setState({ key: null, items: null, total: null, error: null, loading: false, fetchedAt: null });
       return;
     }
     const controller = new AbortController();
@@ -105,11 +127,12 @@ export function useList<T>(path: string | null): ListResource<T> {
       total: s.key === path ? s.total : null,
       error: null,
       loading: true,
+      fetchedAt: s.key === path ? s.fetchedAt : null,
     }));
     api.getList<T[]>(path, controller.signal).then(
       ({ items, total }) => {
         if (!active) return;
-        setState({ key: path, items, total, error: null, loading: false });
+        setState({ key: path, items, total, error: null, loading: false, fetchedAt: Date.now() });
       },
       (e: unknown) => {
         if (!active || (e as Error)?.name === "AbortError") return;
@@ -120,6 +143,7 @@ export function useList<T>(path: string | null): ListResource<T> {
           total: s.key === path ? s.total : null,
           error,
           loading: false,
+          fetchedAt: s.key === path ? s.fetchedAt : null,
         }));
       },
     );
@@ -135,6 +159,7 @@ export function useList<T>(path: string | null): ListResource<T> {
     total: state.total,
     error: state.error,
     loading: state.loading,
+    fetchedAt: state.fetchedAt,
     reload,
   };
 }
