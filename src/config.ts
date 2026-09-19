@@ -118,6 +118,22 @@ export const SECURITY_HEADERS = {
  */
 export const HSTS_HEADER = { "Strict-Transport-Security": "max-age=31536000" } as const;
 
+/**
+ * SPA（wekit-read-insights）文档挂载路径。默认 /insights 是因为服务端仍拥有
+ * `/` `/login` `/messages` `/reads/:id` `/rank` `/admin` 这六个旧 SSR 页面；
+ * 那批页面退役后置空 SPA_PATH 即可让 SPA 直接接管 `/`（产物路径是根绝对的，不必重新构建）。
+ */
+export function normalizeSpaPath(raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed) return "";
+  const withSlash = trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
+  return withSlash.replace(/\/+$/, "");
+}
+export const SPA_PATH = normalizeSpaPath(process.env.SPA_PATH ?? "/insights");
+
+/** SPA 构建产物目录（Bun 部署用；Workers 由 wrangler.jsonc 的 assets.directory 上传） */
+export const SPA_DIST = process.env.SPA_DIST?.trim() || "./wekit-read-insights/dist";
+
 export const CSP = {
   LOGIN: [
     "default-src 'none'",
@@ -135,6 +151,34 @@ export const CSP = {
     "script-src 'unsafe-inline'",
     "style-src 'unsafe-inline'",
     "img-src 'self' data:",
+    "connect-src 'self'",
+    "form-action 'self'",
+    "base-uri 'none'",
+    "frame-ancestors 'none'",
+    "object-src 'none'",
+  ].join("; "),
+  /**
+   * SPA（Vite 产物）专用。
+   *
+   * script-src 不给 'unsafe-inline' / 'unsafe-eval'：产物里全是带哈希的同源 module script，
+   * 一行内联脚本都没有。LOGIN/DASHBOARD 那两条给内联 <script> 开的口子是旧 SSR 页面的历史，
+   * 别把它们当成本项目的 CSP 基线照抄。
+   *
+   * style-src 的 'unsafe-inline' 是实测出来的，也是这里唯一的让步：sonner（toast）与
+   * Spark 的主题原语在运行时往文档里插 <style>，严格 'self' 下 Chromium 会报
+   * "Applying inline style violates ..." 并把 toast 的样式整段丢掉。
+   * 试过更紧的写法 `style-src-elem 'self' 'unsafe-inline'`（把 style 属性继续卡死），
+   * 但 caniuse 上 style-src-elem 的 Safari 支持从 26.2 才开始，老 Safari 会退回 style-src
+   * 这条 → 同样的界面在 Safari 上散架，所以按全部浏览器都生效的那条走。
+   * 内联样式的残余风险限于"改外观"与 CSS 选择器探测，不含脚本执行与数据读取；
+   * 真要收紧得先把 toast 的样式改成构建期注入（Vite 侧改动，不在本模块）。
+   */
+  INSIGHTS: [
+    "default-src 'none'",
+    "script-src 'self'",
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data:",
+    "font-src 'self' data:",
     "connect-src 'self'",
     "form-action 'self'",
     "base-uri 'none'",

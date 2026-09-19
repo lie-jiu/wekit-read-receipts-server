@@ -14,6 +14,18 @@
     "bindings": [{ "name": "APP", "class_name": "App" }]
   },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["App"] }],
+  // SPA（wekit-read-insights）构建产物。run_worker_first=true 让每个请求先进 Worker：
+  // 由 worker/index.ts 用 src/spa.ts 的 resolveStatic 决定「取产物」还是「转进 DO」，
+  // 六个旧 SSR 路径（含 `/`）因此不会被产物抢走；产物缺失时也回落到 DO 的 JSON 404。
+  // 两个 *_handling 都设成 none：路径→文件的映射已由我们自己算好，不需要 assets 再做
+  // index.html 重定向或兜底页那套隐式行为。
+  "assets": {
+    "directory": "./wekit-read-insights/dist",
+    "binding": "ASSETS",
+    "run_worker_first": true,
+    "html_handling": "none",
+    "not_found_handling": "none"
+  },
   "vars": {
     // 免费档单请求 CPU 上限 10ms，2 万次迭代保证登录验证可完成；
     // 付费计划（30s CPU）可删除本变量，回退代码默认的 100000（见 src/config.ts PBKDF2_ITERATIONS）

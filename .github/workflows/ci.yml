@@ -23,6 +23,19 @@ jobs:
       - name: Typecheck
         run: bun run typecheck
 
+      # SPA 是独立工程（自己的 lockfile/node_modules），且被根 tsconfig 排除，
+      # 不在这里检查就完全没有门禁 —— 它同时是下面 Wrangler dry-run 的前置：
+      # wrangler.jsonc 的 assets.directory 指向 dist，而 dist 不进版本库。
+      - name: Install web dependencies
+        working-directory: wekit-read-insights
+        run: bun install --frozen-lockfile
+
+      - name: Typecheck SPA
+        run: bun run web:typecheck
+
+      - name: Build SPA
+        run: bun run web:build
+
       - name: Test
         run: bun test
 

@@ -1,9 +1,11 @@
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { ensureBunSqlite } from "./src/backends/bun-sqlite";
+import { bunStaticReader, spaBuilt } from "./src/backends/bun-static-fs";
 import { envFileStore } from "./src/levels-env-file";
 import { setFormulaStore } from "./src/levels";
 import { migrate, sqlite } from "./src/db";
+import { setStaticReader } from "./src/spa";
 import { backfillStats, dailyCleanup } from "./src/stats";
 import app from "./src/app";
 import {
@@ -11,16 +13,22 @@ import {
   MAX_BODY_BYTES,
   PORT,
   SHUTDOWN_TIMEOUT_MS,
+  SPA_DIST,
+  SPA_PATH,
   TLS_CERT,
   TLS_KEY,
 } from "./src/config";
 import { PID_FILE } from "./scripts/manage/platform";
 
-/* Bun 部署的初始化：本地 SQLite 后端 + .env 文件版公式存储（Workers 由 worker/index.ts 注入对应实现） */
+/* Bun 部署的初始化：本地 SQLite 后端 + .env 文件版公式存储 + 磁盘版 SPA 产物（Workers 由 worker/index.ts 注入对应实现） */
 ensureBunSqlite();
 setFormulaStore(envFileStore());
+setStaticReader(bunStaticReader(SPA_DIST));
 migrate();
 console.log("SQLite " + (sqlite.query("SELECT sqlite_version() v").get() as { v: string }).v);
+if (!(await spaBuilt(SPA_DIST))) {
+  console.warn(`[spa] ${SPA_DIST}/index.html 不存在，${SPA_PATH || "/"} 将返回 404（先跑 bun run web:build）`);
+}
 
 const tls = TLS_CERT && TLS_KEY
   ? { cert: await Bun.file(TLS_CERT).text(), key: await Bun.file(TLS_KEY).text() }
