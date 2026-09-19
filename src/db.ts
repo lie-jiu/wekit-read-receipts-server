@@ -251,6 +251,29 @@ export function stmt() {
   return _stmt;
 }
 
+/**
+ * 重算 users.message_count（冗余计数列）。
+ *
+ * 这个列是 /me 的配额卡、/admin/users 的「当前/累计」与僵尸清理预览的数据源，
+ * 而它过去只在 /register 的事务里被维护：任何一条删除消息的路径漏算，它就会永久偏高
+ * ——「清除我的」之后 /me 仍然报 4 条就是这么来的（实测）。所以**每一个**删除消息的
+ * 入口都必须在同一事务里调用它。
+ *
+ * 不改成实时 COUNT(*) 是因为它挂在每次鉴权都要读的 users 行上（auth.ts 的会话查询），
+ * 而 messages 上有 idx_messages_wx_id_timestamp 前缀索引，按账号重算是廉价的。
+ */
+export function syncMessageCount(wxId?: string): void {
+  if (wxId === undefined) {
+    sqlite
+      .query("UPDATE users SET message_count = (SELECT COUNT(*) FROM messages WHERE messages.wx_id = users.wx_id)")
+      .run();
+    return;
+  }
+  sqlite
+    .query("UPDATE users SET message_count = (SELECT COUNT(*) FROM messages WHERE wx_id = ?) WHERE wx_id = ?")
+    .run(wxId, wxId);
+}
+
 export function migrate(): void {
   const current = sqlite.getVersion();
   if (!Number.isInteger(current) || current < 0) {

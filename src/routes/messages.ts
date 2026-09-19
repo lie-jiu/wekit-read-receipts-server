@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { CSP, ENABLE_GEO, geoQuotaFor, quotaFor, retentionMonthsFor } from "../config";
 import { audit, getSessionUser, requireUser } from "../auth";
-import { sqlite } from "../db";
+import { sqlite, syncMessageCount } from "../db";
 import { clientIp } from "../rate-limit";
 import { escapeLike, utcDateDaysAgo } from "../utils";
 import { clampLimit, geoUsedToday, requireUserOr } from "../http-helpers";
@@ -174,6 +174,7 @@ messagesApp.delete("/messages", (c) => {
   sqlite.transaction(() => {
     sqlite.query("DELETE FROM reads WHERE id IN (SELECT id FROM messages WHERE wx_id = ?)").run(user.wxId);
     sqlite.query("DELETE FROM messages WHERE wx_id = ?").run(user.wxId);
+    syncMessageCount(user.wxId);
   })();
   audit(user.wxId, "delete_all_messages", null, clientIp(c));
   return c.json({ ok: true });
@@ -187,6 +188,7 @@ messagesApp.delete("/messages/:wxId", (c) => {
   sqlite.transaction(() => {
     sqlite.query("DELETE FROM reads WHERE id IN (SELECT id FROM messages WHERE wx_id = ?)").run(user.wxId);
     sqlite.query("DELETE FROM messages WHERE wx_id = ?").run(user.wxId);
+    syncMessageCount(user.wxId);
   })();
   audit(user.wxId, "delete_all_messages", null, clientIp(c));
   return c.json({ ok: true });

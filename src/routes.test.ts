@@ -527,3 +527,51 @@ describe('POST /reads/:id/block 的 action:"current"', () => {
     expect(await res.json()).toEqual({ ok: true, ip });
   });
 });
+
+/* ── users.message_count 是冗余计数：每条删除路径都必须重算，否则永久偏高 ── */
+
+describe("删除消息后 users.message_count 不漂移", () => {
+  let seq = 0;
+  /** 用 /register 造数据：它是唯一原本就维护 message_count 的路径，基线可信 */
+  async function put(wxId: string): Promise<string> {
+    currentIp = freshIp();
+    const res = await register({ wxId, content: `mc-${wxId}-${seq++}`, createTime: String(Date.now()) });
+    expect(res.status).toBe(200);
+    return ((await res.json()) as { id: string }).id;
+  }
+  const stored = (wxId: string) =>
+    (sqlite.query("SELECT message_count AS n FROM users WHERE wx_id = ?").get(wxId) as { n: number }).n;
+  const actual = (wxId: string) =>
+    (sqlite.query("SELECT COUNT(*) AS n FROM messages WHERE wx_id = ?").get(wxId) as { n: number }).n;
+
+  test("DELETE /reads/:id（本人删一条）", async () => {
+    insertUser("mc_owner", 9);
+    const a = await put("mc_owner");
+    await put("mc_owner");
+    expect(stored("mc_owner")).toBe(2);
+    expect((await app.request(`/reads/${a}`, { method: "DELETE", headers: authCookie("mc_owner") })).status).toBe(200);
+    expect(stored("mc_owner")).toBe(1);
+    expect(stored("mc_owner")).toBe(actual("mc_owner"));
+  });
+
+  test("DELETE /messages（清除我的）", async () => {
+    insertUser("mc_mine", 9);
+    await put("mc_mine");
+    await put("mc_mine");
+    expect((await app.request("/messages", { method: "DELETE", headers: authCookie("mc_mine") })).status).toBe(200);
+    expect(stored("mc_mine")).toBe(0);
+    expect(stored("mc_mine")).toBe(actual("mc_mine"));
+  });
+
+  test("DELETE /admin/messages/:id 与 DELETE /admin/messages?wxId=", async () => {
+    insertUser("mc_target", 9);
+    const a = await put("mc_target");
+    await put("mc_target");
+    const admin = authCookie("admin_wx");
+    expect((await app.request(`/admin/messages/${a}`, { method: "DELETE", headers: admin })).status).toBe(200);
+    expect(stored("mc_target")).toBe(1);
+    expect((await app.request("/admin/messages?wxId=mc_target", { method: "DELETE", headers: admin })).status).toBe(200);
+    expect(stored("mc_target")).toBe(0);
+    expect(stored("mc_target")).toBe(actual("mc_target"));
+  });
+});

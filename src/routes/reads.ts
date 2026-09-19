@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { CSP, ENABLE_GEO, geoQuotaFor } from "../config";
 import { audit, requireUser } from "../auth";
-import { sqlite } from "../db";
+import { sqlite, syncMessageCount } from "../db";
 import { lookupIpLocation } from "../geo";
 import { clientIp, isValidIp, UNKNOWN_IP } from "../rate-limit";
 import { UA_KIND_SQL } from "../stats";
@@ -224,6 +224,7 @@ readsApp.delete("/reads/:id", (c) => {
   sqlite.transaction(() => {
     sqlite.query("DELETE FROM reads WHERE id = ?").run(id);
     sqlite.query("DELETE FROM messages WHERE id = ?").run(id);
+    syncMessageCount(msg.wx_id);
   })();
   audit(user.wxId, "delete_message", id, clientIp(c));
   return c.json({ ok: true });

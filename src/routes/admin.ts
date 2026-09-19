@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { CSP, isAdmin } from "../config";
 import { audit, hashPassword, requireAdmin } from "../auth";
-import { sqlite } from "../db";
+import { sqlite, syncMessageCount } from "../db";
 import { STAT_TABLES } from "../stats";
 import { clientIp, isValidIp } from "../rate-limit";
 import {
@@ -228,6 +228,7 @@ adminApp.delete("/admin/messages", (c) => {
     sqlite.transaction(() => {
       sqlite.query("DELETE FROM reads WHERE id IN (SELECT id FROM messages WHERE wx_id = ?)").run(wxId);
       sqlite.query("DELETE FROM messages WHERE wx_id = ?").run(wxId);
+      syncMessageCount(wxId);
     })();
     audit(wxId, "admin_wipe_user", `by=${actor} target=${wxId}`, clientIp(c));
   } else {
@@ -238,6 +239,8 @@ adminApp.delete("/admin/messages", (c) => {
     sqlite.transaction(() => {
       sqlite.query("DELETE FROM reads").run();
       sqlite.query("DELETE FROM messages").run();
+      // 全表删除后逐账号重算：不传 wxId 的那条分支走一次全量 UPDATE
+      syncMessageCount();
     })();
     audit(null, "admin_delete_all_messages", `by=${actor}`, clientIp(c));
   }
@@ -250,9 +253,12 @@ adminApp.delete("/admin/messages/:id", (c) => {
   const actor = requireAdmin(c)!.wxId;
   const id = c.req.param("id");
   if (!isValidId(id)) return c.json({ error: "invalid id" }, 400);
+  // 先取所有者：删掉消息行之后就查不到这条消息属于谁了，而 message_count 必须跟着重算
+  const owner = sqlite.query("SELECT wx_id FROM messages WHERE id = ?").get(id) as { wx_id: string } | undefined;
   sqlite.transaction(() => {
     sqlite.query("DELETE FROM reads WHERE id = ?").run(id);
     sqlite.query("DELETE FROM messages WHERE id = ?").run(id);
+    if (owner) syncMessageCount(owner.wx_id);
   })();
   audit(null, "admin_delete_message", `by=${actor} target=${id}`, clientIp(c));
   return c.json({ ok: true });

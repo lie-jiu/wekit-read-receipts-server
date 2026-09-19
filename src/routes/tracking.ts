@@ -7,7 +7,7 @@ import {
   retentionMonthsFor,
 } from "../config";
 import { audit } from "../auth";
-import { sqlite, stmt } from "../db";
+import { sqlite, stmt, syncMessageCount } from "../db";
 import { clientIp, overLimit, overLimitWxId, UNKNOWN_IP } from "../rate-limit";
 import { computeId, isValidId, isValidWxId, utcDate, utcMonthsAgo, utcNow } from "../utils";
 
@@ -106,7 +106,8 @@ trackingApp.post("/register", async (c) => {
           .run(id, ip, now);
       }
 
-      sqlite.query("UPDATE users SET message_count = message_count + 1 WHERE wx_id = ?").run(wxId);
+      // message_count 不在这里 +1：同一个事务末尾按 messages 实存行数重算（含配额淘汰），
+      // 两处都写只会让人猜哪一处是权威的
       sqlite
         .query(
           "INSERT INTO registration_stats (date, wx_id, count) VALUES (?, ?, 1) ON CONFLICT (date, wx_id) DO UPDATE SET count = count + 1",
@@ -133,9 +134,7 @@ trackingApp.post("/register", async (c) => {
           sqlite.query("DELETE FROM messages WHERE id = ?").run(m.id);
         }
       }
-      sqlite
-        .query("UPDATE users SET message_count = (SELECT COUNT(*) FROM messages WHERE wx_id = ?) WHERE wx_id = ?")
-        .run(wxId, wxId);
+      syncMessageCount(wxId);
     })();
 
     ids.push(id);
