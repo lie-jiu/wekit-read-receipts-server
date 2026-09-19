@@ -60,6 +60,23 @@ accountApp.delete("/account/ip-block", (c) => {
 });
 
 /**
+ * 账户页要、但只有服务器算得出的两个量。刻意不塞进 /me：
+ * /me 每次进应用都要问（引导路径），这两个只在账户页用，为一个低频数字给高频请求加一次查询不划算。
+ *
+ * totalReads 走实时计数而不是 read_stats 滚表 —— 滚表只增不减（消息被配额淘汰后它的行仍然在），
+ * 而这里的语义是「清除我的消息会连带删掉多少条已读记录」，必须与 DELETE /messages 真正删掉的行数一致。
+ * reads 的主键是 (id, ip)，IN 子查询按 id 前缀走索引，条数上界就是本人的消息配额，所以便宜。
+ */
+accountApp.get("/account/stats", (c) => {
+  const user = requireUser(c);
+  if (!user) return c.json({ error: "unauthorized" }, 401);
+  const row = sqlite
+    .query("SELECT COUNT(*) AS n FROM reads WHERE id IN (SELECT id FROM messages WHERE wx_id = ?)")
+    .get(user.wxId) as { n: number };
+  return c.json({ totalReads: row.n, viewerIp: clientIp(c) });
+});
+
+/**
  * 本人操作留痕。管理员端有 /admin/audit，但普通用户不该因此就只能看到空白 ——
  * 改密码、拉黑 IP、清除消息这些动作正好是他们最需要回看自己做过什么的地方。
  * wxId 一律取会话里的值，不接受查询参数，避免变成探测他人的口子。

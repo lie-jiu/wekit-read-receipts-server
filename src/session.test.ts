@@ -316,3 +316,42 @@ describe("GET /messages?detail=1", () => {
     expect(never?.dailyReads).toEqual([]);
   });
 });
+
+/* ── GET /account/stats：账户页要、只有服务器算得出的两个量 ── */
+
+describe("GET /account/stats", () => {
+  const WX = "stats_wx";
+  const m1 = sha256Hex("stats-m1");
+  const m2 = sha256Hex("stats-m2");
+
+  insertUser(WX, 4);
+  sqlite.query("INSERT INTO messages (id, wx_id, content, timestamp) VALUES (?, ?, 'a', '2026-01-01 00:00:00')").run(m1, WX);
+  sqlite.query("INSERT INTO messages (id, wx_id, content, timestamp) VALUES (?, ?, 'b', '2026-01-01 00:00:00')").run(m2, WX);
+  for (const ip of ["203.0.113.1", "203.0.113.2"]) {
+    sqlite.query("INSERT INTO reads (id, ip, timestamp, user_agent) VALUES (?, ?, '2026-01-02 00:00:00', '')").run(m1, ip);
+  }
+  sqlite.query("INSERT INTO reads (id, ip, timestamp, user_agent) VALUES (?, ?, '2026-01-02 00:00:00', '')").run(m2, "203.0.113.3");
+  // 命中黑名单的那次访问：仍然是库里的行，也仍然会被 DELETE /messages 删掉
+  sqlite.query("INSERT INTO reads (id, ip, timestamp, user_agent) VALUES (?, ?, '2026-01-02 00:00:00', '')").run(m2, "203.0.113.4");
+  sqlite.query("INSERT INTO ip_block_message (id, ip, created_at) VALUES (?, ?, '2026-01-03 00:00:00')").run(m2, "203.0.113.4");
+  // 滚表故意虚高：它只增不减，用它的数字报「会删掉多少条」就是错的
+  sqlite.query("INSERT INTO read_stats (date, wx_id, count) VALUES ('2025-01-01', ?, 999)").run(WX);
+
+  test("totalReads 是现存 reads 行数，不是 read_stats 滚表", async () => {
+    const res = await app.request("/account/stats", { headers: cookieOf(WX) });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { totalReads: number; viewerIp: string };
+    expect(body.totalReads).toBe(4);
+  });
+
+  test("viewerIp 由服务器给（账户页「屏蔽我当前的 IP」预填用），未登录 401", async () => {
+    const { setIpResolver } = await import("./rate-limit");
+    setIpResolver(() => "203.0.113.77");
+    const body = (await (await app.request("/account/stats", { headers: cookieOf(WX) })).json()) as {
+      viewerIp: string;
+    };
+    expect(body.viewerIp).toBe("203.0.113.77");
+    setIpResolver(null);
+    expect((await app.request("/account/stats")).status).toBe(401);
+  });
+});

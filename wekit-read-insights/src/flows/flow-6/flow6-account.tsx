@@ -68,18 +68,24 @@ import {
   toast,
 } from 'sparkdesign'
 import { Activity, Clock3, Gauge, Hash, Info, KeyRound, Lock, LogOut, MapPin, ShieldBan, Timer, Trash, TriangleAlert, UserRound } from 'lucide-react'
-import {
-  CURRENT_VISITOR_IP,
-  displayTime,
-  mockAccountBlock,
-  mockAuditLog,
-  mockMessages,
-  mockSession,
-} from '../shared/mock-data'
+import { displayTime } from '../shared/mock-data'
 import { fmtNum, t } from '../shared/i18n'
 import { ResponsiveTable } from '../shared/responsive-table'
 import type { Lang } from '../shared/i18n'
-import type { IpBlockEntry, IpBlockList } from '../shared/types'
+import type { AuditEntry, IpBlockEntry, IpBlockList, Session } from '../shared/types'
+import { ApiError } from '../../data/api'
+import { useResource } from '../../data/hooks'
+import { changePassword } from '../../data/session'
+import {
+  ACCOUNT_BLOCK_URL,
+  ACCOUNT_STATS_URL,
+  accountAuditUrl,
+  addAccountBlock,
+  clearMyMessages,
+  removeAccountBlock,
+} from '../../data/account'
+import type { AccountStatsDto, AuditDto } from '../../data/account'
+import { toAuditEntries } from '../../data/admin'
 
 const IP_RE = /^(\d{1,3}\.){3}\d{1,3}$/
 
@@ -167,31 +173,65 @@ function QuotaCard({
    ================================================ */
 export function Screen1_AccountOverview({
   lang,
+  session: s,
+  totalReads,
+  audit,
+  auditState,
   onLogout,
   onPasswordChanged,
 }: {
   lang: Lang
+  session: Session
+  /** 本人全部消息当前占着的已读行数（GET /account/stats）；null = 还在取或没取到，画省略号而不是 0 */
+  totalReads: number | null
+  audit: AuditEntry[]
+  /** 留痕是独立一次请求：没取到和取到空是两件事 */
+  auditState: 'loading' | 'ready' | 'error'
   onLogout?: () => void
   onPasswordChanged?: () => void
 }) {
-  const s = mockSession
-  const myMessages = mockMessages.filter((m) => m.wxId === s.wxId)
-  const readsTotal = myMessages.reduce((a, m) => a + m.reads, 0)
-  const audit = mockAuditLog.filter((a) => a.wxId === s.wxId)
-
   const [pwOpen, setPwOpen] = useState(false)
   const [oldPw, setOldPw] = useState('')
   const [newPw, setNewPw] = useState('')
   const [touched, setTouched] = useState(false)
   const [busy, setBusy] = useState(false)
+  /** 服务器回 401 = 当前密码不对，400 = 新密码不合长度；两者都要落到具体字段上，
+   *  而不是笼统一句「保存失败」——用户需要知道改哪一个 */
+  const [pwError, setPwError] = useState<'old' | 'new' | 'other' | null>(null)
 
-  const oldErr = touched && oldPw.length < 8 ? '密码至少 8 位' : undefined
+  const oldErr = pwError === 'old' ? (lang === 'zh' ? '当前密码不正确' : 'Current password is incorrect') : touched && oldPw.length < 8 ? '密码至少 8 位' : undefined
   const newErr =
-    touched && newPw.length < 8
-      ? '新密码至少 8 位'
-      : touched && newPw === oldPw && newPw.length >= 8
-        ? '新密码不能与当前密码相同'
-        : undefined
+    pwError === 'new'
+      ? lang === 'zh'
+        ? '新密码需为 8–128 位'
+        : 'New password must be 8–128 characters'
+      : touched && newPw.length < 8
+        ? '新密码至少 8 位'
+        : touched && newPw === oldPw && newPw.length >= 8
+          ? '新密码不能与当前密码相同'
+          : undefined
+
+  const submitPw = async () => {
+    setTouched(true)
+    setPwError(null)
+    if (oldPw.length < 8 || newPw.length < 8 || newPw === oldPw) return
+    setBusy(true)
+    try {
+      await changePassword({ oldPassword: oldPw, newPassword: newPw })
+    } catch (e) {
+      const rateLimited = e instanceof ApiError && e.rateLimited
+      setPwError(rateLimited ? 'other' : e instanceof ApiError && e.status === 401 ? 'old' : 'new')
+      setBusy(false)
+      if (rateLimited) toast.error(lang === 'zh' ? '尝试过于频繁，请稍后再试' : 'Too many attempts — try again later')
+      return
+    }
+    setBusy(false)
+    setPwOpen(false)
+    toast.success(lang === 'zh' ? '密码已修改，需要重新登录' : 'Password changed — sign in again')
+    /* 服务器的副作用是删掉该账号全部会话（含当前这条），所以必须回登录页：
+       留在本屏的话下一个请求就是 401，看起来像"改完密码就坏了" */
+    onPasswordChanged?.()
+  }
 
   return (
     <div className="flex flex-col gap-4">
@@ -218,8 +258,8 @@ export function Screen1_AccountOverview({
               </CardTitle>
               <CardDescription className="mt-1 tabular-nums">
                 {lang === 'zh'
-                  ? `注册于 ${displayTime(s.createdAt, lang)} · 已注册 ${fmtNum(myMessages.length)} 条消息 · 累计 ${fmtNum(readsTotal)} 次被读`
-                  : `Registered ${s.createdAt} · ${fmtNum(myMessages.length)} messages · ${fmtNum(readsTotal)} reads`}
+                  ? `注册于 ${displayTime(s.createdAt, lang)} · 已注册 ${fmtNum(s.messageCount)} 条消息 · 累计 ${totalReads === null ? '…' : fmtNum(totalReads)} 次被读`
+                  : `Registered ${s.createdAt} · ${fmtNum(s.messageCount)} messages · ${totalReads === null ? '…' : fmtNum(totalReads)} reads`}
               </CardDescription>
             </div>
           </div>
@@ -239,6 +279,7 @@ export function Screen1_AccountOverview({
               setOldPw('')
               setNewPw('')
               setTouched(false)
+              setPwError(null)
             }}
           >
             <KeyRound className="size-4" />
@@ -266,9 +307,9 @@ export function Screen1_AccountOverview({
           lang={lang}
           icon={<Hash className="size-4 text-text-secondary" />}
           label={lang === 'zh' ? '消息容量剩余' : 'Message quota left'}
-          headline={`${fmtNum(Math.max(0, s.messageQuota - myMessages.length))}`}
+          headline={`${fmtNum(Math.max(0, s.messageQuota - s.messageCount))}`}
           headlineSuffix={`/ ${fmtNum(s.messageQuota)} ${t(lang, 'unitItems')}`}
-          bar={{ used: myMessages.length, total: s.messageQuota, unit: t(lang, 'unitItems') }}
+          bar={{ used: s.messageCount, total: s.messageQuota, unit: t(lang, 'unitItems') }}
           footNote={lang === 'zh' ? '超限时由最旧的消息开始淘汰' : 'oldest messages evict first'}
           hint={
             lang === 'zh'
@@ -326,7 +367,14 @@ export function Screen1_AccountOverview({
             </CardDescription>
           </CardHeader>
           <CardContent>
-            {audit.length === 0 ? (
+            {auditState === 'loading' ? (
+              <TypographyMuted className="text-xs">{lang === 'zh' ? '正在读取留痕…' : 'Loading…'}</TypographyMuted>
+            ) : auditState === 'error' ? (
+              /* 取不到 ≠ 没有操作过：写成「暂无可留痕的操作」是把故障说成用户的清白 */
+              <TypographyMuted className="text-xs">
+                {lang === 'zh' ? '留痕读取失败，稍后刷新本页重试' : 'Could not load your action log — refresh this page later'}
+              </TypographyMuted>
+            ) : audit.length === 0 ? (
               <TypographyMuted className="text-xs">{lang === 'zh' ? '暂无可留痕的操作' : 'Nothing audited yet'}</TypographyMuted>
             ) : (
               <Timeline>
@@ -398,18 +446,8 @@ export function Screen1_AccountOverview({
               variant="primary"
               size="md"
               loading={busy}
-              onClick={() => {
-                setTouched(true)
-                if (oldPw.length < 8 || newPw.length < 8 || newPw === oldPw) return
-                setBusy(true)
-                window.setTimeout(() => {
-                  setBusy(false)
-                  setPwOpen(false)
-                  onPasswordChanged?.()
-                  toast.success(lang === 'zh' ? '密码已修改，其他设备需重新登录' : 'Password changed; other devices must sign in again')
-                  /* → 成功 → 本屏停留，其他会话已失效 */
-                }, 600)
-              }}
+              disabled={busy}
+              onClick={() => void submitPw()}
             >
               {t(lang, 'save')}
             </Button>
@@ -433,27 +471,37 @@ export function Screen1_AccountOverview({
    ================================================ */
 export function Screen2_AccountIpBlock({
   blocks,
+  state,
   lang,
+  viewerIp,
   onAdd,
   onRemove,
 }: {
-  blocks: IpBlockList
+  blocks: IpBlockList | null
+  /** 名单是独立一次请求：没取到和取到空表是两件事 */
+  state: 'loading' | 'ready' | 'error'
   lang: Lang
-  onAdd: (ip: string) => string | undefined
+  /** 服务器看到的本人出口 IP，用来预填。账户级刻意不支持 action:"current"
+   *  （见 routes/account.ts：一键拉黑只给消息级），所以这里只填进输入框，仍由用户按「添加」确认 */
+  viewerIp: string
+  onAdd: (ip: string) => Promise<string | undefined>
   onRemove: (ip: string) => void
 }) {
   const [draft, setDraft] = useState('')
   const [err, setErr] = useState<string | undefined>(undefined)
+  const [busy, setBusy] = useState(false)
 
-  const submit = (value: string) => {
+  const submit = async (value: string) => {
     const v = value.trim()
     if (!validIp(v)) {
       setErr(lang === 'zh' ? '请输入合法的 IPv4 地址，例如 203.0.113.7' : 'Enter a valid IPv4 address')
       return
     }
-    const dup = onAdd(v)
-    if (dup) {
-      setErr(dup)
+    setBusy(true)
+    const msg = await onAdd(v)
+    setBusy(false)
+    if (msg) {
+      setErr(msg)
       return
     }
     setErr(undefined)
@@ -495,8 +543,8 @@ export function Screen2_AccountIpBlock({
           </CardTitle>
           <CardDescription>
             {lang === 'zh'
-              ? `作用域：你名下全部消息 · 当前 ${blocks.count} 条`
-              : `Scoped to every message you own · ${blocks.count} entries`}
+              ? `作用域：你名下全部消息 · 当前 ${fmtNum(blocks?.count ?? 0)} 条`
+              : `Scoped to every message you own · ${fmtNum(blocks?.count ?? 0)} entries`}
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
@@ -515,7 +563,7 @@ export function Screen2_AccountIpBlock({
                 aria-label={lang === 'zh' ? '要拉黑的 IP' : 'IP to block'}
               />
               <InputGroupAddon align="inline-end">
-                <Button variant="secondary" size="sm" onClick={() => submit(draft)}>
+                <Button variant="secondary" size="sm" loading={busy} disabled={busy} onClick={() => void submit(draft)}>
                   {t(lang, 'add')}
                 </Button>
               </InputGroupAddon>
@@ -527,22 +575,39 @@ export function Screen2_AccountIpBlock({
             )}
           </div>
 
+          {/* 只预填不自动提交：账户级一键拉黑会把本人以后所有消息的访问都挡掉，
+              服务器刻意不给这个 scope 开 action:"current"，界面就不该替用户按下确认 */}
           <Button
             variant="outline"
             size="sm"
             className="self-start"
-            onClick={() => submit(CURRENT_VISITOR_IP)}
+            disabled={!validIp(viewerIp)}
+            title={validIp(viewerIp) ? undefined : lang === 'zh' ? '服务器没能识别出你的来源 IP' : 'The server could not determine your IP'}
+            onClick={() => {
+              setDraft(viewerIp)
+              setErr(undefined)
+            }}
           >
             <MapPin className="size-3.5" />
-            {lang === 'zh' ? `屏蔽我当前的 IP（${CURRENT_VISITOR_IP}）` : `Block my current IP (${CURRENT_VISITOR_IP})`}
+            {lang === 'zh' ? `填入我当前的 IP（${viewerIp}）` : `Fill in my current IP (${viewerIp})`}
           </Button>
 
-          {blocks.ips.length === 0 ? (
+          {state === 'loading' ? (
+            <TypographyMuted className="py-6 text-center text-sm">
+              {lang === 'zh' ? '正在读取黑名单…' : 'Loading blocklist…'}
+            </TypographyMuted>
+          ) : state === 'error' ? (
+            <Alert variant="destructive">
+              <AlertDescription>
+                {lang === 'zh' ? '黑名单读取失败。下面的添加与移除操作暂时不要做，先刷新页面重试。' : 'Could not load the blocklist. Refresh this page before adding or removing entries.'}
+              </AlertDescription>
+            </Alert>
+          ) : (blocks?.ips.length ?? 0) === 0 ? (
             <TypographyMuted className="py-6 text-center text-sm">
               {lang === 'zh' ? '还没有拉黑过任何 IP' : 'No IPs blocked yet'}
             </TypographyMuted>
           ) : (
-            <ResponsiveTable columns={columns} data={blocks.ips} primary="ip" metaKey="createdAt" />
+            <ResponsiveTable columns={columns} data={blocks?.ips ?? []} primary="ip" metaKey="createdAt" />
           )}
 
           <Alert variant="info">
@@ -643,15 +708,23 @@ export function Screen2_AccountIpBlock({
    ================================================ */
 export function Screen3_DangerZone({
   lang,
+  wxId,
+  messageCount,
+  totalReads,
   onCleared,
 }: {
   lang: Lang
+  wxId: string
+  messageCount: number
+  /** null = 统计还在取或没取到。不可逆动作不能让人在"不知道会删掉多少"的情况下确认 */
+  totalReads: number | null
+  /** 清除成功后由上层刷新会话与本页数据；失败时不会被调用 */
   onCleared?: () => void
 }) {
   const [open, setOpen] = useState(false)
   const [confirm, setConfirm] = useState('')
-  const mine = mockMessages.filter((m) => m.wxId === mockSession.wxId)
-  const readsTotal = mine.reduce((a, m) => a + m.reads, 0)
+  const [busy, setBusy] = useState(false)
+  const readsLabel = totalReads === null ? '…' : fmtNum(totalReads)
 
   return (
     <Card>
@@ -670,11 +743,17 @@ export function Screen3_DangerZone({
             <div className="text-sm font-medium">{lang === 'zh' ? '清除我的全部消息' : 'Clear all my messages'}</div>
             <TypographyMuted className="text-xs">
               {lang === 'zh'
-                ? `将删除 ${fmtNum(mine.length)} 条消息与 ${fmtNum(readsTotal)} 条已读记录；账号、配额与 IP 黑名单保留。`
-                : `Removes ${fmtNum(mine.length)} messages and ${fmtNum(readsTotal)} read rows; account, quota and blocklists stay.`}
+                ? `将删除 ${fmtNum(messageCount)} 条消息与 ${readsLabel} 条已读记录；账号、配额与 IP 黑名单保留。`
+                : `Removes ${fmtNum(messageCount)} messages and ${readsLabel} read rows; account, quota and blocklists stay.`}
             </TypographyMuted>
           </div>
-          <Button variant="destructive" size="md" onClick={() => setOpen(true)}>
+          <Button
+            variant="destructive"
+            size="md"
+            disabled={totalReads === null}
+            title={totalReads === null ? (lang === 'zh' ? '正在统计将被删除的记录数' : 'Still counting what would be deleted') : undefined}
+            onClick={() => setOpen(true)}
+          >
             <Trash className="size-4" />
             {lang === 'zh' ? '清除我的' : 'Clear mine'}
           </Button>
@@ -692,24 +771,24 @@ export function Screen3_DangerZone({
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2">
               <TriangleAlert className="size-4 text-error" />
-              {lang === 'zh' ? `清除 ${fmtNum(mine.length)} 条消息？` : `Clear ${fmtNum(mine.length)} messages?`}
+              {lang === 'zh' ? `清除 ${fmtNum(messageCount)} 条消息？` : `Clear ${fmtNum(messageCount)} messages?`}
             </AlertDialogTitle>
             <AlertDialogDescription>
               {lang === 'zh'
-                ? `同时删除 ${fmtNum(readsTotal)} 条已读记录，所有已发出的打点链接立即失效。账号本身、等级权益与 IP 黑名单不受影响。`
-                : `Also deletes ${fmtNum(readsTotal)} read rows and breaks every tracking link already sent. Your account, level and blocklist are untouched.`}
+                ? `同时删除 ${readsLabel} 条已读记录，所有已发出的打点链接立即失效。账号本身、等级权益与 IP 黑名单不受影响。`
+                : `Also deletes ${readsLabel} read rows and breaks every tracking link already sent. Your account, level and blocklist are untouched.`}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <Separator />
           <Field orientation="vertical">
             <FieldLabel htmlFor="clear-confirm">
-              {lang === 'zh' ? `逐字输入 ${mockSession.wxId} 以确认` : `Type ${mockSession.wxId} to confirm`}
+              {lang === 'zh' ? `逐字输入 ${wxId} 以确认` : `Type ${wxId} to confirm`}
             </FieldLabel>
             <Input
               id="clear-confirm"
               value={confirm}
               onChange={(e) => setConfirm(e.target.value)}
-              placeholder={mockSession.wxId}
+              placeholder={wxId}
               className="font-mono"
             />
             <FieldDescription>
@@ -719,13 +798,23 @@ export function Screen3_DangerZone({
           <AlertDialogFooter>
             <AlertDialogCancel>{t(lang, 'cancel')}</AlertDialogCancel>
             <AlertDialogAction
-              disabled={confirm !== mockSession.wxId}
-              onClick={() => {
+              disabled={confirm !== wxId || busy}
+              onClick={async () => {
+                setBusy(true)
+                try {
+                  await clearMyMessages()
+                } catch {
+                  setBusy(false)
+                  /* 删失败时对话框保持打开：用户已经逐字确认过一遍，不该让他再输一次 */
+                  toast.error(lang === 'zh' ? '清除失败，请稍后重试' : 'Could not clear — try again')
+                  return
+                }
+                setBusy(false)
                 setOpen(false)
                 setConfirm('')
+                toast.success(lang === 'zh' ? `已清除 ${fmtNum(messageCount)} 条消息` : `Cleared ${fmtNum(messageCount)} messages`)
                 onCleared?.()
-                toast.success(lang === 'zh' ? `已清除 ${fmtNum(mine.length)} 条消息` : `Cleared ${fmtNum(mine.length)} messages`)
-                /* → 确认 → 退出 flow，回到 FLOW 2 空列表 */
+                /* → 成功 → 上层刷新会话与本页计数，回到总览 */
               }}
             >
               {lang === 'zh' ? '确认清除' : 'Clear all'}
@@ -741,31 +830,55 @@ export function Screen3_DangerZone({
 
 export function Flow6_Account({
   lang = 'zh',
+  session,
   onLogout,
+  onPasswordChanged,
   onCleared,
 }: {
   lang?: Lang
+  session: Session
   onLogout?: () => void
+  onPasswordChanged?: () => void
   onCleared?: () => void
 }) {
-  const [blocks, setBlocks] = useState<IpBlockList>({
-    count: mockAccountBlock.ips.length,
-    ips: [...mockAccountBlock.ips],
-  })
+  const stats = useResource<AccountStatsDto>(ACCOUNT_STATS_URL)
+  const blocks = useResource<IpBlockList>(ACCOUNT_BLOCK_URL)
+  const audit = useResource<AuditDto>(accountAuditUrl(10))
 
-  const add = (ip: string): string | undefined => {
-    if (blocks.ips.some((b) => b.ip === ip))
-      return lang === 'zh' ? `${ip} 已在你的黑名单中` : `${ip} is already on your blocklist`
-    setBlocks((b) => ({
-      count: b.count + 1,
-      ips: [{ ip, createdAt: '2026-09-18 12:00:00' }, ...b.ips],
-    }))
+  const auditState = audit.error ? 'error' : audit.loading && !audit.data ? 'loading' : 'ready'
+  const blockState = blocks.error ? 'error' : blocks.loading && !blocks.data ? 'loading' : 'ready'
+
+  /** 添加 / 移除都会写审计，所以三个资源一起重取：留痕区不跟着变就是自相矛盾的画面 */
+  const refreshAll = () => {
+    blocks.reload()
+    audit.reload()
+    stats.reload()
+  }
+
+  const add = async (ip: string): Promise<string | undefined> => {
+    try {
+      await addAccountBlock(ip)
+    } catch (e) {
+      if (e instanceof ApiError && e.code.includes('exists')) {
+        return lang === 'zh' ? `${ip} 已在你的黑名单中` : `${ip} is already on your blocklist`
+      }
+      return lang === 'zh' ? '拉黑失败，请稍后重试' : 'Could not blocklist — try again'
+    }
+    refreshAll()
     return undefined
   }
 
-  const remove = (ip: string) => {
-    setBlocks((b) => ({ count: Math.max(0, b.count - 1), ips: b.ips.filter((x) => x.ip !== ip) }))
-    toast.success(lang === 'zh' ? '已移出黑名单，历史记录需重新钻取' : 'Unblocked')
+  const remove = async (ip: string) => {
+    try {
+      await removeAccountBlock(ip)
+    } catch {
+      toast.error(lang === 'zh' ? '移出失败，请稍后重试' : 'Could not unblock — try again')
+      return
+    }
+    toast.success(
+      lang === 'zh' ? '已移出黑名单；历史读记录仍在库中，重新钻取即可看到' : 'Unblocked; historic rows stay in the store',
+    )
+    refreshAll()
   }
 
   return (
@@ -777,11 +890,40 @@ export function Flow6_Account({
             ? '这一区从主导航下沉到头像下拉 —— 日常用不到，但改起来影响面大。'
             : 'Settings live behind the avatar menu, not in the primary nav.'}
         </TypographyMuted>
+        {stats.error && (
+          <TypographyMuted className="mt-1 block text-xs text-error">
+            {lang === 'zh' ? '账户统计没取到，下方数字可能偏旧。' : 'Account stats could not be loaded — the numbers below may be stale.'}
+          </TypographyMuted>
+        )}
       </div>
 
-      <Screen1_AccountOverview lang={lang} onLogout={onLogout} />
-      <Screen2_AccountIpBlock blocks={blocks} lang={lang} onAdd={add} onRemove={remove} />
-      <Screen3_DangerZone lang={lang} onCleared={onCleared} />
+      <Screen1_AccountOverview
+        lang={lang}
+        session={session}
+        totalReads={stats.data?.totalReads ?? null}
+        audit={audit.data ? toAuditEntries(audit.data) : []}
+        auditState={auditState}
+        onLogout={onLogout}
+        onPasswordChanged={onPasswordChanged}
+      />
+      <Screen2_AccountIpBlock
+        blocks={blocks.data ?? null}
+        state={blockState}
+        lang={lang}
+        viewerIp={stats.data?.viewerIp ?? ''}
+        onAdd={add}
+        onRemove={remove}
+      />
+      <Screen3_DangerZone
+        lang={lang}
+        wxId={session.wxId}
+        messageCount={session.messageCount}
+        totalReads={stats.data?.totalReads ?? null}
+        onCleared={() => {
+          refreshAll()
+          onCleared?.()
+        }}
+      />
     </div>
   )
 }

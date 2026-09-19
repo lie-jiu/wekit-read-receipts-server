@@ -32,11 +32,15 @@ export const signOutRequest = (): Promise<{ ok: true }> => api.post<{ ok: true }
  * POST /auth/password。注意服务器的副作用：改密会删除该用户全部会话（含当前这条），
  * 所以调用方拿到 ok 之后必须把本地登录态清掉并回登录页，
  * 否则下一个请求就是 401。
+ *
+ * 走 postQuiet：这里的 401 是「当前密码填错了」，不是会话过期。
+ * 不静音的话，用户输错一次旧密码就会被全局 401 广播踢到登录页，
+ * 而对话框里那句「当前密码不正确」根本没机会显示（实测踩到）。
  */
 export const changePassword = (body: {
   oldPassword: string
   newPassword: string
-}): Promise<{ ok: true }> => api.post<{ ok: true }>('/auth/password', body)
+}): Promise<{ ok: true }> => api.postQuiet<{ ok: true }>('/auth/password', body)
 
 /** 状态码 → 判别联合。服务器没有 Retry-After 头，倒计时用 /auth/status 给的窗口长度 */
 export function toAuthError(e: unknown, retryAfterSeconds: number): AuthError {

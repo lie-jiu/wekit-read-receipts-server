@@ -320,16 +320,29 @@ function AdminConfigPage() {
 }
 
 function AccountPage() {
-  const { lang, signOut } = useApp()
+  const { lang, signOut, refresh } = useApp()
+  const session = useSession()
   const navigate = useNavigate()
   return (
     <Flow6_Account
       lang={lang}
+      session={session}
       onLogout={() => {
         signOut()
         navigate(ROUTE_LOGIN, { replace: true })
       }}
-      onCleared={() => navigate(OVERVIEW_PATH)}
+      onPasswordChanged={() => {
+        // 服务器改密时已经删掉该账号全部会话，这里要做的只是让本地立刻承认"没登录"。
+        // 用 refresh() 不行：它是异步的，在这一次往返之间 signedIn 仍为 true，
+        // 登录页会据此把人弹回 /overview，再被 401 弹回登录页 —— 实测到的一次闪屏。
+        // signOut() 多发的 /auth/logout 打向一条已不存在的会话，服务器回 ok，顺带清掉浏览器里那条旧 cookie。
+        signOut()
+        navigate(ROUTE_LOGIN, { replace: true })
+      }}
+      onCleared={() => {
+        refresh() // messageCount 变了：不重问 /me，配额卡会一直停在清除前的数字
+        navigate(OVERVIEW_PATH)
+      }}
     />
   )
 }

@@ -52,8 +52,8 @@ function looksLikeJson(res: Response): boolean {
   return (res.headers.get("content-type") ?? "").includes("application/json");
 }
 
-async function toError(res: Response): Promise<ApiError> {
-  if (res.status === 401) {
+async function toError(res: Response, quietUnauthorized = false): Promise<ApiError> {
+  if (res.status === 401 && !quietUnauthorized) {
     // 广播而不是在这里跳转：路由跳转会和 React 的渲染阶段打架
     for (const fn of [...unauthorizedListeners]) fn();
   }
@@ -80,6 +80,12 @@ export type RequestOptions = {
   signal?: AbortSignal;
   /** POST/PATCH 的 JSON body；GET 不要传 */
   body?: unknown;
+  /**
+   * 这个请求的 401 不代表会话失效，不要广播。
+   * /auth/password 就是这种情况：它回 401 说的是「当前密码填错了」，
+   * 而广播会把用户当成会话过期踢回登录页 —— 实测过：填错一次旧密码就整个人被登出。
+   */
+  quietUnauthorized?: boolean;
 };
 
 async function send<T>(method: string, path: string, opts: RequestOptions = {}): Promise<T> {
@@ -98,7 +104,7 @@ async function send<T>(method: string, path: string, opts: RequestOptions = {}):
     if ((e as Error)?.name === "AbortError") throw e;
     throw new ApiError(0, "network_unavailable", "无法连接服务器");
   }
-  if (!res.ok) throw await toError(res);
+  if (!res.ok) throw await toError(res, opts.quietUnauthorized);
   if (res.status === 204) return undefined as T;
   if (!looksLikeJson(res)) {
     // 2xx 但不是 JSON：几乎一定是命中了 SSR 页面，宁可抛错也不要静默返回垃圾
@@ -111,6 +117,9 @@ async function send<T>(method: string, path: string, opts: RequestOptions = {}):
 export const api = {
   get: <T>(path: string, signal?: AbortSignal) => send<T>("GET", path, { signal }),
   post: <T>(path: string, body?: unknown, signal?: AbortSignal) => send<T>("POST", path, { body, signal }),
+  /** 401 不广播会话失效的 POST —— 见 RequestOptions.quietUnauthorized */
+  postQuiet: <T>(path: string, body?: unknown, signal?: AbortSignal) =>
+    send<T>("POST", path, { body, signal, quietUnauthorized: true }),
   del: <T>(path: string, signal?: AbortSignal) => send<T>("DELETE", path, { signal }),
   /**
    * 列表接口里 GET /messages 用 X-Total-Count 给总数（裸数组 body），
