@@ -1,0 +1,1600 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Design Brief — wekit-read-insights</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600&family=DM+Mono:wght@300;400;500&family=DM+Sans:wght@300;400;500&family=EB+Garamond:wght@400;500&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+
+    /* ════════════════════════════════════════
+       THEME SYSTEM — 9 themes via data-theme
+       Default: chalk
+    ════════════════════════════════════════ */
+
+    :root {
+      --page-bg:      #dcdcda;
+      --brief-bg:     #f7f7f4;
+      --card-bg:      #ffffff;
+      --text:         #26251e;
+      --text-body:    #5a5852;
+      --muted:        #8c8981;
+      --border:       #e8e8e4;
+      --accent:       #f54e00;
+      --topbar-text:  #5a5852;
+      --font-ui:      'Inter', 'Noto Sans SC', -apple-system, sans-serif;
+      --font-display: 'Inter', 'Noto Sans SC', -apple-system, sans-serif;
+      --font-mono:    var(--font-ui);
+      --btn-bg:       #26251e;
+      --btn-text:     #ffffff;
+      --ghost-text:   #5a5852;
+      --ghost-border: #e8e8e4;
+      /* ── decorative / typographic tokens ── */
+      --orb-1-opacity:  0;
+      --orb-2-opacity:  0;
+      --card-blur:      0px;
+      --card-border:    var(--border);
+      --bullet:         '·';
+      --bullet-color:   var(--accent);
+      --brief-radius:   12px;
+      --title-size:     17px;
+      --title-weight:   600;
+      --body-size:      12px;
+      --body-weight:    400;
+      --hint-size:      10px;
+      --label-weight:   600;
+      /* ── 扩展字号 token（配合 --size-mult 等比缩放） ── */
+      --label-size:     13px;   /* 卡片主题名（中文） */
+      --label-en-size:  10px;   /* 卡片主题名（英文 / label span） */
+      --meta-size:      12px;   /* topbar meta / brand */
+      --sub-size:       11px;   /* 策略子项标题 s-item b */
+      --small-size:     10px;   /* .sub 子分组标签 */
+      --bullet-size:    14px;   /* 列表符号 */
+      --size-mult:      1;
+    }
+
+    body[data-scale="sm"] { --size-mult: 1;    }
+    body[data-scale="md"] { --size-mult: 1.2;  }
+    body[data-scale="lg"] { --size-mult: 1.45; }
+
+    body[data-theme="chalk"] {
+      --page-bg:      #dcdcda;
+      --brief-bg:     #f7f7f4;
+      --card-bg:      #ffffff;
+      --text:         #26251e;
+      --text-body:    #5a5852;
+      --muted:        #8c8981;
+      --border:       #e8e8e4;
+      --accent:       #f54e00;
+      --topbar-text:  #5a5852;
+      --font-ui:      'Inter', 'Noto Sans SC', sans-serif;
+      --font-display: 'Inter', 'Noto Sans SC', sans-serif;
+      --btn-bg:       #26251e;
+      --btn-text:     #ffffff;
+      --ghost-text:   #5a5852;
+      --ghost-border: #e8e8e4;
+    }
+
+    body[data-theme="parchment"] {
+      --page-bg:      #d4cfc7;
+      --brief-bg:     #faf9f5;
+      --card-bg:      #efe9de;
+      --text:         #141413;
+      --text-body:    #3d3d3a;
+      --muted:        #6c6a64;
+      --border:       #e6dfd8;
+      --accent:       #cc785c;
+      --topbar-text:  #3d3d3a;
+      --font-ui:      'Inter', 'Noto Sans SC', sans-serif;
+      --font-display: 'Cormorant Garamond', 'Noto Serif SC', Georgia, serif;
+      --btn-bg:       #141413;
+      --btn-text:     #faf9f5;
+      --ghost-text:   #3d3d3a;
+      --ghost-border: #e6dfd8;
+    }
+
+    body[data-theme="script"] {
+      --page-bg:      #e2e2de;
+      --brief-bg:     #f5f5f5;
+      --card-bg:      rgba(255,255,255,0.72);
+      --text:         #0c0a09;
+      --text-body:    #292524;
+      --muted:        #6b6b6b;
+      --border:       #e5e5e2;
+      --accent:       #2bb5a0;
+      --topbar-text:  #292524;
+      --font-ui:      'Inter', 'Noto Sans SC', sans-serif;
+      --font-display: 'EB Garamond', 'Noto Serif SC', Georgia, serif;
+      --btn-bg:       #0c0a09;
+      --btn-text:     #ffffff;
+      --ghost-text:   #292524;
+      --ghost-border: #e5e5e2;
+      /* ── script-specific tokens ── */
+      --card-blur:      8px;
+      --card-border:    rgba(255,255,255,0.9);
+      --orb-1-opacity:  0.35;
+      --orb-2-opacity:  0.30;
+      --bullet:         '—';
+      --brief-radius:   16px;
+      --title-size:     20px;
+      --title-weight:   300;
+      --body-size:      11px;
+      --body-weight:    300;
+      --hint-size:      9.5px;
+      --label-weight:   500;
+    }
+
+    body[data-theme="noir"] {
+      --page-bg:      #0a0a0a;
+      --brief-bg:     #000000;
+      --card-bg:      #141414;
+      --text:         #ffffff;
+      --text-body:    #cccccc;
+      --muted:        #999999;
+      --border:       #262626;
+      --accent:       #b8a882;
+      --topbar-text:  #999999;
+      --font-ui:      'Cormorant Garamond', 'Noto Serif SC', Georgia, serif;
+      --font-display: 'Cormorant Garamond', 'Noto Serif SC', Georgia, serif;
+      --btn-bg:       #ffffff;
+      --btn-text:     #000000;
+      --ghost-text:   #cccccc;
+      --ghost-border: #262626;
+      --card-border:  #1e1e1e;
+    }
+
+    body[data-theme="frame"] {
+      --page-bg:      #060606;
+      --brief-bg:     #0a0a0a;
+      --card-bg:      #111111;
+      --text:         #f2f2f0;
+      --text-body:    #9a9a96;
+      --muted:        #5a5a58;
+      --border:       #272727;
+      --accent:       #767d88;
+      --topbar-text:  #9a9a96;
+      --font-ui:      'DM Sans', 'Noto Sans SC', sans-serif;
+      --font-display: 'DM Sans', 'Noto Sans SC', sans-serif;
+      --font-mono:    'DM Mono', monospace;
+      --btn-bg:       #f2f2f0;
+      --btn-text:     #0a0a0a;
+      --ghost-text:   #9a9a96;
+      --ghost-border: #272727;
+      /* ── frame-specific tokens ── */
+      --card-border:    #272727;
+      --bullet:         '/';
+      --title-size:     16px;
+      --title-weight:   300;
+      --body-size:      10.5px;
+      --body-weight:    300;
+      --hint-size:      9.5px;
+      --label-weight:   400;
+    }
+    /* frame: bullet 用 mono 字体 */
+    body[data-theme="frame"] .list li::before {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 300;
+      color: var(--muted);
+      line-height: 1.55;
+    }
+    /* frame: .sub 标签用 mono */
+    body[data-theme="frame"] .sub {
+      font-family: var(--font-mono);
+      font-weight: 300;
+      letter-spacing: 0.12em;
+    }
+    /* frame: strategy items 竖线分隔布局 */
+    body[data-theme="frame"] .s-grid { gap: 0; }
+    body[data-theme="frame"] .s-item {
+      background: transparent;
+      border-radius: 0;
+      padding: 0 14px 0 0;
+      border-right: 1px solid var(--border);
+    }
+    body[data-theme="frame"] .s-item:not(:first-child) { padding-left: 14px; }
+    body[data-theme="frame"] .s-item:last-child { border-right: none; padding-right: 0; }
+    body[data-theme="frame"] .s-item b {
+      font-size: 10.5px;
+      font-weight: 400;
+      color: var(--text);
+      letter-spacing: -0.01em;
+    }
+    body[data-theme="frame"] .s-item p { font-weight: 300; }
+    /* frame: .num 用 mono 渲染数字 */
+    body[data-theme="frame"] .num {
+      font-family: var(--font-mono);
+      font-weight: 300;
+      color: var(--text);
+      font-size: 0.95em;
+    }
+    body[data-theme="frame"] strong.num { font-weight: 400; }
+
+    body[data-theme="onyx"] {
+      --page-bg:      #000000;
+      --brief-bg:     #02090a;
+      --card-bg:      #061a1c;
+      --text:         #f4f4f0;
+      --text-body:    #a1a1aa;
+      --muted:        #52525b;
+      --border:       rgba(255,255,255,0.07);
+      --accent:       #36f4a4;
+      --topbar-text:  #a1a1aa;
+      --font-ui:      'Inter', 'Noto Sans SC', sans-serif;
+      --font-display: 'Inter', 'Noto Sans SC', sans-serif;
+      --font-mono:    'JetBrains Mono', monospace;
+      --btn-bg:       var(--accent);
+      --btn-text:     #000000;
+      --ghost-text:   #a1a1aa;
+      --ghost-border: rgba(255,255,255,0.14);
+      /* ── onyx-specific tokens ── */
+      --card-border:    rgba(255,255,255,0.07);
+      --bullet:         '—';
+      --bullet-color:   color-mix(in srgb, var(--accent) 35%, transparent);
+      --brief-radius:   16px;
+      --title-size:     16px;
+      --title-weight:   200;
+      --body-size:      10.5px;
+      --body-weight:    300;
+      --hint-size:      9.5px;
+      --label-weight:   400;
+      --orb-1-opacity:  1;
+    }
+    /* onyx: teal glow — 覆盖默认 pastel 渐变 */
+    body[data-theme="onyx"] .brief::before {
+      background: radial-gradient(circle, color-mix(in srgb, var(--accent) 8%, transparent) 0%, transparent 70%);
+      top: -40px; right: -40px;
+      width: 200px; height: 200px;
+    }
+    /* onyx: SVG 图标用 neon 色 */
+    body[data-theme="onyx"] .label svg { color: var(--accent); }
+    /* onyx: label 英文副标题用 mono */
+    body[data-theme="onyx"] .label span {
+      font-family: var(--font-mono);
+      font-size: 9px;
+      letter-spacing: 0.08em;
+    }
+    /* onyx: bullet 用 em dash 细体 */
+    body[data-theme="onyx"] .list li::before {
+      font-weight: 300;
+      font-size: 10.5px;
+      line-height: 1.55;
+    }
+    /* onyx: .sub 标签用 mono */
+    body[data-theme="onyx"] .sub {
+      font-family: var(--font-mono);
+      font-weight: 300;
+      font-size: 8.5px;
+      letter-spacing: 0.12em;
+    }
+    /* onyx: strategy 竖线分隔布局 */
+    body[data-theme="onyx"] .s-grid { gap: 0; }
+    body[data-theme="onyx"] .s-item {
+      background: transparent;
+      border-radius: 0;
+      padding: 0 14px 0 0;
+      border-right: 1px solid var(--border);
+    }
+    body[data-theme="onyx"] .s-item:not(:first-child) { padding-left: 14px; }
+    body[data-theme="onyx"] .s-item:last-child { border-right: none; padding-right: 0; }
+    body[data-theme="onyx"] .s-item b {
+      font-size: 10.5px;
+      font-weight: 400;
+      color: var(--accent);
+      letter-spacing: -0.01em;
+    }
+    body[data-theme="onyx"] .s-item p { font-weight: 300; }
+    /* onyx: .num 用 mono，strong.num 高亮 neon */
+    body[data-theme="onyx"] .num {
+      font-family: var(--font-mono);
+      font-weight: 300;
+      font-size: 0.95em;
+    }
+    body[data-theme="onyx"] strong.num {
+      color: var(--accent);
+      font-weight: 400;
+    }
+
+    body[data-theme="stone"] {
+      --page-bg:      #dcdcdc;
+      --brief-bg:     #f2f2f2;
+      --card-bg:      #ffffff;
+      --text:         #1a1a1a;
+      --text-body:    #3a3a3a;
+      --muted:        #767676;
+      --border:       #e0e0e0;
+      --accent:       #6b6b6b;
+      --topbar-text:  #5a5a5a;
+      --font-ui:      'DM Mono', 'Noto Sans SC', monospace;
+      --font-display: 'DM Mono', monospace;
+      --btn-bg:       #1a1a1a;
+      --btn-text:     #ffffff;
+      --ghost-text:   #5a5a5a;
+      --ghost-border: #e0e0e0;
+    }
+
+    body[data-theme="slate"] {
+      --page-bg:      #e8edf3;
+      --brief-bg:     #f6f9fc;
+      --card-bg:      #ffffff;
+      --text:         #061b31;
+      --text-body:    #425466;
+      --muted:        #64748d;
+      --border:       #e3e8ee;
+      --accent:       #533afd;
+      --topbar-text:  #425466;
+      --font-ui:      'Inter', 'Noto Sans SC', sans-serif;
+      --font-display: 'Inter', 'Noto Sans SC', sans-serif;
+      --btn-bg:       var(--accent);
+      --btn-text:     #ffffff;
+      --ghost-text:   #425466;
+      --ghost-border: #e3e8ee;
+    }
+
+    body[data-theme="terminal"] {
+      --page-bg:      #131518;
+      --brief-bg:     #1f2228;
+      --card-bg:      rgba(255,255,255,0.04);
+      --text:         #ffffff;
+      --text-body:    rgba(255,255,255,0.70);
+      --muted:        rgba(255,255,255,0.40);
+      --border:       rgba(255,255,255,0.10);
+      --card-border:  rgba(255,255,255,0.05);
+      --accent:       rgba(255,255,255,0.35);
+      --topbar-text:  rgba(255,255,255,0.45);
+      --font-ui:      'JetBrains Mono', 'Noto Sans SC', monospace;
+      --font-display: 'JetBrains Mono', monospace;
+      --btn-bg:       rgba(255,255,255,0.12);
+      --btn-text:     #ffffff;
+      --ghost-text:   rgba(255,255,255,0.45);
+      --ghost-border: rgba(255,255,255,0.15);
+    }
+
+    /* ════════════════════════════════════════
+       BASE LAYOUT
+    ════════════════════════════════════════ */
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--page-bg);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      padding: 40px 32px;
+      font-family: var(--font-ui);
+      transition: background 0.2s ease;
+    }
+
+    /* ── Top Bar ── */
+    .topbar {
+      width: 100%;
+      max-width: 1280px;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      gap: 16px;
+      margin-bottom: 14px;
+    }
+    .topbar > div { min-width: 0; }
+    .topbar-title {
+      font-size: calc(var(--title-size) * var(--size-mult, 1));
+      font-weight: var(--title-weight);
+      color: var(--topbar-text);
+      letter-spacing: -0.01em;
+      font-family: var(--font-display);
+      white-space: nowrap;
+      transition: color 0.2s, font-size 0.2s, background 0.15s ease, box-shadow 0.15s ease;
+      border-radius: 4px;
+    }
+    /* 标题 / 元信息 + 编辑按钮 容器：仅在 hover 或编辑态显示按钮
+       注意：使用 block-level flex（而非 inline-flex），让 title-wrap 与 meta-wrap 垂直堆叠，
+       保持与原先两个 <p> 相同的块级布局，避免导出时 meta 被下方 cards 遮挡。 */
+    .topbar-title-wrap,
+    .topbar-meta-wrap {
+      display: flex;
+      align-items: center;
+      flex-wrap: nowrap;
+      white-space: nowrap;
+      gap: 6px;
+      width: max-content;
+      max-width: 100%;
+    }
+    .topbar-title-wrap > .topbar-title,
+    .topbar-meta-wrap > .topbar-meta {
+      flex: 0 0 auto;
+      min-width: 0;
+    }
+    .topbar-meta-wrap { margin-top: 3px; }
+    .topbar-meta-wrap .topbar-meta { margin-top: 0; }
+    .topbar-title-edit,
+    .topbar-meta-edit {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 22px;
+      height: 22px;
+      padding: 0;
+      border: 0;
+      border-radius: 4px;
+      background: transparent;
+      color: var(--topbar-text);
+      opacity: 0;
+      visibility: hidden;
+      cursor: pointer;
+      transition: opacity 0.15s ease, background 0.15s ease;
+      flex-shrink: 0;
+    }
+    .topbar-meta-edit { width: 20px; height: 20px; }
+    .topbar-title-edit svg,
+    .topbar-meta-edit svg { width: 13px; height: 13px; display: block; }
+    .topbar-meta-edit svg { width: 11px; height: 11px; }
+    .topbar-title-wrap:hover .topbar-title-edit,
+    .topbar-title-wrap.is-editing .topbar-title-edit,
+    .topbar-title-edit:focus-visible,
+    .topbar-meta-wrap:hover .topbar-meta-edit,
+    .topbar-meta-wrap.is-editing .topbar-meta-edit,
+    .topbar-meta-edit:focus-visible {
+      opacity: 0.7;
+      visibility: visible;
+    }
+    .topbar-title-edit:hover,
+    .topbar-meta-edit:hover {
+      opacity: 1;
+      background: color-mix(in srgb, var(--topbar-text) 10%, transparent);
+    }
+    /* 导出 PNG 期间：编辑按钮完全不占位，避免导致 wrap 压缩产生折行 */
+    body.is-exporting .topbar-title-edit,
+    body.is-exporting .topbar-meta-edit { display: none !important; }
+    /* 编辑态：给标题 / 元信息一个明确的可编辑视觉 */
+    .topbar-title[contenteditable="plaintext-only"],
+    .topbar-title[contenteditable="true"],
+    .topbar-meta[contenteditable="plaintext-only"],
+    .topbar-meta[contenteditable="true"] {
+      outline: none;
+      cursor: text;
+      padding: 2px 6px;
+      margin: -2px -6px;
+      background: color-mix(in srgb, var(--topbar-text) 8%, transparent);
+      box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--topbar-text) 22%, transparent);
+      opacity: 1;
+    }
+    .topbar-meta {
+      font-size: calc(var(--meta-size) * var(--size-mult));
+      color: var(--topbar-text);
+      opacity: 0.7;
+      margin-top: 3px;
+      white-space: nowrap;
+      border-radius: 4px;
+      transition: color 0.2s, font-size 0.2s, background 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
+    }
+    .topbar-brand {
+      font-size: calc(var(--meta-size) * var(--size-mult));
+      color: var(--topbar-text);
+      opacity: 0.45;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      white-space: nowrap;
+      flex-shrink: 0;
+      transition: color 0.2s, font-size 0.2s;
+    }
+
+    /* ── Cards Grid inside canvas ── */
+    /* 行高按"行内最高卡片"决定，而非平分画布剩余高度：
+       - grid-template-rows: min-content → 每行高度 = 该行最高卡片的内容高度
+       - align-content: start → grid tracks 靠顶排列，不把剩余空间拉到行间
+       - 画布宽度固定 1280px，高度完全跟内容走；所见即所导（不再强制 min-height 锁定比例） */
+    .cards-grid {
+      flex: 1;
+      min-height: auto;
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      grid-template-rows: repeat(3, min-content);
+      align-content: start;
+      gap: 10px;
+    }
+
+    /* ── Inner topbar (inside canvas) ── */
+    .brief > .topbar {
+      width: 100%;
+      max-width: none;
+      margin-bottom: 10px;
+      flex-shrink: 0;
+    }
+
+    /* ── Brief Canvas ── */
+    .brief {
+      background: var(--brief-bg);
+      width: 100%;
+      max-width: 1280px;
+      border-radius: var(--brief-radius);
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      overflow: visible;
+      transition: background 0.2s ease;
+    }
+
+    /* atmospheric orb decoration (visible only when --orb-N-opacity > 0) */
+    .brief::before {
+      content: '';
+      position: absolute;
+      top: -80px; right: -60px;
+      width: 280px; height: 280px;
+      background: radial-gradient(circle, #a7e5d3 0%, #b0d4f0 40%, transparent 70%);
+      border-radius: 50%;
+      opacity: var(--orb-1-opacity);
+      pointer-events: none;
+      transition: opacity 0.2s;
+    }
+    .brief::after {
+      content: '';
+      position: absolute;
+      bottom: -60px; left: 20%;
+      width: 220px; height: 220px;
+      background: radial-gradient(circle, #f4c5a8 0%, #c8b8e8 50%, transparent 70%);
+      border-radius: 50%;
+      opacity: var(--orb-2-opacity);
+      pointer-events: none;
+      transition: opacity 0.2s;
+    }
+
+    /* ── 16:9 default grid (4 col × 3 row) ── */
+    .m-context     { grid-column: 1 / 3; grid-row: 1; }
+    .m-goal        { grid-column: 3 / 4; grid-row: 1; }
+    .m-user        { grid-column: 4 / 5; grid-row: 1; }
+    .m-strategy    { grid-column: 1 / 4; grid-row: 2; }
+    .m-criteria    { grid-column: 4 / 5; grid-row: 2; }
+    .m-constraints { grid-column: 1 / 3; grid-row: 3; }
+    .m-scope       { grid-column: 3 / 5; grid-row: 3; }
+
+    /* ── 4:3 grid (6 col × 4 row，用 6 列实现 1.5 等分，设计策略跨 2 行) ── */
+    body[data-ratio="4-3"] .cards-grid  { grid-template-columns: repeat(6, 1fr); grid-template-rows: repeat(4, min-content); }
+    body[data-ratio="4-3"] .m-context     { grid-column: 1 / 4; grid-row: 1; }
+    body[data-ratio="4-3"] .m-goal        { grid-column: 4 / 7; grid-row: 1; }
+    body[data-ratio="4-3"] .m-user        { grid-column: 1 / 3; grid-row: 2; }
+    body[data-ratio="4-3"] .m-strategy    { grid-column: 3 / 7; grid-row: 2 / 4; }
+    body[data-ratio="4-3"] .m-criteria    { grid-column: 1 / 3; grid-row: 3; }
+    body[data-ratio="4-3"] .m-scope       { grid-column: 1 / 4; grid-row: 4; }
+    body[data-ratio="4-3"] .m-constraints { grid-column: 4 / 7; grid-row: 4; }
+
+    /* ── 1:1 grid (6 col × 4 row，用 6 列实现 1.5 等分) ── */
+    body[data-ratio="1-1"] .cards-grid  { grid-template-columns: repeat(6, 1fr); grid-template-rows: repeat(4, min-content); }
+    body[data-ratio="1-1"] .m-context     { grid-column: 1 / 7; grid-row: 1; }
+    body[data-ratio="1-1"] .m-goal        { grid-column: 1 / 3; grid-row: 2; }
+    body[data-ratio="1-1"] .m-user        { grid-column: 3 / 5; grid-row: 2; }
+    body[data-ratio="1-1"] .m-criteria    { grid-column: 5 / 7; grid-row: 2; }
+    body[data-ratio="1-1"] .m-strategy    { grid-column: 1 / 7; grid-row: 3; }
+    body[data-ratio="1-1"] .m-constraints { grid-column: 1 / 4; grid-row: 4; }
+    body[data-ratio="1-1"] .m-scope       { grid-column: 4 / 7; grid-row: 4; }
+
+    /* ── Card ── */
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 10px;
+      padding: 13px 15px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      overflow: hidden;
+      position: relative;
+      z-index: 1;
+      backdrop-filter: blur(var(--card-blur));
+      -webkit-backdrop-filter: blur(var(--card-blur));
+      transition: background 0.2s ease, border-color 0.2s ease;
+    }
+
+    .label {
+      font-size: calc(var(--label-size) * var(--size-mult));
+      font-weight: var(--label-weight);
+      color: var(--text);
+      font-family: var(--font-display);
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      row-gap: 2px;
+      gap: 6px;
+      transition: color 0.2s, font-size 0.2s;
+    }
+    .label svg {
+      flex-shrink: 0;
+      width: calc(13px * var(--size-mult));
+      height: calc(13px * var(--size-mult));
+      color: var(--muted);
+      transition: color 0.2s, width 0.2s, height 0.2s;
+    }
+    .label span {
+      font-size: calc(var(--label-en-size) * var(--size-mult));
+      font-weight: 400;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-left: 5px;
+      white-space: nowrap;
+      font-family: var(--font-ui);
+      transition: color 0.2s, font-size 0.2s;
+    }
+
+    /* mono number highlight — only renders visually in themes where --font-mono differs */
+    /* 实际样式已在 .list 区合并声明（含 white-space: nowrap）*/
+
+    .hint {
+      font-size: calc(var(--hint-size) * var(--size-mult));
+      color: var(--muted);
+      line-height: 1.5;
+      padding-bottom: 9px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 1px;
+      font-family: var(--font-ui);
+      transition: color 0.2s, border-color 0.2s, font-size 0.2s;
+    }
+
+    .card > p:not(.label):not(.hint) {
+      font-size: calc(var(--body-size) * var(--size-mult));
+      font-weight: var(--body-weight);
+      color: var(--text-body);
+      line-height: 1.75;
+      flex: 1;
+      font-family: var(--font-ui);
+      transition: color 0.2s, font-size 0.2s;
+    }
+
+    /* ── List ── */
+    .list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      font-size: calc(var(--body-size) * var(--size-mult));
+      font-weight: var(--body-weight);
+      color: var(--text-body);
+      flex: 1;
+      font-family: var(--font-ui);
+    }
+    .list li { display: flex; flex-wrap: wrap; gap: 6px; align-items: flex-start; line-height: 1.6; min-width: 0; }
+    /* 数字 / 标签：保持原子单位，不被逐字拆断 */
+    .num { font-family: var(--font-mono); font-size: 0.95em; white-space: nowrap; }
+    .list li::before {
+      content: var(--bullet);
+      color: var(--bullet-color);
+      flex-shrink: 0;
+      font-weight: 700;
+      font-size: calc(var(--bullet-size) * var(--size-mult));
+      line-height: 1.3;
+      transition: color 0.2s, font-size 0.2s;
+    }
+
+    /* ── Strategy Grid ── */
+    .s-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      flex: 1;
+    }
+    .s-item {
+      background: var(--brief-bg);
+      border-radius: 8px;
+      padding: 10px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      transition: background 0.2s ease;
+    }
+    .s-item b { font-size: calc(var(--sub-size) * var(--size-mult)); font-weight: 600; color: var(--accent); font-family: var(--font-display); transition: color 0.2s, font-size 0.2s; }
+    .s-item p { font-size: calc(var(--body-size) * var(--size-mult)); color: var(--text-body); line-height: 1.6; font-family: var(--font-ui); transition: color 0.2s, font-size 0.2s; }
+
+    /* ── Strategy 三段式：主张 / 手法 / 依据 ── */
+    .s-item .thesis {
+      font-size: calc(var(--body-size) * var(--size-mult));
+      color: var(--text);
+      font-weight: 500;
+      line-height: 1.55;
+      font-family: var(--font-ui);
+      margin: 0;
+    }
+    .s-item .tactics {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+    .s-item .tactics li {
+      font-size: calc(var(--body-size) * var(--size-mult) * 0.92);
+      color: var(--text-body);
+      line-height: 1.5;
+      font-family: var(--font-ui);
+      padding-left: 10px;
+      position: relative;
+    }
+    .s-item .tactics li::before {
+      content: '·';
+      position: absolute;
+      left: 2px;
+      top: -1px;
+      color: var(--muted);
+      font-weight: 700;
+    }
+    .s-item .rationale {
+      font-size: calc(var(--small-size) * var(--size-mult));
+      color: var(--muted);
+      font-family: var(--font-ui);
+      line-height: 1.45;
+      margin: 2px 0 0;
+      padding-top: 4px;
+      border-top: 1px dashed var(--border);
+      letter-spacing: 0.01em;
+    }
+    .s-item .rationale::before {
+      content: '依据 · ';
+      color: var(--muted);
+      opacity: 0.7;
+    }
+
+    /* ── Criteria Split ── */
+    .split { display: flex; flex-direction: column; gap: 10px; flex: 1; }
+    .sub {
+      font-size: calc(var(--small-size) * var(--size-mult));
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 2px;
+      font-family: var(--font-ui);
+      transition: color 0.2s, font-size 0.2s;
+    }
+
+    /* ── Criteria Tag ── 行首分类标签，tag 左置让 text 自然折行 */
+    .m-criteria .list li {
+      flex-wrap: nowrap;
+      align-items: flex-start;
+      min-width: 0;
+      gap: 8px;
+    }
+    /* text 作为最后一个 flex item，允许自然折行；
+       导出时三个 flex item 独立稳定，不再出现原子拆分错位 */
+    .m-criteria .list li .text {
+      flex: 1 1 auto;
+      min-width: 0;
+      white-space: normal;
+      word-break: break-word;
+    }
+    .m-criteria .list li .text .num {
+      display: inline-block;
+      white-space: nowrap;
+    }
+    .m-criteria .list .tag {
+      flex-shrink: 0;
+      white-space: nowrap;
+      padding: 1px 8px;
+      border-radius: 999px;
+      font-size: calc(var(--small-size) * var(--size-mult) * 0.92);
+      font-weight: 500;
+      line-height: 1.5;
+      letter-spacing: 0.02em;
+      color: var(--muted);
+      background: transparent;
+      border: 1px solid var(--border);
+      font-family: var(--font-ui);
+      transition: color 0.2s, border-color 0.2s, background 0.2s, font-size 0.2s;
+      /* 行内文字与 tag 纵向对齐：多行 text 时 tag 贴首行 */
+      margin-top: 1px;
+    }
+    .m-criteria .list .tag[data-kind="quant"] {
+      color: var(--accent);
+      border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+      background: color-mix(in srgb, var(--accent) 10%, transparent);
+    }
+
+    /* ════════════════════════════════════════
+       TOOLBAR
+    ════════════════════════════════════════ */
+
+    .toolbar {
+      width: 100%;
+      max-width: 1280px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-top: 14px;
+    }
+
+    .toolbar-left {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      flex-wrap: nowrap;
+      overflow: visible;
+    }
+
+    .toolbar-right {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+
+    .toolbar-divider {
+      width: 1px;
+      height: 18px;
+      background: var(--ghost-border);
+      flex-shrink: 0;
+      margin: 0 12px;
+      transition: background 0.2s;
+    }
+
+    /* Style buttons */
+    .toolbar-label {
+      font-size: 11px;
+      color: var(--muted);
+      font-family: var(--font-ui);
+      white-space: nowrap;
+      letter-spacing: 0.04em;
+    }
+
+    .theme-select {
+      padding: 5px 10px;
+      border-radius: 6px;
+      border: 1px solid var(--ghost-border);
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      font-family: var(--font-ui);
+      background: transparent;
+      color: var(--ghost-text);
+      transition: border-color 0.15s, color 0.15s;
+      appearance: auto;
+    }
+    .theme-select:hover { border-color: var(--muted); color: var(--text); }
+    .theme-select:focus { outline: none; border-color: var(--muted); }
+
+    /* Ratio button group */
+    .ratio-group {
+      display: flex;
+      border: 1px solid var(--ghost-border);
+      border-radius: 6px;
+      overflow: hidden;
+      flex-shrink: 0;
+      transition: border-color 0.2s;
+    }
+    .ratio-btn {
+      padding: 5px 11px;
+      border: none;
+      border-right: 1px solid var(--ghost-border);
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      font-family: var(--font-ui);
+      background: transparent;
+      color: var(--ghost-text);
+      transition: background 0.15s, color 0.15s, border-color 0.2s;
+      white-space: nowrap;
+    }
+    .ratio-btn:last-child { border-right: none; }
+    .ratio-btn:hover { background: var(--brief-bg); color: var(--text); }
+    .ratio-btn.active { background: var(--text); color: var(--brief-bg); }
+
+    /* Scale button group —— 与 ratio 同款视觉 */
+    .scale-group {
+      display: flex;
+      border: 1px solid var(--ghost-border);
+      border-radius: 6px;
+      overflow: hidden;
+      flex-shrink: 0;
+      transition: border-color 0.2s;
+    }
+    .scale-btn {
+      padding: 5px 11px;
+      border: none;
+      border-right: 1px solid var(--ghost-border);
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      font-family: var(--font-ui);
+      background: transparent;
+      color: var(--ghost-text);
+      transition: background 0.15s, color 0.15s, border-color 0.2s;
+      white-space: nowrap;
+    }
+    .scale-btn:last-child { border-right: none; }
+    .scale-btn:hover { background: var(--brief-bg); color: var(--text); }
+    .scale-btn.active { background: var(--text); color: var(--brief-bg); }
+
+    /* Action buttons */
+    .btn {
+      padding: 7px 16px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      font-family: var(--font-ui);
+      transition: opacity 0.15s;
+      white-space: nowrap;
+      border: none;
+    }
+    .btn:hover { opacity: 0.8; }
+
+    .btn-ghost {
+      background: transparent;
+      color: var(--ghost-text);
+      border: 1px solid var(--ghost-border);
+      transition: color 0.2s, border-color 0.2s;
+    }
+    .btn-primary {
+      background: var(--btn-bg);
+      color: var(--btn-text);
+      transition: background 0.2s, color 0.2s;
+    }
+    .btn-primary:disabled { opacity: 0.55; cursor: not-allowed; }
+
+    /* ── Script theme: strategy items use divider layout ── */
+    body[data-theme="script"] .s-grid { gap: 0; }
+    body[data-theme="script"] .s-item {
+      background: transparent;
+      border-radius: 0;
+      padding: 0 16px 0 0;
+      border-right: 1px solid var(--border);
+    }
+    body[data-theme="script"] .s-item:not(:first-child) { padding-left: 16px; }
+    body[data-theme="script"] .s-item:last-child { border-right: none; padding-right: 0; }
+    body[data-theme="script"] .s-item b {
+      font-family: var(--font-display);
+      font-size: 12px;
+      font-weight: 400;
+      color: var(--accent);
+    }
+    body[data-theme="script"] .list li::before {
+      color: var(--accent);
+    }
+    body[data-theme="script"] .s-item p { font-weight: 300; }
+
+    /* Accent color picker */
+    .accent-picker {
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      border: 2px solid var(--ghost-border);
+      padding: 2px;
+      cursor: pointer;
+      background: transparent;
+      -webkit-appearance: none;
+      appearance: none;
+      flex-shrink: 0;
+      margin-left: 4px;
+      transition: border-color 0.15s;
+    }
+    .accent-picker:hover { border-color: var(--muted); }
+    .accent-picker::-webkit-color-swatch-wrapper { padding: 0; border-radius: 50%; }
+    .accent-picker::-webkit-color-swatch { border-radius: 50%; border: none; }
+    .accent-picker::-moz-color-swatch { border-radius: 50%; border: none; }
+
+    /* ════════════════════════════════════════
+       EXPORT RESULT MODAL
+       —— 兜底方案：当 HTML 运行在带 sandbox 的 iframe 里
+          （qoderwork 预览态、Notion embed 等），脚本触发的
+          <a download>.click() 会被 sandbox 静默阻断。浮层提供
+          用户手势下载链接 + 剪贴板复制 + 图片预览（右键另存）
+          三条退路，只要一条能走通即可。
+    ════════════════════════════════════════ */
+    .export-modal {
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      font-family: var(--font-ui);
+    }
+    .export-modal-backdrop {
+      position: absolute;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.55);
+      backdrop-filter: blur(4px);
+      -webkit-backdrop-filter: blur(4px);
+    }
+    .export-modal-card {
+      position: relative;
+      background: var(--brief-bg);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 18px 20px 16px;
+      width: min(560px, 100%);
+      max-height: calc(100vh - 48px);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      overflow: hidden;
+      box-shadow: 0 24px 80px rgba(0, 0, 0, 0.35);
+    }
+    .export-modal-header { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+    .export-modal-title { font-size: 14px; font-weight: 600; color: var(--text); letter-spacing: -0.01em; }
+    .export-modal-close {
+      width: 26px; height: 26px;
+      border: none; background: transparent;
+      color: var(--muted); font-size: 20px; line-height: 1;
+      cursor: pointer; border-radius: 6px;
+      display: flex; align-items: center; justify-content: center;
+      transition: background 0.15s, color 0.15s;
+    }
+    .export-modal-close:hover { background: var(--border); color: var(--text); }
+    .export-modal-preview {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: auto;
+      max-height: 46vh;
+      background: var(--page-bg);
+      padding: 10px;
+      display: flex; justify-content: center;
+    }
+    .export-modal-preview img { max-width: 100%; height: auto; display: block; border-radius: 4px; }
+    .export-preview-link { display: block; cursor: pointer; line-height: 0; border-radius: 4px; transition: box-shadow 0.15s, transform 0.15s; }
+    .export-preview-link:hover { box-shadow: 0 0 0 2px var(--accent); transform: translateY(-1px); }
+    .export-preview-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .export-modal-hint { font-size: 11px; color: var(--muted); line-height: 1.6; padding-top: 2px; }
+    .export-modal-hint strong { color: var(--text); font-weight: 600; }
+
+    /* Print */
+    @media print {
+      .toolbar { display: none !important; }
+      body { background: white !important; padding: 0; justify-content: flex-start; }
+      .brief { max-width: 100%; aspect-ratio: auto; border-radius: 0; }
+    }
+  </style>
+</head>
+<body data-theme="chalk" data-ratio="16-9" data-scale="md">
+
+  <div class="brief" id="brief-canvas">
+
+    <div class="topbar">
+      <div>
+        <div class="topbar-title-wrap">
+          <p class="topbar-title" spellcheck="false">wekit-read-insights</p>
+          <button class="topbar-title-edit" type="button" aria-label="编辑标题" title="编辑标题（刷新后恢复默认）">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>
+          </button>
+        </div>
+        <div class="topbar-meta-wrap">
+          <p class="topbar-meta" spellcheck="false">产品改版 · 2026-09-19</p>
+          <button class="topbar-meta-edit" type="button" aria-label="编辑元信息" title="编辑元信息（刷新后恢复默认）">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>
+          </button>
+        </div>
+      </div>
+      <p class="topbar-brand">DESIGN BRIEF</p>
+    </div>
+
+    <div class="cards-grid">
+    <div class="card m-context">
+      <p class="label">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+        业务背景 <span>Business Context</span></p>
+      <p class="hint">当前业务处于什么阶段，触发本次设计的原因</p>
+      <p>自建「微信已读回执」服务端，AGPL 协议、个人部署。六个页面长期由服务端拼接 HTML + 内联样式提供，<strong>无前端构建</strong>。功能已完备但界面停留在能用级别，黑名单作用域、<span class="num">UTC</span> 日切、<span class="num">Lv 0</span> 语义等关键规则只存在于源码中。</p>
+    </div>
+
+    <!-- 业务目标 -->
+    <div class="card m-goal">
+      <p class="label">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
+        业务目标 <span>Business Goal</span></p>
+      <p class="hint">要推动哪些可量化的业务结果</p>
+      <ul class="list">
+        <li>公开链接访客读完率 <strong class="num">≥70%</strong></li>
+        <li>新部署者 <span class="num">5</span> 分钟内发出首条打点</li>
+        <li>GitHub star 季度环比 <strong class="num">+30%</strong></li>
+        <li>管理员周活跃留存 <strong class="num">≥60%</strong></li>
+      </ul>
+    </div>
+
+    <!-- 用户 -->
+    <div class="card m-user">
+      <p class="label">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        用户 <span>User</span></p>
+      <p class="hint">主要受众是谁，核心使用场景</p>
+      <ul class="list">
+        <li>自建者本人：单机部署，日常查已读</li>
+        <li>群成员：点开公开链接的匿名访客</li>
+        <li>实例管理员：管用户、等级与清理</li>
+        <li>潜在开源使用者：部署前先评估界面</li>
+      </ul>
+    </div>
+
+    <!-- 设计策略 -->
+    <div class="card m-strategy">
+      <p class="label">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+        设计策略 <span>Design Strategy</span></p>
+      <p class="hint">从哪些维度切入，用什么方法应对目标</p>
+      <div class="s-grid">
+        <div class="s-item">
+          <b>信息架构 IA</b>
+          <p class="thesis">运营区整组按 isAdmin 摘除，而非置灰。</p>
+          <ul class="tactics">
+            <li>三级 IA 收进侧栏</li>
+            <li>Settings 下沉头像下拉</li>
+            <li>未设计项显式禁用</li>
+          </ul>
+          <p class="rationale">对应 G4；普通用户不该看到无效入口</p>
+        </div>
+        <div class="s-item">
+          <b>交互设计</b>
+          <p class="thesis">钻取与不可逆操作各自成套。</p>
+          <ul class="tactics">
+            <li>聚合→明细页内 Tabs</li>
+            <li>危险操作逐字确认</li>
+            <li>错误 inline 不用 Toast</li>
+          </ul>
+          <p class="rationale">对应 G1 G4；原版删除无确认</p>
+        </div>
+        <div class="s-item">
+          <b>视觉设计</b>
+          <p class="thesis">全量走 design token 不留硬编码。</p>
+          <ul class="tactics">
+            <li>parchment 主题</li>
+            <li>语义色替换硬编码金</li>
+            <li>compact 密度</li>
+          </ul>
+          <p class="rationale">对应 G3；硬编码色暗色对比不足</p>
+        </div>
+        <div class="s-item">
+          <b>数据可视化</b>
+          <p class="thesis">时间全局统一，排名给相对量。</p>
+          <ul class="tactics">
+            <li>顶部范围驱动三层</li>
+            <li>条形编码与榜首比值</li>
+            <li>空态按成因分支</li>
+          </ul>
+          <p class="rationale">对应 G4；纯数字列需心算</p>
+        </div>
+        <div class="s-item">
+          <b>内容设计</b>
+          <p class="thesis">界面说清后端真实语义。</p>
+          <ul class="tactics">
+            <li>写明 UTC 日切</li>
+            <li>Lv 0 改述已停注册</li>
+            <li>三级黑名单作用域对照</li>
+          </ul>
+          <p class="rationale">对应 G2 G4；规则原先只在代码</p>
+        </div>
+        <div class="s-item">
+          <b>无障碍设计</b>
+          <p class="thesis">状态不只靠颜色传达。</p>
+          <ul class="tactics">
+            <li>保留 focus-visible 环</li>
+            <li>图标按钮 aria-label</li>
+            <li>禁用态附说明</li>
+          </ul>
+          <p class="rationale">仓库既有约定；原版靠底色区分</p>
+        </div>
+        <div class="s-item">
+          <b>多端适配</b>
+          <p class="thesis">窄屏不裁切，侧栏可让位。</p>
+          <ul class="tactics">
+            <li>侧栏 off-canvas</li>
+            <li>表格统一横向滚动包</li>
+            <li>折叠图标栏配 tooltip</li>
+          </ul>
+          <p class="rationale">对应 G1；原版表格靠溢出撑</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- 设计标准 -->
+    <div class="card m-criteria">
+      <p class="label">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+        设计标准 <span>Design Criteria</span></p>
+      <p class="hint">体验维度的判断依据</p>
+      <ul class="list">
+        <li><span class="tag" data-kind="quant">定量</span><span class="text">表格滚动包裹 <span class="num">7/7</span> flow</span></li>
+        <li><span class="tag" data-kind="quant">定量</span><span class="text">图标按钮 aria-label <span class="num">13/13</span></span></li>
+        <li><span class="tag" data-kind="qual">定性</span><span class="text">权限与状态不靠颜色单独传达</span></li>
+        <li><span class="tag" data-kind="qual">定性</span><span class="text">后端规则界面自解释</span></li>
+      </ul>
+    </div>
+
+    <!-- 边界约束 -->
+    <div class="card m-constraints">
+      <p class="label">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        边界约束 <span>Constraints</span></p>
+      <p class="hint">时间、技术、资源等硬性限制</p>
+      <ul class="list">
+        <li>后端接口路径与字段名一律不改</li>
+        <li>Bun + Workers 双运行时同一代码库</li>
+        <li>SSR 页面须与新 SPA 并行可用</li>
+        <li>禁止动态代码求值（公式走解析器）</li>
+        <li>Spark 整包体积本轮不重构</li>
+      </ul>
+    </div>
+
+    <!-- 不做什么 -->
+    <div class="card m-scope">
+      <p class="label">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
+        不做什么 <span>Out of Scope</span></p>
+      <p class="hint">本次明确排除的内容，防止范围蔓延</p>
+      <ul class="list">
+        <li>不改任何 API 与打点路径</li>
+        <li>全局黑名单页、操作留痕页不设计</li>
+        <li>不做全量 i18n，仅双语化复用词条</li>
+        <li>不含移动端原生（RN）flow；Web 端自身的移动端适配已做</li>
+        <li>不接真实鉴权与会话</li>
+      </ul>
+    </div>
+
+    </div><!-- /.cards-grid -->
+
+  </div>
+
+  <!-- ── Toolbar ── -->
+  <div class="toolbar">
+    <div class="toolbar-left">
+      <span class="toolbar-label">主题</span>
+      <select id="themeSelect" class="theme-select">
+        <option value="chalk">Chalk</option>
+        <option value="parchment">Parchment</option>
+        <option value="script">Script</option>
+        <option value="noir">Noir</option>
+        <option value="frame">Frame</option>
+        <option value="onyx">Onyx</option>
+        <option value="stone">Stone</option>
+        <option value="slate">Slate</option>
+        <option value="terminal">Terminal</option>
+      </select>
+      <input type="color" id="accentPicker" class="accent-picker" title="自定义主题色" value="#f54e00">
+      <div class="toolbar-divider"></div>
+      <span class="toolbar-label">布局</span>
+      <div class="ratio-group">
+        <button class="ratio-btn active" data-ratio="16-9" title="横版 · 适合 Keynote / 幻灯片">横版</button>
+        <button class="ratio-btn" data-ratio="4-3" title="竖版 · 适合 A4 / 文档">竖版</button>
+        <button class="ratio-btn" data-ratio="1-1" title="方版 · 适合社媒分享">方版</button>
+      </div>
+      <div class="toolbar-divider"></div>
+      <span class="toolbar-label">字号</span>
+      <div class="scale-group">
+        <button class="scale-btn" data-scale="sm">小</button>
+        <button class="scale-btn active" data-scale="md">中</button>
+        <button class="scale-btn" data-scale="lg">大</button>
+      </div>
+    </div>
+    <div class="toolbar-right">
+      <button class="btn btn-ghost" onclick="window.print()">打印 / PDF</button>
+      <button class="btn btn-primary" id="exportBtn">导出 PNG</button>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/modern-screenshot@4/dist/index.js"></script>
+  <script>
+    // ── Theme switching ──
+    const themeSelect  = document.getElementById('themeSelect');
+    const accentPicker = document.getElementById('accentPicker');
+
+    const themeAccents = {
+      chalk: '#f54e00', parchment: '#cc785c', script: '#2bb5a0',
+      noir: '#b8a882',  frame: '#767d88',     onyx: '#36f4a4',
+      stone: '#6b6b6b', slate: '#533afd',     terminal: '#ffffff',
+    };
+
+    // Initialize accent picker to match the body's current data-theme
+    accentPicker.value = themeAccents[document.body.dataset.theme] || '#000000';
+
+    function setTheme(theme) {
+      document.body.setAttribute('data-theme', theme);
+      document.body.style.removeProperty('--accent');
+      themeSelect.value = theme;
+      accentPicker.value = themeAccents[theme] || '#000000';
+      fitCards();
+    }
+
+    themeSelect.addEventListener('change', () => setTheme(themeSelect.value));
+
+    accentPicker.addEventListener('input', () => {
+      document.body.style.setProperty('--accent', accentPicker.value);
+    });
+
+    // ── Ratio switching ──
+    const ratioBtns = document.querySelectorAll('.ratio-btn');
+
+    function setRatio(ratio) {
+      document.body.setAttribute('data-ratio', ratio);
+      ratioBtns.forEach(b => b.classList.toggle('active', b.dataset.ratio === ratio));
+      fitCards();
+    }
+
+    ratioBtns.forEach(btn => btn.addEventListener('click', () => setRatio(btn.dataset.ratio)));
+
+    // ── Scale switching (小 / 中 / 大) ──
+    const scaleBtns = document.querySelectorAll('.scale-btn');
+    function setScale(scale) {
+      document.body.setAttribute('data-scale', scale);
+      scaleBtns.forEach(b => b.classList.toggle('active', b.dataset.scale === scale));
+      fitCards();
+    }
+    scaleBtns.forEach(btn => btn.addEventListener('click', () => setScale(btn.dataset.scale)));
+
+    // ── Auto-fit card content ──
+    // 职责：
+    //   1. 字号兜底：若某卡片内容溢出（scrollHeight > clientHeight），
+    //      对其 list / 策略三段式 / 正文 p 逐级降字号，直至无溢出或触达 MIN_FONT = 9px
+    //   2. 每次主题 / 布局 / 字号切换后都复位 inline font-size，再重新检测
+    // 注：不再对画布强制 min-height = width × h/w（避免"虚假比例锁定"）。
+    //     画布宽度固定 1280px，高度完全跟内容；data-ratio 仅影响 grid 模板（横版 / 竖版 / 方版）。
+    const MIN_FONT = 9;
+    const MAX_STEP = 18;
+    const FIT_SELECTOR = '.list, .list li, .s-item .thesis, .s-item .tactics li, .s-item .rationale, p:not(.label):not(.hint)';
+
+    function fitCards() {
+      // 1. 复位所有内联字号 + 清理历史 min-height（兼容旧缓存）
+      const brief = document.getElementById('brief-canvas');
+      if (brief) brief.style.minHeight = '';
+      document.querySelectorAll('.card').forEach(card => {
+        card.querySelectorAll(FIT_SELECTOR).forEach(el => { el.style.fontSize = ''; });
+      });
+
+      // 2. 等布局沉淀后做溢出检测 + 字号兜底
+      requestAnimationFrame(() => {
+        document.querySelectorAll('.card').forEach(card => {
+          const targets = card.querySelectorAll(FIT_SELECTOR);
+          if (!targets.length) return;
+          let step = 0;
+          // 每轮同步缩 0.5px，所有目标一起缩，保持视觉比例
+          while (card.scrollHeight > card.clientHeight + 1 && step < MAX_STEP) {
+            let anyShrunk = false;
+            targets.forEach(el => {
+              const cur = parseFloat(getComputedStyle(el).fontSize);
+              if (cur > MIN_FONT) {
+                el.style.fontSize = Math.max(MIN_FONT, cur - 0.5) + 'px';
+                anyShrunk = true;
+              }
+            });
+            if (!anyShrunk) break;
+            step++;
+          }
+        });
+      });
+    }
+
+    // Run after fonts & layout settle
+    if (document.readyState === 'complete') {
+      fitCards();
+    } else {
+      window.addEventListener('load', fitCards);
+    }
+
+    // Re-run on resize (aspect-ratio canvas changes height)
+    let resizeTimer;
+    window.addEventListener('resize', () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(fitCards, 120);
+    });
+
+    // ── 标题 / 元信息 可编辑（hover 显示编辑 icon → 点击进入编辑态；刷新恢复 AI 默认值） ──
+    (() => {
+      // Firefox 不支持 plaintext-only，自动回落到 true
+      const editMode = (() => {
+        const d = document.createElement('div');
+        d.setAttribute('contenteditable', 'plaintext-only');
+        return d.contentEditable === 'plaintext-only' ? 'plaintext-only' : 'true';
+      })();
+
+      function bindEditable(wrapSelector, targetSelector, btnSelector) {
+        const wrap   = document.querySelector(wrapSelector);
+        const target = wrap && wrap.querySelector(targetSelector);
+        const btn    = wrap && wrap.querySelector(btnSelector);
+        if (!wrap || !target || !btn) return;
+
+        const defaultText = target.textContent.trim();
+
+        function enterEdit() {
+          if (wrap.classList.contains('is-editing')) return;
+          wrap.classList.add('is-editing');
+          target.setAttribute('contenteditable', editMode);
+          target.focus();
+          const range = document.createRange();
+          range.selectNodeContents(target);
+          range.collapse(false);
+          const sel = window.getSelection();
+          sel.removeAllRanges();
+          sel.addRange(range);
+        }
+
+        function exitEdit() {
+          if (!wrap.classList.contains('is-editing')) return;
+          const v = target.textContent.replace(/\s+/g, ' ').trim();
+          target.textContent = v || defaultText;
+          target.removeAttribute('contenteditable');
+          wrap.classList.remove('is-editing');
+          fitCards();
+        }
+
+        btn.addEventListener('click', (e) => {
+          e.preventDefault();
+          enterEdit();
+        });
+
+        target.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            target.blur();
+          } else if (e.key === 'Escape') {
+            e.preventDefault();
+            target.textContent = defaultText;
+            target.blur();
+          }
+        });
+
+        target.addEventListener('paste', (e) => {
+          if (editMode === 'plaintext-only') return;
+          e.preventDefault();
+          const text = (e.clipboardData || window.clipboardData)
+            .getData('text').replace(/\s+/g, ' ').trim();
+          document.execCommand('insertText', false, text);
+        });
+
+        target.addEventListener('blur', exitEdit);
+      }
+
+      bindEditable('.topbar-title-wrap', '.topbar-title', '.topbar-title-edit');
+      bindEditable('.topbar-meta-wrap',  '.topbar-meta',  '.topbar-meta-edit');
+    })();
+
+    // ── Export PNG ──
+    let exporting = false;
+    const exportBtn = document.getElementById('exportBtn');
+
+    // 检测是否运行在 iframe 里（qoderwork 预览态、Notion embed 等）
+    // 此类宿主 iframe 的 sandbox 通常缺 allow-downloads，脚本触发的 <a>.click()
+    // 会被静默阻断；同源策略异常也视为 iframe（conservative 策略）
+    function isInIframe() {
+      try { return window.top !== window.self; } catch (e) { return true; }
+    }
+
+    // 独立浏览器：一键下载
+    function directDownload(objectUrl, filename) {
+      const link = document.createElement('a');
+      link.download = filename;
+      link.href = objectUrl;
+      link.rel = 'noopener';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+
+    // iframe 预览态：浮层 + 点图下载（唯一实测可靠路径）
+    // 实测结论：qoderwork 预览 iframe 的 sandbox 同时拦截了 <a>.click()、
+    //         clipboard.write、window.open，所以下载按钮 / 剪贴板 / 新窗口三条路径
+    //         全部无效。唯一能存下图片的方式是用户在图片上的直接手势：
+    //         • Mac: Option + 点击 = 触发浏览器强制下载弹窗
+    //         • Windows: 右键 → 图片另存为
+    //         不管这两条路径能不能走，浮层都必须给用户一条一定能成的退路：
+    //         「在系统浏览器中打开此 HTML」——这是最强推荐。
+    // 技术要点：预览图 `src` 必须是 base64 data URL（非 blob URL），sandbox 下才
+    //           能被右键菜单/Option 点击正常处理。
+    function showExportModal(blob, objectUrl, filename) {
+      const prev = document.querySelector('.export-modal');
+      if (prev) prev.remove();
+
+      const modal = document.createElement('div');
+      modal.className = 'export-modal';
+      modal.innerHTML = `
+        <div class="export-modal-backdrop"></div>
+        <div class="export-modal-card" role="dialog" aria-label="导出结果">
+          <div class="export-modal-header">
+            <span class="export-modal-title">导出 PNG · 已生成</span>
+            <button class="export-modal-close" type="button" aria-label="关闭">×</button>
+          </div>
+          <div class="export-modal-preview">
+            <a class="export-preview-link" download>
+              <img alt="Design Brief 预览（点击 / 右键保存）" />
+            </a>
+          </div>
+          <p class="export-modal-hint">
+            <strong>强烈推荐：在系统浏览器（Chrome / Safari / Edge）中打开此 HTML</strong>，点击"导出 PNG"可直接一键保存，无需任何额外操作。
+            <br><br>
+            若必须在此预览态导出，请在上方预览图上：
+            <br>
+            • <strong>Mac</strong>：<strong>Option + 点击</strong> → 触发下载弹窗
+            <br>
+            • <strong>Windows</strong>：<strong>右键 → 图片另存为…</strong>
+          </p>
+        </div>
+      `;
+      document.body.appendChild(modal);
+
+      const previewImg = modal.querySelector('.export-modal-preview img');
+      const previewLink = modal.querySelector('.export-preview-link');
+
+      // 先用 objectUrl 兜底显示，再异步切换成 data URL 以解锁 sandbox 下右键另存 / Option + 点击
+      previewImg.src = objectUrl;
+      previewLink.href = objectUrl;
+      previewLink.setAttribute('download', filename);
+
+      const reader = new FileReader();
+      reader.onload = () => {
+        const dataUrl = reader.result; // data:image/png;base64,...
+        if (typeof dataUrl === 'string' && dataUrl.startsWith('data:')) {
+          previewImg.src = dataUrl;
+          previewLink.href = dataUrl;
+        }
+      };
+      reader.onerror = () => { /* 保留 objectUrl 兜底 */ };
+      try { reader.readAsDataURL(blob); } catch (e) { /* 保留 objectUrl 兜底 */ }
+
+      function close() {
+        modal.remove();
+        // 延迟释放 object URL，给用户点图下载留足够时间
+        setTimeout(() => URL.revokeObjectURL(objectUrl), 8000);
+        document.removeEventListener('keydown', onEsc);
+      }
+      function onEsc(e) { if (e.key === 'Escape') close(); }
+      modal.querySelector('.export-modal-close').addEventListener('click', close);
+      modal.querySelector('.export-modal-backdrop').addEventListener('click', close);
+      document.addEventListener('keydown', onEsc);
+    }
+
+    exportBtn.addEventListener('click', async () => {
+      if (exporting) return;
+      // 导出前收起编辑态/焦点，保证 PNG 干净
+      if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+      // 标记导出态：让编辑按钮在快照里不占布局，避免 wrap 压缩导致文字折行
+      document.body.classList.add('is-exporting');
+      exporting = true;
+      exportBtn.disabled = true;
+      exportBtn.textContent = '生成中…';
+
+      try {
+        const el = document.getElementById('brief-canvas');
+        // 使用 modern-screenshot domToBlob（支持 color-mix() 等现代 CSS）：
+        //   - data URL 在 file:// 与 iframe 下会被浏览器阻断下载
+        //   - Blob URL 在独立浏览器里走 <a>.click() 一键下载
+        //   - 在 iframe（qoderwork 预览态）里走 showExportModal 提供多路径兜底
+        // backgroundColor 取页面背景而非透明，避免暗色主题变透明。
+        const pageBg = getComputedStyle(document.body).backgroundColor || '#ffffff';
+        const blob = await modernScreenshot.domToBlob(el, {
+          scale: 2,
+          backgroundColor: pageBg,
+          style: { transform: 'none' },
+          type: 'image/png'
+        });
+        const objectUrl = URL.createObjectURL(blob);
+        const filename = `brief-${document.body.dataset.theme || 'default'}.png`;
+
+        if (isInIframe()) {
+          // 预览态：弹浮层，用户手势选择保存方式
+          showExportModal(blob, objectUrl, filename);
+          exportBtn.textContent = '请在浮层点图保存 →';
+        } else {
+          // 独立浏览器：一键下载
+          directDownload(objectUrl, filename);
+          setTimeout(() => URL.revokeObjectURL(objectUrl), 4000);
+          exportBtn.textContent = '已保存 ✓';
+        }
+      } catch (err) {
+        console.error('[brief] export failed:', err);
+        exportBtn.textContent = '导出失败';
+      } finally {
+        // 恢复编辑按钮占位
+        document.body.classList.remove('is-exporting');
+        exportBtn.disabled = false;
+        setTimeout(() => {
+          exportBtn.textContent = '导出 PNG';
+          exporting = false;
+        }, 3000);
+      }
+    });
+  </script>
+
+</body>
+</html>

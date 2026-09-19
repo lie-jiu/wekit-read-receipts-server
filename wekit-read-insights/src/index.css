@@ -1,0 +1,84 @@
+@import "tailwindcss";
+@import 'sparkdesign/theme.css';
+@import 'sparkdesign/scale.css';
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+  background-color: var(--color-bg-base);
+  color: var(--color-text);
+}
+
+/* ============================================================
+   触屏适配层（≤ 768px）
+   ------------------------------------------------------------
+   为什么必须单独一层：我们用的是 Spark 的 compact 风格，
+   dist/scale/presets/compact.css 里
+     --control-height-sm/md/lg = 26 / 30 / 34px
+     --control-font-size-sm/md/lg = 12 / 13 / 14px
+   —— 这是为桌面高密度工作台定的刻度，对触控是双重不合格：
+     · 三档高度全部 < 44px 触控最小热区（实测「查看明细」12×26、登录主按钮 301×34）
+     · 三档字号全部 < 16px，iOS Safari 聚焦输入框会自动放大整页
+        （实测 wxid 14px、密码 13px、消息搜索 13px）
+   而原版服务端页面本来防住了这两件事（README「1rem 字号防 iOS 缩放」
+   + admin-style.ts 的 min-height:44px / .level-input{font-size:1rem}），
+   是这次重做把它弄丢了。
+
+   做法：只改 CSS 变量，不碰任何组件。Spark 所有控件的高度/字号
+   都是从这几个 token 取的，所以一处覆盖即全局生效，
+   且选择器用 :root[data-style=…] 压过 preset 的 [data-style=…]。
+   桌面宽度完全不受影响，compact 密度照旧。
+   ============================================================ */
+/* 断点必须与 Spark 侧栏的 MOBILE_BREAKPOINT 逐字相同（max-width: 767px），
+   否则 768px 处会出现「侧栏已展开、表格却还在堆叠态」的裂缝。 */
+@media (max-width: 767px) {
+  :root[data-style='compact'],
+  :root[data-style='dense'] {
+    --control-height-sm: 44px;
+    --control-height-md: 44px;
+    --control-height-lg: 44px;
+    --control-font-size-sm: 16px;
+    --control-font-size-md: 16px;
+    --control-font-size-lg: 16px;
+    --control-padding-x-sm: 12px;
+    --control-padding-x-md: 12px;
+  }
+
+  /* 表格里的小号文字按钮同样撑到可点，否则 26px 高的「查看明细」点不中。
+     分页用的是 <a>（Spark 的 Pagination 不吐 data-slot，按属性挑不出来），
+     所以连 a[href] 一起兜住；本 App 的 <a> 全是导航/分页这类控件，
+     没有正文内联文字链接，抬高尺寸不会撑破排版（已复测无横向溢出）。 */
+  button,
+  a[href],
+  [role='button'],
+  [role='tab'],
+  [role='combobox'] {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  /* iOS Safari：聚焦字号 < 16px 的表单控件会自动放大整页，
+     且放大后不再收回。上面覆盖 --control-font-size-* 兜不住那些
+     直接用 text-sm / text-xs 工具类定字号的输入框（实测仍有 12 / 13px），
+     所以这里按平台硬性阈值直接兜底 —— 16px 是 iOS 的规定，不是设计选择。 */
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}
+
+/* ============================================================
+   安全区（刘海 / 底部横条）
+   ------------------------------------------------------------
+   原版六个页面的 body 全都用了 env(safe-area-inset-*)，
+   SPA 初版一处都没有，且 viewport meta 缺 viewport-fit=cover
+   （不加 cover，env() 恒为 0）。这里补齐，配套类给外壳和 Minimal 页用。
+   ============================================================ */
+.pt-safe {
+  padding-top: max(0px, env(safe-area-inset-top));
+}
+.pb-safe {
+  padding-bottom: max(0px, env(safe-area-inset-bottom));
+}
+

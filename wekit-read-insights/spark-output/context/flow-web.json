@@ -1,0 +1,799 @@
+{
+  "skill": "flow-web",
+  "generated_at": "2026-09-19T02:15:56.723Z",
+  "project_name": "wekit-read-insights",
+  "project_type": "redesign",
+  "project_subtype": "双视角全站重设计（终端用户 + 管理员）",
+  "scenario": "SaaS Management + Data Analytics/BI（双场景；公开链接页走 Minimal 外壳）",
+  "component_library": "Spark Design 0.4.11（npm 整包模式，中途不再切换）",
+  "tech_stack": {
+    "runtime": "React 19 + TypeScript 7.0.2(tsgo) + Vite 8 + Tailwind CSS 4",
+    "package_manager": "bun 1.4.2",
+    "routing": "react-router-dom 7 HashRouter（与 Worker 上的 SSR 路径并行，不抢 path）",
+    "charts": "recharts 3.10（经 Spark ChartContainer）",
+    "theme": "ThemeStyleProvider + 自研 useDocumentTheme 补 data-theme，主题=parchment，style=compact",
+    "i18n": "zh / en 双语 chrome 词条（57 条）+ 各屏叙述性中文文案",
+    "mock": "固定种子 LCG 的派生式 mock（单一事实源，KPI/图表/表格/排行榜互相对得上）"
+  },
+  "design_constraints": [
+    "只用 Spark design token，不写死 hex / px（原排行榜的 #fbbf24 已换 text-warning）",
+    "不使用任何动态代码求值：权益公式预览走自研 tokenizer + 递归下降解析器 + 函数白名单",
+    ":focus-visible 焦点环不得移除（仓库既有约定）"
+  ],
+  "flows": [
+    {
+      "id": "flow-1",
+      "name": "登录与进入（认证 → 首次引导）",
+      "screens": [
+        {
+          "name": "屏 1 登录",
+          "file_path": "src/flows/flow-1/flow1-auth.tsx",
+          "route": "#/login",
+          "state_variants": [
+            "default",
+            "filled",
+            "submitting",
+            "error:invalid_credentials",
+            "error:invite_required",
+            "error:rate_limited(倒计时)",
+            "error:network"
+          ]
+        },
+        {
+          "name": "屏 2 注册",
+          "file_path": "src/flows/flow-1/flow1-auth.tsx",
+          "route": "#/login (Tabs→注册)",
+          "state_variants": [
+            "default",
+            "error:wxid_taken",
+            "submitting"
+          ]
+        },
+        {
+          "name": "屏 3 首次运行引导",
+          "file_path": "src/flows/flow-1/flow1-auth.tsx",
+          "route": "#/onboarding",
+          "state_variants": [
+            "step1",
+            "step2",
+            "done"
+          ]
+        }
+      ],
+      "components_used": [
+        "Alert",
+        "AlertDescription",
+        "AlertTitle",
+        "Button",
+        "Card",
+        "CardContent",
+        "CardDescription",
+        "CardFooter",
+        "CardHeader",
+        "CardTitle",
+        "Field",
+        "FieldDescription",
+        "FieldError",
+        "FieldLabel",
+        "IconButton",
+        "Input",
+        "InputGroup",
+        "InputGroupAddon",
+        "InputGroupInput",
+        "Item",
+        "ItemContent",
+        "ItemDescription",
+        "ItemMedia",
+        "ItemTitle",
+        "Stepper",
+        "StepperContent",
+        "StepperDescription",
+        "StepperIndicator",
+        "StepperItem",
+        "StepperSeparator",
+        "StepperTitle",
+        "Tabs",
+        "TabsContent",
+        "TabsList",
+        "TabsTrigger",
+        "ToggleGroup",
+        "ToggleGroupItem",
+        "TypographyMuted",
+        "TypographyP",
+        "toast"
+      ],
+      "components_missing": [
+        "无（认证卡是 Minimal 外壳，不需要专属组件）"
+      ]
+    },
+    {
+      "id": "flow-2",
+      "name": "已读总览 + 全局时间范围",
+      "screens": [
+        {
+          "name": "屏 1 总览",
+          "file_path": "src/flows/flow-2/flow2-overview.tsx",
+          "route": "#/overview",
+          "state_variants": [
+            "ready",
+            "loading",
+            "error",
+            "empty-never",
+            "empty-filter"
+          ]
+        },
+        {
+          "name": "屏 2 时间范围选择器",
+          "file_path": "src/flows/flow-2/flow2-overview.tsx",
+          "route": "#/overview (Popover)",
+          "state_variants": [
+            "presets",
+            "custom-range",
+            "range-incomplete",
+            "range-applied"
+          ]
+        },
+        {
+          "name": "屏 3 时间切换后的重载态",
+          "file_path": "src/flows/flow-2/flow2-overview.tsx",
+          "route": "#/overview?simulate=loading",
+          "state_variants": [
+            "skeleton-then-ready"
+          ]
+        }
+      ],
+      "components_used": [
+        "Alert",
+        "AlertDescription",
+        "AlertTitle",
+        "Button",
+        "Calendar",
+        "Card",
+        "CardAction",
+        "CardContent",
+        "CardDescription",
+        "CardHeader",
+        "CardTitle",
+        "ChartContainer",
+        "ChartTooltip",
+        "ChartTooltipContent",
+        "DataTable",
+        "EllipsisText",
+        "Empty",
+        "EmptyContent",
+        "EmptyDescription",
+        "EmptyHeader",
+        "EmptyMedia",
+        "EmptyTitle",
+        "InputGroup",
+        "InputGroupAddon",
+        "InputGroupButton",
+        "InputGroupInput",
+        "Pagination",
+        "PaginationContent",
+        "PaginationEllipsis",
+        "PaginationItem",
+        "PaginationLink",
+        "PaginationNext",
+        "PaginationPrevious",
+        "Popover",
+        "PopoverContent",
+        "PopoverTrigger",
+        "Progress",
+        "Select",
+        "SelectContent",
+        "SelectItem",
+        "SelectTrigger",
+        "SelectValue",
+        "Separator",
+        "Skeleton",
+        "Tag",
+        "Tooltip",
+        "TypographyMuted"
+      ],
+      "components_missing": [
+        "Sparkline（KPI 卡内的 7 日微缩趋势，手写内联 SVG）",
+        "StackedBar（注册/已读双序列堆叠柱，用 div 宽度拼）",
+        "HourBars（24 小时活跃分布，手写 div 柱）"
+      ]
+    },
+    {
+      "id": "flow-3",
+      "name": "单条消息已读明细钻取",
+      "screens": [
+        {
+          "name": "屏 1 消息已读汇总",
+          "file_path": "src/flows/flow-3/flow3-read-details.tsx",
+          "route": "#/messages/:id",
+          "state_variants": [
+            "ready",
+            "empty-no-reads",
+            "loading"
+          ]
+        },
+        {
+          "name": "屏 2 已读明细表格",
+          "file_path": "src/flows/flow-3/flow3-read-details.tsx",
+          "route": "#/messages/:id (Tabs→明细)",
+          "state_variants": [
+            "ready",
+            "located",
+            "not-located",
+            "blocked-filtered-count",
+            "error:quota_exhausted"
+          ]
+        },
+        {
+          "name": "屏 3 单 IP 定位结果",
+          "file_path": "src/flows/flow-3/flow3-read-details.tsx",
+          "route": "#/messages/:id (行内展开)",
+          "state_variants": [
+            "success",
+            "partial(仅中文)",
+            "all-providers-failed"
+          ]
+        },
+        {
+          "name": "屏 4 管理抽屉",
+          "file_path": "src/flows/flow-3/flow3-read-details.tsx",
+          "route": "#/messages/:id (Drawer)",
+          "state_variants": [
+            "private",
+            "public",
+            "blocklist-empty",
+            "blocklist-filled",
+            "confirm-delete"
+          ]
+        }
+      ],
+      "components_used": [
+        "Alert",
+        "AlertDescription",
+        "AlertDialog",
+        "AlertDialogAction",
+        "AlertDialogCancel",
+        "AlertDialogContent",
+        "AlertDialogDescription",
+        "AlertDialogFooter",
+        "AlertDialogHeader",
+        "AlertDialogTitle",
+        "AlertDialogTrigger",
+        "AlertTitle",
+        "Breadcrumb",
+        "BreadcrumbItem",
+        "BreadcrumbLink",
+        "BreadcrumbList",
+        "BreadcrumbPage",
+        "BreadcrumbSeparator",
+        "Button",
+        "Card",
+        "CardAction",
+        "CardContent",
+        "CardDescription",
+        "CardHeader",
+        "CardTitle",
+        "DataTable",
+        "Drawer",
+        "DrawerClose",
+        "DrawerContent",
+        "DrawerDescription",
+        "DrawerFooter",
+        "DrawerHeader",
+        "DrawerTitle",
+        "Empty",
+        "EmptyContent",
+        "EmptyDescription",
+        "EmptyHeader",
+        "EmptyMedia",
+        "EmptyTitle",
+        "IconButton",
+        "InputGroup",
+        "InputGroupAddon",
+        "InputGroupInput",
+        "Item",
+        "ItemContent",
+        "ItemDescription",
+        "ItemMedia",
+        "ItemTitle",
+        "Pagination",
+        "PaginationContent",
+        "PaginationItem",
+        "PaginationLink",
+        "PaginationNext",
+        "PaginationPrevious",
+        "Progress",
+        "Separator",
+        "Tabs",
+        "TabsContent",
+        "TabsList",
+        "TabsTrigger",
+        "Tag",
+        "Toggle",
+        "Tooltip",
+        "TypographyMuted",
+        "toast"
+      ],
+      "components_missing": [
+        "无（Drawer 取代了 Spark 尚未导出的 Sheet）"
+      ]
+    },
+    {
+      "id": "flow-4",
+      "name": "管理后台 · 用户与等级",
+      "screens": [
+        {
+          "name": "屏 1 用户列表",
+          "file_path": "src/flows/flow-4/flow4-admin-users.tsx",
+          "route": "#/admin/users",
+          "state_variants": [
+            "ready",
+            "searching",
+            "empty-search",
+            "pending-level-badge"
+          ]
+        },
+        {
+          "name": "屏 2 用户详情抽屉",
+          "file_path": "src/flows/flow-4/flow4-admin-users.tsx",
+          "route": "#/admin/users (Drawer)",
+          "state_variants": [
+            "with-activity",
+            "no-messages",
+            "no-audit"
+          ]
+        },
+        {
+          "name": "屏 3 新建用户 / 重置密码",
+          "file_path": "src/flows/flow-4/flow4-admin-users.tsx",
+          "route": "#/admin/users (Dialog)",
+          "state_variants": [
+            "default",
+            "submitting",
+            "error:wxid_taken",
+            "success"
+          ]
+        },
+        {
+          "name": "屏 4 等级不足拦截",
+          "file_path": "src/flows/flow-4/flow4-admin-users.tsx",
+          "route": "#/admin/* (非管理员)",
+          "state_variants": [
+            "level-blocked"
+          ]
+        }
+      ],
+      "components_used": [
+        "AlertDialog",
+        "AlertDialogAction",
+        "AlertDialogCancel",
+        "AlertDialogContent",
+        "AlertDialogDescription",
+        "AlertDialogFooter",
+        "AlertDialogHeader",
+        "AlertDialogTitle",
+        "Button",
+        "ButtonGroup",
+        "Card",
+        "CardAction",
+        "CardContent",
+        "CardHeader",
+        "CardTitle",
+        "DataTable",
+        "Dialog",
+        "DialogContent",
+        "DialogDescription",
+        "DialogFooter",
+        "DialogHeader",
+        "DialogTitle",
+        "Drawer",
+        "DrawerClose",
+        "DrawerContent",
+        "DrawerDescription",
+        "DrawerFooter",
+        "DrawerHeader",
+        "DrawerTitle",
+        "DropdownMenu",
+        "DropdownMenuContent",
+        "DropdownMenuItem",
+        "DropdownMenuLabel",
+        "DropdownMenuSeparator",
+        "DropdownMenuTrigger",
+        "EllipsisText",
+        "Field",
+        "FieldDescription",
+        "FieldError",
+        "FieldLabel",
+        "IconButton",
+        "Input",
+        "InputGroup",
+        "InputGroupAddon",
+        "InputGroupInput",
+        "Item",
+        "ItemContent",
+        "ItemDescription",
+        "ItemMedia",
+        "ItemTitle",
+        "Pagination",
+        "PaginationContent",
+        "PaginationItem",
+        "PaginationLink",
+        "PaginationNext",
+        "PaginationPrevious",
+        "Select",
+        "SelectContent",
+        "SelectItem",
+        "SelectTrigger",
+        "SelectValue",
+        "Separator",
+        "Table",
+        "TableBody",
+        "TableCell",
+        "TableHead",
+        "TableHeader",
+        "TableRow",
+        "Tag",
+        "Timeline",
+        "TimelineConnector",
+        "TimelineContent",
+        "TimelineDescription",
+        "TimelineItem",
+        "TimelineMarker",
+        "TimelineTime",
+        "TimelineTitle",
+        "Tooltip",
+        "TypographyMuted",
+        "toast"
+      ],
+      "components_missing": [
+        "无"
+      ]
+    },
+    {
+      "id": "flow-5",
+      "name": "管理后台 · 权益公式与僵尸清理",
+      "screens": [
+        {
+          "name": "屏 1 权益公式编辑器",
+          "file_path": "src/flows/flow-5/flow5-admin-config.tsx",
+          "route": "#/admin/config",
+          "state_variants": [
+            "default",
+            "draft-dirty",
+            "preview-updating",
+            "source:builtin-vs-formula"
+          ]
+        },
+        {
+          "name": "屏 2 公式非法",
+          "file_path": "src/flows/flow-5/flow5-admin-config.tsx",
+          "route": "#/admin/config (inline)",
+          "state_variants": [
+            "error:unknown-identifier",
+            "error:assignment",
+            "error:non-numeric",
+            "error:too-deep"
+          ]
+        },
+        {
+          "name": "屏 3 僵尸数据预览",
+          "file_path": "src/flows/flow-5/flow5-admin-config.tsx",
+          "route": "#/admin/config (Tabs→清理)",
+          "state_variants": [
+            "idle",
+            "previewing",
+            "has-matches",
+            "no-matches"
+          ]
+        },
+        {
+          "name": "屏 4 执行清理与孤儿表",
+          "file_path": "src/flows/flow-5/flow5-admin-config.tsx",
+          "route": "#/admin/config (AlertDialog)",
+          "state_variants": [
+            "confirm",
+            "purging",
+            "done(deleted/skipped)",
+            "orphan-empty",
+            "orphan-filled"
+          ]
+        }
+      ],
+      "components_used": [
+        "Alert",
+        "AlertDescription",
+        "AlertDialog",
+        "AlertDialogAction",
+        "AlertDialogCancel",
+        "AlertDialogContent",
+        "AlertDialogDescription",
+        "AlertDialogFooter",
+        "AlertDialogHeader",
+        "AlertDialogTitle",
+        "AlertDialogTrigger",
+        "AlertTitle",
+        "Button",
+        "Card",
+        "CardAction",
+        "CardContent",
+        "CardDescription",
+        "CardHeader",
+        "CardTitle",
+        "DataTable",
+        "Field",
+        "FieldDescription",
+        "FieldError",
+        "FieldLabel",
+        "Input",
+        "Progress",
+        "Separator",
+        "Skeleton",
+        "Table",
+        "TableBody",
+        "TableCell",
+        "TableHead",
+        "TableHeader",
+        "TableRow",
+        "Tabs",
+        "TabsContent",
+        "TabsList",
+        "TabsTrigger",
+        "Tag",
+        "Tooltip",
+        "TypographyMuted",
+        "toast"
+      ],
+      "components_missing": [
+        "无（公式编辑器是 textarea + 自研解析器，不需要新组件）"
+      ]
+    },
+    {
+      "id": "flow-6",
+      "name": "账户与隐私设置",
+      "screens": [
+        {
+          "name": "屏 1 账户总览与配额",
+          "file_path": "src/flows/flow-6/flow6-account.tsx",
+          "route": "#/account",
+          "state_variants": [
+            "ample-quota",
+            "tight-quota(≥85%)",
+            "no-remaining-semantics(不画条)"
+          ]
+        },
+        {
+          "name": "屏 2 账户级 IP 黑名单",
+          "file_path": "src/flows/flow-6/flow6-account.tsx",
+          "route": "#/account (同页第二卡)",
+          "state_variants": [
+            "empty",
+            "filled",
+            "error:invalid-ipv4",
+            "error:duplicate",
+            "success"
+          ]
+        },
+        {
+          "name": "屏 3 危险区",
+          "file_path": "src/flows/flow-6/flow6-account.tsx",
+          "route": "#/account (页尾卡)",
+          "state_variants": [
+            "gate-locked",
+            "gate-unlocked(逐字匹配)",
+            "confirming"
+          ]
+        }
+      ],
+      "components_used": [
+        "Alert",
+        "AlertDescription",
+        "AlertDialog",
+        "AlertDialogAction",
+        "AlertDialogCancel",
+        "AlertDialogContent",
+        "AlertDialogDescription",
+        "AlertDialogFooter",
+        "AlertDialogHeader",
+        "AlertDialogTitle",
+        "AlertTitle",
+        "Avatar",
+        "AvatarFallback",
+        "Button",
+        "Card",
+        "CardAction",
+        "CardContent",
+        "CardDescription",
+        "CardFooter",
+        "CardHeader",
+        "CardTitle",
+        "DataTable",
+        "Dialog",
+        "DialogContent",
+        "DialogDescription",
+        "DialogFooter",
+        "DialogHeader",
+        "DialogTitle",
+        "Field",
+        "FieldDescription",
+        "FieldError",
+        "FieldLabel",
+        "Input",
+        "InputGroup",
+        "InputGroupAddon",
+        "InputGroupInput",
+        "Item",
+        "ItemContent",
+        "ItemDescription",
+        "ItemTitle",
+        "Progress",
+        "Separator",
+        "Table",
+        "TableBody",
+        "TableCell",
+        "TableHead",
+        "TableHeader",
+        "TableRow",
+        "Tag",
+        "Timeline",
+        "TimelineConnector",
+        "TimelineContent",
+        "TimelineDescription",
+        "TimelineItem",
+        "TimelineMarker",
+        "TimelineTime",
+        "TimelineTitle",
+        "Tooltip",
+        "TypographyMuted",
+        "toast"
+      ],
+      "components_missing": [
+        "无"
+      ]
+    },
+    {
+      "id": "flow-7",
+      "name": "排行榜与公开链接",
+      "screens": [
+        {
+          "name": "屏 1 排行榜主视图",
+          "file_path": "src/flows/flow-7/flow7-leaderboard.tsx",
+          "route": "#/leaderboard",
+          "state_variants": [
+            "reg/read/msg × day/total",
+            "rank≤10",
+            "rank>10",
+            "rank=null(本窗口无计数)"
+          ]
+        },
+        {
+          "name": "屏 2 榜单状态屏",
+          "file_path": "src/flows/flow-7/flow7-leaderboard.tsx",
+          "route": "#/leaderboard?stage=states&phase=empty",
+          "state_variants": [
+            "loading",
+            "empty-daily(UTC 日切)",
+            "empty-global",
+            "error:500"
+          ]
+        },
+        {
+          "name": "屏 3 公开链接匿名只读",
+          "file_path": "src/flows/flow-7/flow7-leaderboard.tsx",
+          "route": "#/reads/:id",
+          "state_variants": [
+            "anon(定位全禁用)",
+            "not-located-tag",
+            "blocked-count"
+          ]
+        }
+      ],
+      "components_used": [
+        "Alert",
+        "AlertDescription",
+        "AlertTitle",
+        "Avatar",
+        "AvatarFallback",
+        "Button",
+        "Card",
+        "CardAction",
+        "CardContent",
+        "CardDescription",
+        "CardHeader",
+        "CardTitle",
+        "Empty",
+        "EmptyContent",
+        "EmptyDescription",
+        "EmptyHeader",
+        "EmptyMedia",
+        "EmptyTitle",
+        "IconButton",
+        "Skeleton",
+        "Table",
+        "TableBody",
+        "TableCell",
+        "TableHead",
+        "TableHeader",
+        "TableRow",
+        "Tabs",
+        "TabsContent",
+        "TabsList",
+        "TabsTrigger",
+        "Tag",
+        "ToggleGroup",
+        "ToggleGroupItem",
+        "Tooltip",
+        "TypographyMuted"
+      ],
+      "components_missing": [
+        "无（名次条形复用 div 宽度，与 F2 同一套做法）"
+      ]
+    }
+  ],
+  "shell": {
+    "files": [
+      "src/App.tsx",
+      "src/shell/nav.tsx",
+      "src/shell/app-shell.tsx",
+      "src/shell/app-context.tsx",
+      "src/shell/command-menu.tsx",
+      "src/shell/router.tsx",
+      "src/shell/dev-dock.tsx",
+      "src/shell/error-boundary.tsx",
+      "src/shell/use-doc-title.ts"
+    ],
+    "ia_levels": "一级=分组(工作区/运营) 二级=侧栏条目(4 可用 + 2 标注待设计) 三级=屏内 Tabs/Drawer/钻取",
+    "permission_layers": [
+      "RequireSignedIn (401→/login)",
+      "RequireAdmin (路由级拦截，非置灰)",
+      "canManage (他人公开消息只读)"
+    ],
+    "settings_placement": "账户设置在头像下拉，不占主导航一级",
+    "keyboard": "⌘K / Ctrl+K 命令面板；导航项为真实 <a> 可中键开新标签"
+  },
+  "output_files": [
+    "src/flows/flow-1/flow1-auth.tsx",
+    "src/flows/flow-2/flow2-overview.tsx",
+    "src/flows/flow-3/flow3-read-details.tsx",
+    "src/flows/flow-4/flow4-admin-users.tsx",
+    "src/flows/flow-5/flow5-admin-config.tsx",
+    "src/flows/flow-6/flow6-account.tsx",
+    "src/flows/flow-7/flow7-leaderboard.tsx",
+    "src/App.tsx",
+    "src/shell/nav.tsx",
+    "src/shell/app-shell.tsx",
+    "src/shell/app-context.tsx",
+    "src/shell/command-menu.tsx",
+    "src/shell/router.tsx",
+    "src/shell/dev-dock.tsx",
+    "src/shell/error-boundary.tsx",
+    "src/shell/use-doc-title.ts",
+    "src/flows/shared/types.ts",
+    "src/flows/shared/mock-data.ts",
+    "src/flows/shared/i18n.ts",
+    "src/flows/shared/formula.ts",
+    "src/flows/shared/pagination.ts",
+    "src/flows/shared/theme.ts",
+    "src/flows/shared/use-document-theme.ts",
+    "scripts/self-check.ts",
+    "scripts/ui-audit.ts",
+    "scripts/gen-chain-context.ts"
+  ],
+  "verification": {
+    "typecheck": "tsc --noEmit 通过（strict + noUnusedLocals + noUnusedParameters + isolatedModules）",
+    "build": "vite build 通过；仅 chunk-size 提示",
+    "runtime": "vite preview（production 产物）走查：登录 / 6 条路由 / ⌘K / 钻取 / 匿名公开链接 / 折叠侧栏，控制台 0 error 0 warning",
+    "bundle": "main chunk 2693 kB / gzip 713 kB；css 170 kB / gzip 25 kB；88 个 js chunk（大头是 Spark 整包带进来的 mermaid / cytoscape / lottie / katex）",
+    "not_verified": "无法截图，因此未做像素级视觉还原确认；对比度按 token 语义与实测 computed color 推断"
+  },
+  "known_gaps": [
+    "AlertDialog 叠在 Drawer 之上时依赖 portal 的 DOM 顺序而非显式 z-index 层级",
+    "叙述性长文案未做全量 i18n（只双语化了跨屏复用的 chrome 词条）",
+    "F6 IP 拉黑与 F4 部分操作在原型里是同步的，接真实 API 需补 loading + 提交期禁用输入",
+    "公开链接会向匿名访客返回完整 IP / UA，且账户级黑名单对其不生效（服务端既有行为，界面已显式告警，建议产品侧复核）"
+  ],
+  "next_skills_suggested": [
+    "check",
+    "edge",
+    "chart",
+    "flow-mobile"
+  ]
+}
