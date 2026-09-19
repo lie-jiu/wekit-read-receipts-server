@@ -10,7 +10,7 @@ import {
   SESSION_TTL_MS,
   TRUSTED_PROXY,
 } from "./config";
-import { ipInCidr, peerIp } from "./rate-limit";
+import { ipInCidr, peerIp, UNKNOWN_IP } from "./rate-limit";
 import { sqlite } from "./db";
 import { timingSafeEqual, sha256Hex, utcNow } from "./utils";
 
@@ -136,7 +136,7 @@ export function isSecureRequest(c: Context): boolean {
   }
   if (TRUSTED_PROXY.length === 0) return false;
   const peer = peerIp(c);
-  if (peer === "unknown" || !TRUSTED_PROXY.some((cidr) => ipInCidr(peer, cidr))) return false;
+  if (peer === UNKNOWN_IP || !TRUSTED_PROXY.some((cidr) => ipInCidr(peer, cidr))) return false;
   return c.req.header("x-forwarded-proto")?.split(",")[0]?.trim() === "https";
 }
 

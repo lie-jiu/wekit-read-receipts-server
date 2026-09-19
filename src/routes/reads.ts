@@ -3,7 +3,7 @@ import { CSP, ENABLE_GEO, geoQuotaFor } from "../config";
 import { audit, requireUser } from "../auth";
 import { sqlite } from "../db";
 import { lookupIpLocation } from "../geo";
-import { clientIp, isValidIp } from "../rate-limit";
+import { clientIp, isValidIp, UNKNOWN_IP } from "../rate-limit";
 import { UA_KIND_SQL } from "../stats";
 import { isValidId, utcDate, utcNow } from "../utils";
 import {
@@ -276,13 +276,18 @@ readsApp.post("/reads/:id/block", async (c) => {
     return c.json({ error: "invalid JSON" }, 400);
   }
   // 仅消息维度支持 action:"current"（一键拉黑当前访问 IP）
-  const ip = body.action === "current" ? clientIp(c) : typeof body.ip === "string" ? body.ip : "";
+  const current = clientIp(c);
+  const ip = body.action === "current" ? current : typeof body.ip === "string" ? body.ip : "";
+  // 哨兵值单独报错：请求者什么也没填，回 "invalid ip" 会让他以为是自己输入有问题
+  if (body.action === "current" && current === UNKNOWN_IP) {
+    return c.json({ error: "ip_unavailable" }, 400);
+  }
   if (!isValidIp(ip)) return c.json({ error: "invalid ip" }, 400);
   const res = sqlite
     .query("INSERT OR IGNORE INTO ip_block_message (id, ip, created_at) VALUES (?, ?, ?)")
     .run(id, ip, utcNow());
   if (res.changes === 0) return c.json({ error: "exists" }, 409);
-  audit(requireUser(c)!.wxId, "message_block_add", `${id} ${ip}`, clientIp(c));
+  audit(requireUser(c)!.wxId, "message_block_add", `${id} ${ip}`, current);
   return c.json({ ok: true, ip });
 });
 

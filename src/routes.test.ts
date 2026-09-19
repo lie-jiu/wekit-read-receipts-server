@@ -16,7 +16,7 @@ const { geoQuotaFor } = await import("./config");
 const { sqlite, migrate } = await import("./db");
 const { default: app } = await import("./app");
 const { backfillStats, getCursor, recycleStaleGeoCounts } = await import("./stats");
-const { setIpResolver } = await import("./rate-limit");
+const { setIpResolver, UNKNOWN_IP } = await import("./rate-limit");
 const { computeId, sha256Hex } = await import("./utils");
 
 migrate();
@@ -477,5 +477,53 @@ describe("POST /reads/:id/geo（配额跨天归零）", () => {
     expect((await res.json()) as { error: string }).toEqual(
       expect.objectContaining({ error: "geo_quota_exceeded" }),
     );
+  });
+});
+
+/* ── IP 解析失败时的自动拉黑守卫 ── */
+
+describe("POST /register 的来源 IP 自动拉黑", () => {
+  test("UNKNOWN_IP 不进黑名单（否则该消息的全部已读会被过滤掉）", async () => {
+    insertUser("guard_wx", 5);
+    currentIp = UNKNOWN_IP;
+    const res = await register({ wxId: "guard_wx", content: "unknown ip", createTime: String(Date.now()) });
+    expect(res.status).toBe(200);
+    const id = ((await res.json()) as { id: string }).id;
+    expect((sqlite.query("SELECT COUNT(*) AS n FROM ip_block_message WHERE id = ?").get(id) as { n: number }).n).toBe(0);
+
+    // 对照组：能解析出 IP 时仍然自动拉黑，这条既有语义不能被守卫顺手删掉
+    currentIp = freshIp();
+    const res2 = await register({ wxId: "guard_wx", content: "known ip", createTime: String(Date.now()) });
+    const id2 = ((await res2.json()) as { id: string }).id;
+    expect((sqlite.query("SELECT COUNT(*) AS n FROM ip_block_message WHERE id = ?").get(id2) as { n: number }).n).toBe(1);
+  });
+});
+
+describe('POST /reads/:id/block 的 action:"current"', () => {
+  const id = sha256Hex("block-current-msg");
+  insertMessage(id, "guard_wx", "block my own visitor");
+
+  test("IP 解析不出来时返回 ip_unavailable，而不是把哨兵值写进黑名单", async () => {
+    currentIp = UNKNOWN_IP;
+    const res = await app.request(`/reads/${id}/block`, {
+      method: "POST",
+      headers: authCookie("guard_wx"),
+      body: JSON.stringify({ action: "current" }),
+    });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "ip_unavailable" });
+    expect((sqlite.query("SELECT COUNT(*) AS n FROM ip_block_message WHERE id = ?").get(id) as { n: number }).n).toBe(0);
+  });
+
+  test("能解析出 IP 时正常拉黑当前访问者", async () => {
+    const ip = freshIp();
+    currentIp = ip;
+    const res = await app.request(`/reads/${id}/block`, {
+      method: "POST",
+      headers: authCookie("guard_wx"),
+      body: JSON.stringify({ action: "current" }),
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, ip });
   });
 });
