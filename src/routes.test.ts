@@ -501,15 +501,19 @@ describe("POST /register 的来源 IP 自动拉黑", () => {
 
 describe('POST /reads/:id/block 的 action:"current"', () => {
   const id = sha256Hex("block-current-msg");
-  insertMessage(id, "guard_wx", "block my own visitor");
+  insertUser("blk_wx", 5);
+  insertMessage(id, "blk_wx", "block my own visitor");
+
+  const block = (wxId: string, body: unknown) =>
+    app.request(`/reads/${id}/block`, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...authCookie(wxId) },
+      body: JSON.stringify(body),
+    });
 
   test("IP 解析不出来时返回 ip_unavailable，而不是把哨兵值写进黑名单", async () => {
     currentIp = UNKNOWN_IP;
-    const res = await app.request(`/reads/${id}/block`, {
-      method: "POST",
-      headers: authCookie("guard_wx"),
-      body: JSON.stringify({ action: "current" }),
-    });
+    const res = await block("blk_wx", { action: "current" });
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({ error: "ip_unavailable" });
     expect((sqlite.query("SELECT COUNT(*) AS n FROM ip_block_message WHERE id = ?").get(id) as { n: number }).n).toBe(0);
@@ -518,11 +522,7 @@ describe('POST /reads/:id/block 的 action:"current"', () => {
   test("能解析出 IP 时正常拉黑当前访问者", async () => {
     const ip = freshIp();
     currentIp = ip;
-    const res = await app.request(`/reads/${id}/block`, {
-      method: "POST",
-      headers: authCookie("guard_wx"),
-      body: JSON.stringify({ action: "current" }),
-    });
+    const res = await block("blk_wx", { action: "current" });
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true, ip });
   });
