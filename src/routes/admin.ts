@@ -1,5 +1,6 @@
 import { Hono } from "hono";
-import { CSP, isAdmin } from "../config";
+import { isAdmin } from "../config";
+import { spaHash } from "../spa";
 import { audit, hashPassword, requireAdmin } from "../auth";
 import { sqlite, syncMessageCount } from "../db";
 import { STAT_TABLES } from "../stats";
@@ -21,7 +22,6 @@ import {
   saveRetentionSettings,
   type RetentionSettings,
 } from "../retention";
-import { adminPage } from "../pages";
 
 /** 管理后台（统一受 /admin/* 30/分 限流，仅 ADMIN 列表内账号；中间件由 app.ts 顶层控制） */
 export const adminApp = new Hono();
@@ -37,13 +37,12 @@ function levelConfigJson(): Record<string, unknown> {
   return out;
 }
 
-adminApp.get("/admin", (c) => {
-  const user = requireAdmin(c);
-  if (!user) return c.redirect("/login");
-  c.header("Content-Security-Policy", CSP.DASHBOARD);
-  c.header("Content-Type", "text/html; charset=utf-8");
-  return c.body(adminPage({ wxId: user.wxId }));
-});
+/**
+ * 旧的管理后台服务端页面已退役：重定向到 SPA 的 `/#/admin/users`。
+ * 只匹配 `/admin` 本身 —— `/admin/users`、`/admin/level` 等全是 JSON 端点，
+ * 一条 `/admin/*` 的重定向会把它们一起吞掉。
+ */
+adminApp.get("/admin", (c) => c.redirect(spaHash("/admin/users")));
 
 adminApp.get("/admin/users", (c) => {
   const denied = adminOr(c);

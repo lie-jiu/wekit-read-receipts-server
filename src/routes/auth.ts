@@ -1,5 +1,6 @@
 import { Hono } from "hono";
-import { CSP, INVITE_CODE, RATE_LIMITS, loginDelayMs } from "../config";
+import { INVITE_CODE, RATE_LIMITS, loginDelayMs } from "../config";
+import { spaHash } from "../spa";
 import {
   audit,
   createSession,
@@ -14,7 +15,6 @@ import { sqlite } from "../db";
 import { clientIp } from "../rate-limit";
 import { isValidWxId, timingSafeEqual, utcNow } from "../utils";
 import { parseBody } from "../http-helpers";
-import { LOGIN_HTML } from "../pages";
 
 /** 认证 / 用户（统一受 /auth/* 5/分 限流，由 app.ts 顶层中间件控制） */
 export const authApp = new Hono();
@@ -120,9 +120,10 @@ authApp.post("/auth/password", async (c) => {
   return c.json({ ok: true });
 });
 
-authApp.get("/login", (c) => {
-  if (getSessionUser(c)) return c.redirect("/");
-  c.header("Content-Security-Policy", CSP.LOGIN);
-  c.header("Content-Type", "text/html; charset=utf-8");
-  return c.body(LOGIN_HTML);
-});
+/**
+ * 旧的服务端登录页已退役：`/login` 现在重定向到 SPA 的 `/#/login`。
+ * 保留这个 URL 是因为它被写进了太多地方（书签、README、部署文档、别人的备忘录），
+ * 直接 404 会把老用户挡在外面；302 而不是 301，是为了让"退回子路径挂载"这类
+ * 调整不会被浏览器永久缓存住。
+ */
+authApp.get("/login", (c) => c.redirect(spaHash("/login")));

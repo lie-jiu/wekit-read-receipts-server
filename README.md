@@ -56,13 +56,12 @@
 - **限流**：per-IP 固定窗口 + `/register` per-wxId 双窗口（分钟/天）
 - **安全会话**：30 天；HTTPS 下 `__Host-session` + Secure，HTTP 直连自动降级
 - **可信代理**：CIDR 精确信任，公网直连绝不设置；`X-Forwarded-For` 自右向左取值，抵御反代「追加」模式下的首值伪造
-- **注入防护**：内联脚本数据安全序列化（阻断 `</script>` 逃逸）、前端渲染统一转义、SQL 全参数化
+- **注入防护**：SQL 全参数化；前端渲染转义在 SPA 侧（React 默认转义 + 显式 `textContent`）；服务端不再拼接 HTML，也就没有"内联脚本逃逸"这一类问题（旧 SSR 页面时代的 `safeJson` 随页面一并移除）
 
 ### 界面与部署
 
-- **明暗主题**：6 个页面浅色 / 深色切换，默认跟随系统 `prefers-color-scheme`，选择经 `localStorage` 持久化，`meta theme-color` 随主题联动
-- **键盘可访问性**：`:focus-visible` 焦点环 + `prefers-reduced-motion` 兜底；模态框 Esc 关闭 + Tab 焦点陷阱 + 焦点还原；表格行 Enter / Space 可达
-- **移动端响应式**：`1rem` 字号防 iOS 缩放、`touch-action` 优化、表格横向滚动、关键按钮 40×40 命中区（断点 480 / 640px）
+- **界面是 SPA**：`wekit-read-insights/`（React 19 + Vite + Spark Design）构建为静态产物，由服务端两种运行时各自托管（Bun 读磁盘 / Workers 走 assets 绑定），与 API 同源同进程，不需要额外前端服务器。旧的服务端拼接页面已退役，只留 `/login` `/rank` `/account` `/admin` `/reads/:id` 五个 302
+- **明暗主题**：浅色 / 深色切换，默认跟随系统 `prefers-color-scheme`，选择经 `localStorage` 持久化
 - **多形态部署**：反向代理 / 公网直连 / Cloudflare Tunnel / Cloudflare Workers（免服务器），内置 HTTPS 支持
 - **跨平台自启**：Linux systemd、Windows 启动文件夹 + 隐藏窗口、无 systemd 回退 nohup
 - **定时任务**：每 10 分钟增量回填统计表；每日清理过期会话、审计日志、孤儿 reads
@@ -96,8 +95,7 @@ wekit-read-receipts-server/
 ├── src/
 │   ├── app.ts        # Hono 聚合层：全局安全头/限流中间件，挂载子路由，末尾挂 SPA 静态兜底
 │   ├── spa.ts        # SPA 静态托管：路径归属判定（双运行时共用）+ Bun 侧兜底中间件
-│   ├── routes/       # 子路由：tracking / auth / messages / reads / stats / admin / account
-│   ├── pages/        # 前端页面：dashboard / admin / account / login（服务端拼接 HTML + 内联 JS）
+│   ├── routes/       # 子路由：tracking / auth / messages / reads / stats / overview / admin / account
 │   ├── backends/     # 按运行时分发的后端：SQLite（bun:sqlite / DO SQL）与 SPA 产物读取（磁盘）
 │   ├── *.ts          # 核心模块：config / db / auth / geo / levels / rate-limit / stats / retention / utils / http-helpers
 │   └── *.test.ts     # 单元测试：auth / levels / retention / routes / security / spa（bun test）
@@ -139,28 +137,12 @@ wekit-read-receipts-server/
 │   ├── *.test.ts         # 单元测试：auth / levels / retention / routes / security / spa（bun test）
 │   ├── routes/           # 按业务职责拆分的子路由模块
 │   │   ├── tracking.ts   # /pixel、/count、/register 客户端打点
-│   │   ├── auth.ts       # /auth/*、/login 认证与会话
-│   │   ├── messages.ts   # /、/messages 仪表盘与消息管理
-│   │   ├── reads.ts      # /reads/:id 已读详情与按需 IP 定位
-│   │   ├── stats.ts      # /leaderboard、/rank 排行榜
-│   │   ├── admin.ts      # /admin/* 管理后台
-│   │   └── account.ts    # /account 账户设置页与账户 IP 黑名单
-│   ├── pages/            # 前端页面 HTML/JS（服务端拼接整段 HTML + 内联 JS 返回）
-│   │   ├── shared.ts             # 统一的浏览器端 helper（esc/escAttr 严格版/t/applyI18n），以字符串插值注入各页面 <script>
-│   │   ├── shared-style.ts       # 共享设计令牌（themeTokens()：24 令牌 + 浅色板 + 焦点环 + reduced-motion）+ 6 页一致的公共 CSS（sharedStyle()）
-│   │   ├── types.ts              # 页面层视图模型类型（BasicSession / DashboardSession 等），路由 → 页面的收窄投影，与 auth.ts SessionUser 解耦
-│   │   ├── index.ts              # 桶文件：重导出各页面模块，路由统一 import { ... } from "../pages"
-│   │   ├── dashboard/            # 仪表盘三页面
-│   │   │   ├── dashboard-page.ts # 消息仪表盘 htmlPage
-│   │   │   ├── leaderboard-page.ts # 排行榜 leaderboardPage
-│   │   │   ├── read-details-page.ts # 已读详情 readDetailsPage
-│   │   │   └── index.ts          # 桶文件：重导出三个页面
-│   │   ├── admin/                # 管理后台
-│   │   │   ├── admin-style.ts    # adminStyle() 内联 CSS
-│   │   │   └── admin-script.ts   # adminScript() 内联 JS（6 大功能模块）
-│   │   ├── admin.ts              # adminPage() 薄组合层（拼 style + script）
-│   │   ├── account.ts            # 账户设置页
-│   │   └── login.ts              # 登录页
+│   │   ├── auth.ts       # /auth/* 认证与会话；GET /login 是 302 → SPA
+│   │   ├── messages.ts   # /messages 消息列表与清空（清空同事务重算 message_count）
+│   │   ├── reads.ts      # /reads/:id/data 已读明细、三级黑名单、按需 IP 定位；GET /reads/:id 是 302
+│   │   ├── stats.ts      # /leaderboard、/leaderboard/me、/rank（重定向）
+│   │   ├── admin.ts      # /admin/* 管理后台 JSON 端点
+│   │   └── account.ts    # /account 账户页端点（IP 黑名单 / 留痕 / 统计）
 ├── wekit-read-insights/  # 新版界面 SPA（React 19 + Vite + Spark Design，独立工程：自己的 package.json / bun.lock / tsconfig）
 │   ├── src/data/         # 真接口数据层：api（fetch/错误类型）、hooks、session、overview、reads、admin
 │   ├── src/flows/        # 七个流程页面（flow-1 认证 … flow-7 排行榜），shared/ 放 mock-data 与共用类型
@@ -238,31 +220,33 @@ cd wekit-read-insights && bun run dev  # vite 开发服务器（5173）
 
 | 端点 | 说明 |
 |---|---|
-| `/login`、`/auth/verify`、`/auth/register`、`/auth/logout`、`/auth/password`、`/auth/status` | 会话管理（30 天；HTTPS 下 `__Host-session` + Secure，HTTP 直连自动降级为普通 cookie） |
-| `/` | 用户仪表盘：消息搜索（FTS5 trigram）、读取明细、删除；消息分页（每页 10 条，`X-Total-Count`） |
-| `/messages`、`DELETE /messages` | 本人消息列表 / 清空 |
-| `/reads/:id` | 单条消息已读详情页（IP、UA、时间） |
+| `/login`、`/auth/verify`、`/auth/register`、`/auth/logout`、`/auth/password`、`/auth/status` | 会话管理（30 天；HTTPS 下 `__Host-session` + Secure，HTTP 直连自动降级为普通 cookie）。`GET /login` 本身是 302 → `/#/login` |
+| `/messages`、`DELETE /messages` | 本人消息列表（FTS5 trigram 搜索、每页 10 条 + `X-Total-Count`）/ 清空。清空会在同一事务里重算 `users.message_count` |
+| `GET /reads/:id` | 302 → `/#/reads/:id`（旧的已读详情服务端页面已退役） |
 | `GET /reads/:id/data` | 已读明细分页数据；服务端过滤黑名单 IP 行（仅返回 `blockedCount` 隐藏条数与 `visibleTotal` 可见数） |
-| `DELETE /reads/:id` | 删除该消息（发布者本人或管理员，同事务清理 reads） |
+| `DELETE /reads/:id` | 删除该消息（发布者本人或管理员，同事务清理 reads 并重算 message_count） |
 | `POST /reads/:id/public` | 切换公开详情（发布者本人或管理员，默认关闭） |
-| `GET/POST/DELETE /reads/:id/block` | 单条消息 IP 黑名单（消息所有者）；`POST` 支持 `{ ip }` 自定义或 `{ "action": "current" }` 一键拉黑当前访问 IP |
-| `/account`、`GET/POST/DELETE /account/ip-block` | 账户设置页：账户 IP 黑名单（跨本人全部消息生效，仅自定义添加，无一键拉黑）+ 修改密码 / 退出登录 / 清除我的 |
-| `GET/POST/DELETE /admin/ip-block` | 全局 IP 黑名单（仅管理员，admin 后台页签唯一入口；仅自定义 IP，无一键拉黑） |
+| `GET/POST/DELETE /reads/:id/block` | 单条消息 IP 黑名单（消息所有者）；`POST` 支持 `{ ip }` 自定义或 `{ "action": "current" }` 一键拉黑当前访问 IP（解析不出来源 IP 时回 400 `ip_unavailable`） |
+| `GET /account` | 302 → `/#/account` |
+| `GET/POST/DELETE /account/ip-block`、`GET /account/audit`、`GET /account/stats` | 账户 IP 黑名单（跨本人全部消息生效，仅自定义添加，无一键拉黑）/ 本人留痕 / 累计被读与来源 IP |
+| `GET /admin` | 302 → `/#/admin/users`（`/admin/*` 其余路径全是 JSON 端点，重定向刻意只匹配裸 `/admin`） |
+| `GET/POST/DELETE /admin/ip-block` | 全局 IP 黑名单（仅管理员；仅自定义 IP，无一键拉黑） |
 | `POST /reads/:id/geo` | 按需 IP 定位：补全省市/运营商双语（幂等，缓存 24h；需登录，本人或管理员；按等级配额累计） |
-| `/leaderboard` | 排行榜：`?metric=reg\|read\|msg` × `?scope=day\|total`（均按 UTC 自然日；wxId 脱敏），无效参数返回 400 |
-| `/admin/*` | 管理后台：用户管理、等级调整、权益公式、消息管理、僵尸用户清理 |
+| `/leaderboard` | 排行榜前 10：`?metric=reg\|read\|msg` × `?scope=day\|total`（均按 UTC 自然日；wxId 与消息内容脱敏），无效参数返回 400。消息榜行带 `isPublic` 供前端判定钻取权限 |
+| `/leaderboard/me` | 我自己的真实名次：`{ rank, count, total }`，`rank=null` 表示本窗口内没有可排名的计数。与 `/leaderboard` 共用 `stats.ts` 的 `boardOf()`，两者不会互相矛盾 |
+| `/rank` | 302 → `/#/leaderboard` |
+| `/admin/*` | 管理后台 JSON 端点：用户管理、等级调整、权益公式、消息管理、僵尸用户清理 |
 
-### 新版界面（SPA 静态产物）
+### 界面（SPA 静态产物）
 
 | 路径 | 说明 |
 |---|---|
-| `GET /insights` | 307 → `/insights/`（补尾斜杠，产物里的资源路径是根绝对的，缺了它就解析不到） |
-| `GET /insights/` | SPA 文档（`dist/index.html`）。`Cache-Control: no-store` + SPA 专用 CSP：`script-src 'self'`（产物全是带哈希的同源 module script，无内联脚本），`style-src 'self' 'unsafe-inline'`（sonner/主题原语运行时插 `<style>`，见 `src/config.ts` 的注释） |
+| `GET /` | SPA 文档（`dist/index.html`）。`Cache-Control: no-store` + 全站唯一的 CSP：`script-src 'self'`（产物全是带哈希的同源 module script，无内联脚本），`style-src 'self' 'unsafe-inline'`（sonner/主题原语运行时插 `<style>`，见 `src/config.ts` 的注释）。界面内部路由走 hash（`/#/overview`、`/#/messages/:id`…），服务端永远看不见，所以不需要 history fallback |
 | `GET /assets/<哈希名>`、根目录少数静态文件 | 构建产物本体，`Cache-Control: public, max-age=31536000, immutable`；扩展名走白名单，不做 percent-decode（`/index.html` 这类第二个文档地址不存在） |
 
-归属判定只有 `src/spa.ts` 的 `resolveStatic()` 一份：Bun 侧由 `staticFallback` 中间件读 `SPA_DIST`（注册在全部业务路由**之后**，所以 `/`、`/login`、`/messages`、`/reads/:id`、`/rank`、`/admin` 六个旧 SSR 路径永远优先服务端）；Workers 侧由 `worker/index.ts` 在边缘查 `ASSETS` 绑定（`run_worker_first: true`），命中不到文件时落回 DO 给 JSON 404。
+归属判定只有 `src/spa.ts` 的 `resolveStatic()` 一份：Bun 侧由 `staticFallback` 中间件读 `SPA_DIST`（注册在全部业务路由**之后**，所以任何 JSON 端点与旧路径重定向都优先于产物）；Workers 侧由 `worker/index.ts` 在边缘查 `ASSETS` 绑定（`run_worker_first: true`），命中不到文件时落回 DO 给 JSON 404。
 
-**公开消息详情**：`is_public=1` 时任何人（含未登录用户）均可只读访问详情页与 `/reads/:id/data`（黑名单过滤仍生效）；未公开时仅发布者本人与管理员可见，未登录跳转登录页；匿名访客隐藏删除 / 公开开关 / IP 黑名单等管理功能。
+**公开消息详情**：`is_public=1` 时任何人（含未登录用户）均可只读访问 `/#/reads/:id` 与 `/reads/:id/data`（黑名单过滤仍生效）；未公开时匿名拿 401、其他登录用户拿 403，SPA 据此显示对应的说明而不是空白页。⚠️ 已知未决产品问题：匿名访客拿到的明细包含读者完整 IP 与 UA，且**不**并入账户级黑名单（服务端只在查看者是 owner 时才 union）—— 界面已把这一点写在页面提示里，但要改的是服务端语义，尚未定。
 
 <details>
 <summary><b>僵尸清理端点（/admin/retention/*）</b></summary>
@@ -299,7 +283,7 @@ cd wekit-read-insights && bun run dev  # vite 开发服务器（5173）
 | `PBKDF2_ITERATIONS` | `100000` | 新哈希的 PBKDF2 迭代次数（下限 1000）。**Workers 免费档（10ms CPU）应设 `20000`**，付费档保持默认；`wrangler.jsonc` 已为 Workers 预置 `20000` |
 | `CRON_KEY` | 无 | **仅 Workers 形态**：Cron Triggers 转发进 DO 的鉴权密钥（`wrangler secret put CRON_KEY`），未设置时定时任务拒绝执行 |
 | `AUDIT_RETENTION_DAYS` | `30` | 审计日志保留天数（`0` = 不清理，长期留存） |
-| `SPA_PATH` | `/insights` | 新版界面（SPA）文档的挂载路径；置空（`SPA_PATH=`）表示直接接管 `/`。产物资源固定在 `/assets/*` 与根目录少数静态文件名，不随该值变化（Vite `base` 保持默认 `/`，换挂载点不必重新构建） |
+| `SPA_PATH` | 空（接管 `/`） | SPA 文档的挂载路径。设成 `/insights` 之类可把界面挪到子路径，旧路径的 302 会跟着改指 `<SPA_PATH>/#/…`（见 `src/spa.ts` 的 `spaHash`）。产物资源固定在 `/assets/*` 与根目录少数静态文件名，不随该值变化（Vite `base` 保持默认 `/`，换挂载点不必重新构建） |
 | `SPA_DIST` | `./wekit-read-insights/dist` | **仅 Bun 形态**：SPA 构建产物目录（Workers 由 `wrangler.jsonc` 的 `assets.directory` 决定）。目录缺失时 SPA 路径回 JSON 404，启动日志给出「先跑 bun run web:build」提示 |
 
 > **仅 Bun 部署适用**：`PORT` / `BIND_HOST` / `TLS_CERT` / `TLS_KEY` / `DB_PATH` / `TRUSTED_PROXY` / `SPA_DIST`。Workers 形态恒为边缘 HTTPS、真实 IP 由边缘注入 `CF-Connecting-IP`，这些变量不适用（见部署形态 D）。
@@ -381,7 +365,7 @@ cd wekit-read-insights && bun run dev  # vite 开发服务器（5173）
 
 生产建议：`DB_PATH` 指向持久化磁盘、`ADMIN` 声明受保护账号、`INVITE_CODE` 开启邀请码、`NODE_ENV=production`。
 
-四种形态都要先 `bun run web:build` 再部署（新界面是静态产物，`dist` 不进版本库）：A/B/C 由 Bun 进程读 `SPA_DIST`，D 由 `wrangler deploy` 上传 `assets.directory`。上线后新界面在 `/insights/`，旧服务端页面仍在 `/`、`/login`、`/messages`、`/reads/:id`、`/rank`、`/admin`，两版并行可用同一套接口。
+四种形态都要先 `bun run web:build` 再部署（界面是静态产物，`dist` 不进版本库）：A/B/C 由 Bun 进程读 `SPA_DIST`，D 由 `wrangler deploy` 上传 `assets.directory`。忘了构建不会报错，但 `/` 会返回 JSON 404（启动日志与 CI 都会提示）。
 
 ### A. 公网服务器 + 反向代理（推荐）
 

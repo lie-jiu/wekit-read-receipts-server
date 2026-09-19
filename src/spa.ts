@@ -62,6 +62,15 @@ export function resolveStatic(pathname: string, base: string = SPA_PATH): Static
 /** 由运行时注入的取文件后端；返回 null 表示该文件不存在（交回路由层） */
 export type StaticReader = (relPath: string) => Promise<Response | null>;
 
+/**
+ * 旧服务端页面退役后指向 SPA hash 路由的落点。
+ * SPA_PATH 为空（SPA 接管根路径，退役后的默认形态）时得到 `/#/login`；
+ * 挂在子路径下时得到 `/insights/#/login` —— 重定向必须跟着挂载点走，不能写死 `/`。
+ */
+export function spaHash(hash: string): string {
+  return `${SPA_PATH}/#${hash}`;
+}
+
 let reader: StaticReader | null = null;
 
 export function setStaticReader(fn: StaticReader | null): void {

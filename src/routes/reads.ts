@@ -1,5 +1,6 @@
 import { Hono } from "hono";
-import { CSP, ENABLE_GEO, geoQuotaFor } from "../config";
+import { ENABLE_GEO, geoQuotaFor } from "../config";
+import { spaHash } from "../spa";
 import { audit, requireUser } from "../auth";
 import { sqlite, syncMessageCount } from "../db";
 import { lookupIpLocation } from "../geo";
@@ -15,42 +16,19 @@ import {
   readsMessageOr,
   type ReadRow,
 } from "../http-helpers";
-import { readDetailsPage } from "../pages";
 
 /** 已读详情页 / 分页 JSON / 按需 IP 定位（POST /reads/:id/geo 受 /reads/:id/geo 30/分 限流，由 app.ts 顶层中间件控制） */
 export const readsApp = new Hono();
 
-readsApp.get("/reads/:id", (c) => {
-  const id = c.req.param("id");
-  const access = publicReadOr(c, id);
-  if (access instanceof Response) {
-    // 未登录访问私有消息 → 跳登录页（与历史行为一致）；已登录但越权 → 403 JSON
-    if (access.status === 401) return c.redirect("/login");
-    return access;
-  }
-  const { msg, user } = access;
-  c.header("Content-Security-Policy", CSP.DASHBOARD);
-  c.header("Content-Type", "text/html; charset=utf-8");
-  // 匿名公开访问：不注入登录信息，前端据此隐藏删除/公开/黑名单等管理 UI；geo 置为 ENABLE_GEO 以便渲染定位按钮（点击后前端提示登录）
-  const session = user
-    ? {
-        wxId: user.wxId,
-        level: user.level,
-        isAdmin: user.isAdmin,
-        geo: ENABLE_GEO,
-        geoQuota: geoQuotaFor(user.level),
-        geoRemaining: Math.max(0, geoQuotaFor(user.level) - geoUsedToday(user)),
-      }
-    : { wxId: "", level: 0, isAdmin: false, geo: ENABLE_GEO, geoQuota: 0, geoRemaining: 0 };
-  return c.body(
-    readDetailsPage(session, {
-      id,
-      content: msg.content,
-      isOwner: !!user && msg.wx_id === user.wxId,
-      isPublic: msg.is_public === 1,
-    }),
-  );
-});
+/**
+ * 旧的已读详情服务端页面已退役：`/reads/:id` 重定向到 SPA 的 `/#/reads/:id`。
+ *
+ * 刻意不在这里做 publicReadOr() 访问判定（旧实现会替匿名访客跳去 /login）：
+ * SPA 会立刻用 GET /reads/:id/data 问一次，那条判定本来就在服务端做，而且拿得到
+ * 更准的原因 —— 401 是"这条没公开/需要登录"，403 是"你没权限"，404 是"没有这条消息"，
+ * 旧实现只能笼统地把人推到登录页。
+ */
+readsApp.get("/reads/:id", (c) => c.redirect(spaHash(`/reads/${c.req.param("id")}`)));
 
 /** 黑名单并集：全局 ∪ 本消息 ∪ 账户(owner)。返回 Set（内存 O(n) 标记，无逐行 SQL） */
 function blockSetFor(id: string, ownerWxId: string | null): Set<string> {

@@ -1,32 +1,13 @@
 import { Hono } from "hono";
-import { CSP, ENABLE_GEO, geoQuotaFor, quotaFor, retentionMonthsFor } from "../config";
 import { audit, getSessionUser, requireUser } from "../auth";
 import { sqlite, syncMessageCount } from "../db";
 import { clientIp } from "../rate-limit";
 import { escapeLike, utcDateDaysAgo } from "../utils";
-import { clampLimit, geoUsedToday, requireUserOr } from "../http-helpers";
-import { htmlPage } from "../pages";
+import { clampLimit, requireUserOr } from "../http-helpers";
 
-/** 仪表盘 / 消息列表 / 清空 */
+/** 消息列表 / 清空（仪表盘 `GET /` 已退役：SPA 接管根路径，由 src/spa.ts 的静态兜底回文档。
+ *  这里绝不能再注册 `/`，否则会抢在静态兜底之前，把新界面挡在门外） */
 export const messagesApp = new Hono();
-
-messagesApp.get("/", (c) => {
-  const user = getSessionUser(c);
-  if (!user) return c.redirect("/login");
-  c.header("Content-Security-Policy", CSP.DASHBOARD);
-  c.header("Content-Type", "text/html; charset=utf-8");
-  return c.body(
-    htmlPage({
-      wxId: user.wxId,
-      level: user.level,
-      geo: ENABLE_GEO,
-      geoQuota: geoQuotaFor(user.level),
-      geoRemaining: Math.max(0, geoQuotaFor(user.level) - geoUsedToday(user)),
-      messageQuota: quotaFor(user.level),
-      retentionMonths: retentionMonthsFor(user.level),
-    }),
-  );
-});
 
 /**
  * 「近 14 天」列的固定锚点：以 UTC 今日结尾的 14 个自然日。

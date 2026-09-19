@@ -119,9 +119,10 @@ export const SECURITY_HEADERS = {
 export const HSTS_HEADER = { "Strict-Transport-Security": "max-age=31536000" } as const;
 
 /**
- * SPA（wekit-read-insights）文档挂载路径。默认 /insights 是因为服务端仍拥有
- * `/` `/login` `/messages` `/reads/:id` `/rank` `/admin` 这六个旧 SSR 页面；
- * 那批页面退役后置空 SPA_PATH 即可让 SPA 直接接管 `/`（产物路径是根绝对的，不必重新构建）。
+ * SPA（wekit-read-insights）文档挂载路径。默认空串 = 直接接管 `/`
+ * （旧 SSR 页面已退役，见退役提交）。设成 `/insights` 之类的值可以把 SPA 挪到子路径，
+ * 此时旧路径的重定向与产物资源入口会一起跟着走（见 src/spa.ts 的 spaHash）。
+ * 产物资源路径始终是根绝对的（Vite base="/"），所以换挂载点不必重新构建。
  */
 export function normalizeSpaPath(raw: string): string {
   const trimmed = raw.trim();
@@ -129,40 +130,18 @@ export function normalizeSpaPath(raw: string): string {
   const withSlash = trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
   return withSlash.replace(/\/+$/, "");
 }
-export const SPA_PATH = normalizeSpaPath(process.env.SPA_PATH ?? "/insights");
+export const SPA_PATH = normalizeSpaPath(process.env.SPA_PATH ?? "");
 
 /** SPA 构建产物目录（Bun 部署用；Workers 由 wrangler.jsonc 的 assets.directory 上传） */
 export const SPA_DIST = process.env.SPA_DIST?.trim() || "./wekit-read-insights/dist";
 
 export const CSP = {
-  LOGIN: [
-    "default-src 'none'",
-    "script-src 'unsafe-inline'",
-    "style-src 'unsafe-inline'",
-    "img-src data:",
-    "connect-src 'self'",
-    "form-action 'self'",
-    "base-uri 'none'",
-    "frame-ancestors 'none'",
-    "object-src 'none'",
-  ].join("; "),
-  DASHBOARD: [
-    "default-src 'none'",
-    "script-src 'unsafe-inline'",
-    "style-src 'unsafe-inline'",
-    "img-src 'self' data:",
-    "connect-src 'self'",
-    "form-action 'self'",
-    "base-uri 'none'",
-    "frame-ancestors 'none'",
-    "object-src 'none'",
-  ].join("; "),
   /**
-   * SPA（Vite 产物）专用。
+   * SPA（Vite 产物）专用，也是全站唯一的 CSP —— 旧 SSR 页面连同它们的
+   * LOGIN / DASHBOARD 两条（都给内联 <script> 开了 'unsafe-inline'）已一并退役。
    *
    * script-src 不给 'unsafe-inline' / 'unsafe-eval'：产物里全是带哈希的同源 module script，
-   * 一行内联脚本都没有。LOGIN/DASHBOARD 那两条给内联 <script> 开的口子是旧 SSR 页面的历史，
-   * 别把它们当成本项目的 CSP 基线照抄。
+   * 一行内联脚本都没有。
    *
    * style-src 的 'unsafe-inline' 是实测出来的，也是这里唯一的让步：sonner（toast）与
    * Spark 的主题原语在运行时往文档里插 <style>，严格 'self' 下 Chromium 会报

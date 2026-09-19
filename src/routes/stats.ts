@@ -1,10 +1,9 @@
 import { Hono } from "hono";
-import { CSP } from "../config";
+import { spaHash } from "../spa";
 import { getSessionUser } from "../auth";
 import { sqlite } from "../db";
 import { maskContent, maskWxId, utcDate } from "../utils";
 import { requireUserOr } from "../http-helpers";
-import { leaderboardPage } from "../pages";
 
 /** 排行榜 JSON / 排行榜页面 */
 export const statsApp = new Hono();
@@ -137,10 +136,5 @@ statsApp.get("/leaderboard/me", (c) => {
   return c.json({ rank: ahead + 1, count: mine, total: ranked });
 });
 
-statsApp.get("/rank", (c) => {
-  const user = getSessionUser(c);
-  if (!user) return c.redirect("/login");
-  c.header("Content-Security-Policy", CSP.DASHBOARD);
-  c.header("Content-Type", "text/html; charset=utf-8");
-  return c.body(leaderboardPage({ wxId: user.wxId, level: user.level }));
-});
+/** 旧的排行榜服务端页面已退役：重定向到 SPA 的 `/#/leaderboard`（见 spaHash 的注释） */
+statsApp.get("/rank", (c) => c.redirect(spaHash("/leaderboard")));

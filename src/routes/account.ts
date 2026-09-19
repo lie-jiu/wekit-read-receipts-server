@@ -1,22 +1,16 @@
 import { Hono } from "hono";
-import { CSP } from "../config";
-import { audit, getSessionUser, requireUser } from "../auth";
+import { spaHash } from "../spa";
+import { audit, requireUser } from "../auth";
 import { sqlite } from "../db";
 import { clientIp, isValidIp } from "../rate-limit";
 import { clampLimit, queryAudit } from "../http-helpers";
 import { utcNow } from "../utils";
-import { accountPage } from "../pages";
 
 /** 用户账户设置页：账户 IP 黑名单管理 + 修改密码 / 退出登录 / 清除我的（仅本人，requireUser 鉴权） */
 export const accountApp = new Hono();
 
-accountApp.get("/account", (c) => {
-  const user = getSessionUser(c);
-  if (!user) return c.redirect("/login");
-  c.header("Content-Security-Policy", CSP.DASHBOARD);
-  c.header("Content-Type", "text/html; charset=utf-8");
-  return c.body(accountPage({ wxId: user.wxId, level: user.level }));
-});
+/** 旧的账户设置服务端页面已退役：重定向到 SPA 的 `/#/account`（见 spaHash 的注释） */
+accountApp.get("/account", (c) => c.redirect(spaHash("/account")));
 
 /* ── 账户 IP 黑名单（仅本人；仅支持自定义 IP，不支持 action:current 一键拉黑） ── */
 
