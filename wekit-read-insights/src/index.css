@@ -1,6 +1,17 @@
 @import "tailwindcss";
+/* sparkdesign 的 class 必须由这一次编译统一生成（README 的「方式 B」）。
+   不要再 import 'sparkdesign/style'：那是它预编译好的第二份 @layer utilities，
+   与 ours 合进同一层后顺序不可控，实测 .hidden 会压掉 .md\:block，
+   桌面侧边栏（hidden md:block）永久 display:none。 */
+@source "../node_modules/sparkdesign/dist";
+/* animate-in / fade-in-0 / zoom-* 与 @keyframes enter|exit 的出处：
+   sparkdesign 的预编译产物里带着它们，改走方式 B 后必须自己引。 */
+@import "tw-animate-css";
 @import 'sparkdesign/theme.css';
 @import 'sparkdesign/scale.css';
+/* sparkdesign 的 .scrollbar-auto（表格双轴 / textarea 等 6 处在用）不在任何 token 入口里，
+   只随预编译的 sparkdesign.css 发布，而它的 exports 又没暴露这个子路径 —— 只能按路径引。 */
+@import '../node_modules/sparkdesign/dist/tokens/scrollbar-utility.css';
 
 body {
   margin: 0;
