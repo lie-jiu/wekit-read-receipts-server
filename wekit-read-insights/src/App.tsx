@@ -27,7 +27,11 @@ function Themed() {
 
   return (
     <ThemeStyleProvider appearance={appearance} theme={APP_THEME} style={APP_STYLE}>
-      <Toaster position="top-right" />
+      {/* theme 必须显式传：sparkdesign 的 Toaster 用 documentElement 的 data-theme==='dark'
+          判断深浅，而 useDocumentTheme 写的是 'dark-parchment' 这类复合值，于是它永远
+          判成 light，sonner 内部那套 --normal-bg / --normal-border 令牌就取浅色 ——
+          toast 本体靠 CSS 变量没受影响，关闭按钮却是个纯白圆饼。 */}
+      <Toaster position="top-right" theme={appearance} />
       <ErrorBoundary>
         <AppRoutes />
       </ErrorBoundary>

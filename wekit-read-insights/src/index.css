@@ -57,6 +57,14 @@ body {
     min-width: 44px;
   }
 
+  /* 例外：sonner 的 toast 关闭按钮。上面那条 min-* 会把 sonner 自己的 20px
+     撑成 44px，而整条 toast 才 44.8px 高 —— 结果是一个几乎占满 toast 的圆饼。
+     它是瞬时浮层上的辅助控件，不承担"点不中就找不到入口"的问题，交还给 sonner。 */
+  [data-sonner-toast] [data-close-button] {
+    min-height: 20px;
+    min-width: 20px;
+  }
+
   /* iOS Safari：聚焦字号 < 16px 的表单控件会自动放大整页，
      且放大后不再收回。上面覆盖 --control-font-size-* 兜不住那些
      直接用 text-sm / text-xs 工具类定字号的输入框（实测仍有 12 / 13px），
