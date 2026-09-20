@@ -84,7 +84,7 @@ function validatePassword(v: string): string | undefined {
 function authErrorCopy(e: AuthError): { title: string; body: string } | null {
   switch (e.kind) {
     case 'invalid_credentials':
-      return { title: '登录失败', body: '微信 ID 或密码不正确。连续失败时服务端会故意延迟 250–750ms 以抵御爆破。' }
+      return { title: '登录失败', body: '微信 ID 或密码不正确。' }
     case 'invite_required':
       return { title: '需要邀请码', body: '本站已开启注册邀请码，请填写管理员发给你的邀请码。' }
     case 'wxid_taken':

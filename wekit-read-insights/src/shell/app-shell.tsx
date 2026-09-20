@@ -192,17 +192,23 @@ function UserChipMenu() {
           {zh ? '账户设置' : 'Account settings'}
         </DropdownMenuItem>
 
-        <DropdownMenuSeparator />
-        {/* 评审开关：真实工程里不存在，这里用来验证「运营」整组随 isAdmin 消失 */}
-        <DropdownMenuLabel className="font-normal">
-          <TypographyMuted className="text-xs">
-            {zh ? '评审：以…身份查看' : 'Review: view as'}
-          </TypographyMuted>
-        </DropdownMenuLabel>
-        <DropdownMenuRadioGroup value={viewAs} onValueChange={(v) => setViewAs(v as 'admin' | 'member')}>
-          <DropdownMenuRadioItem value="admin">{zh ? '管理员' : 'Admin'}</DropdownMenuRadioItem>
-          <DropdownMenuRadioItem value="member">{zh ? '普通用户' : 'Member'}</DropdownMenuRadioItem>
-        </DropdownMenuRadioGroup>
+        {/* 评审开关：真实工程里不存在，这里用来验证「运营」整组随 isAdmin 消失。
+            与 DevDock 同一套门禁——生产构建里整块摇掉，否则非管理员会看到一个勾着
+            「管理员」的惰性控件（它只能降级 session.isAdmin，不能提权）。 */}
+        {import.meta.env.DEV && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuLabel className="font-normal">
+              <TypographyMuted className="text-xs">
+                {zh ? '评审：以…身份查看' : 'Review: view as'}
+              </TypographyMuted>
+            </DropdownMenuLabel>
+            <DropdownMenuRadioGroup value={viewAs} onValueChange={(v) => setViewAs(v as 'admin' | 'member')}>
+              <DropdownMenuRadioItem value="admin">{zh ? '管理员' : 'Admin'}</DropdownMenuRadioItem>
+              <DropdownMenuRadioItem value="member">{zh ? '普通用户' : 'Member'}</DropdownMenuRadioItem>
+            </DropdownMenuRadioGroup>
+          </>
+        )}
 
         <DropdownMenuSeparator />
         <DropdownMenuItem

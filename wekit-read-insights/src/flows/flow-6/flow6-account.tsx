@@ -48,12 +48,6 @@ import {
   ItemTitle,
   Progress,
   Separator,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
   Tag,
   Timeline,
   TimelineConnector,
@@ -67,7 +61,7 @@ import {
   TypographyMuted,
   toast,
 } from 'sparkdesign'
-import { Activity, Clock3, Gauge, Hash, Info, KeyRound, Lock, LogOut, MapPin, ShieldBan, Timer, Trash, TriangleAlert, UserRound } from 'lucide-react'
+import { Activity, Clock3, Gauge, Hash, Info, KeyRound, LogOut, MapPin, ShieldBan, Timer, Trash, TriangleAlert, UserRound } from 'lucide-react'
 import { displayTime } from '../shared/mock-data'
 import { fmtNum, t } from '../shared/i18n'
 import { ResponsiveTable } from '../shared/responsive-table'
@@ -618,77 +612,6 @@ export function Screen2_AccountIpBlock({
                 : 'Matching rows are dropped from the API and surface only as a filtered count. The underlying rows stay in the store and reappear if you unblock.'}
             </AlertDescription>
           </Alert>
-        </CardContent>
-      </Card>
-
-      {/* 三级作用域对照：原产品分处三屏，用户极易以为账户级=全站 */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Info className="size-4" />
-            {lang === 'zh' ? '三级黑名单的作用域' : 'The three blocklist scopes'}
-          </CardTitle>
-          <CardDescription>
-            {lang === 'zh' ? '同为「拉黑一个 IP」，生效范围完全不同 —— 别把账户级的当成全站生效' : 'Same verb, very different reach — your account list is not site-wide'}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="overflow-x-auto rounded-lg border border-border-tertiary">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>{lang === 'zh' ? '作用域' : 'Scope'}</TableHead>
-                  <TableHead>{lang === 'zh' ? '生效范围' : 'Applies to'}</TableHead>
-                  <TableHead>{lang === 'zh' ? '谁能修改' : 'Who can edit'}</TableHead>
-                  <TableHead>{lang === 'zh' ? '库表' : 'Table'}</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {[
-                  {
-                    scope: lang === 'zh' ? '全局' : 'Global',
-                    reach: lang === 'zh' ? '本站所有消息与访客' : 'every message and visitor',
-                    who: t(lang, 'adminBadge'),
-                    table: 'ip_block_global',
-                    tone: 'error' as const,
-                  },
-                  {
-                    scope: lang === 'zh' ? '单条消息' : 'One message',
-                    reach: lang === 'zh' ? '仅这一条消息的已读明细' : 'only this message reads',
-                    who: lang === 'zh' ? '消息发布者或管理员' : 'owner or admin',
-                    table: 'ip_block_message',
-                    tone: 'warning' as const,
-                  },
-                  {
-                    scope: lang === 'zh' ? '账户（本页）' : 'Account (this page)',
-                    reach: lang === 'zh' ? '你自己名下的全部消息' : 'all messages you own',
-                    who: lang === 'zh' ? '仅本人' : 'you only',
-                    table: 'ip_block_account',
-                    tone: 'success' as const,
-                  },
-                ].map((row) => (
-                  <TableRow key={row.table}>
-                    <TableCell>
-                      <Tag color={row.tone} appearance="outline">
-                        {row.scope}
-                      </Tag>
-                    </TableCell>
-                    <TableCell className="text-sm">{row.reach}</TableCell>
-                    <TableCell className="text-sm">{row.who}</TableCell>
-                    <TableCell>
-                      <code className="font-mono text-xs text-text-secondary">{row.table}</code>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-          <TypographyMuted className="mt-3 block text-xs">
-            <Lock className="me-1 inline-block size-3" />
-            {lang === 'zh'
-              ? '全局名单只在管理后台「全局黑名单」里维护，这里看不到也不能改。'
-              : 'The global list lives in the admin console only — it is neither shown nor editable here.'}
-          </TypographyMuted>
         </CardContent>
       </Card>
     </div>
