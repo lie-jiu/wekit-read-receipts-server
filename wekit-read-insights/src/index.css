@@ -90,20 +90,3 @@ body {
   padding-bottom: max(0px, env(safe-area-inset-bottom));
 }
 
-/* ============================================================
-   桌面侧边栏可见性兜底
-   ------------------------------------------------------------
-   main.tsx 还 import 了 'sparkdesign/style' —— 那是 Spark 自己编译好的第二份
-   @layer utilities，不能去掉（它带着 tw-animate-css 的 keyframes 和滚动条样式，
-   实测删了会少掉 46 条选择器）。两份合并去重后顺序不可控：生产产物里 `.hidden`
-   落在 Spark 的 `.md\:block` 之后并压掉它，于是 `hidden md:block` 的侧边栏外层
-   在桌面宽度永久 display:none —— 点 trigger 时 React 状态一直在变
-   （data-state=expanded），只是那棵子树不渲染。移动端 Sheet 不走这条，所以只在宽屏复现。
-   未分层声明的层叠优先级高于任何 @layer 内的声明，因此这条不受打包顺序影响。
-   ============================================================ */
-@media (width >= 48rem) {
-  [data-slot='sidebar'] {
-    display: block;
-  }
-}
-
