@@ -1048,7 +1048,10 @@ export function Flow3_ReadDetails({
   const [locatingIp, setLocatingIp] = useState<string | null>(null)
   const [failedIp, setFailedIp] = useState<string | null>(null)
   const [justLocated, setJustLocated] = useState<ReadRecord | null>(null)
-  const [isPublic, setIsPublic] = useState(payload?.isPublic ?? message.isPublic)
+  // 派生而不是 useState 种子：首帧 payload 还在路上，种子会把列表带来的旧值永久冻结
+  // （实测公开消息的 chip 显示「未公开」）。override 只在用户自己切换时存在。
+  const [publicOverride, setPublicOverride] = useState<boolean | null>(null)
+  const isPublic = publicOverride ?? payload?.isPublic ?? message.isPublic
   const [drawerOpen, setDrawerOpen] = useState(false)
   const pageSize = payload?.pageSize ?? 50
   // 抽屉里的黑名单条目（GET /reads/:id/block，只有 owner/admin 取得到）
@@ -1126,12 +1129,13 @@ export function Flow3_ReadDetails({
   }
 
   const togglePublic = async (next: boolean) => {
-    setIsPublic(next) // 乐观更新，失败再回滚：开关是即时反馈型控件
+    setPublicOverride(next) // 乐观更新，失败再回滚：开关是即时反馈型控件
     try {
       await setPublic(message.id, next)
       onChanged?.()
     } catch {
-      setIsPublic(!next)
+      // 失败时交还给服务器口径，而不是记住一次没成功的点击
+      setPublicOverride(null)
       toast.error(lang === 'zh' ? '设置未保存，请稍后重试' : 'Not saved — try again')
     }
   }
