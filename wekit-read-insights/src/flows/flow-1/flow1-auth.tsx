@@ -51,6 +51,7 @@ import {
 import type { Appearance } from 'sparkdesign'
 import { Check, Clock3, Eye, EyeOff, MapPin, Moon, Sun, UserRound } from 'lucide-react'
 import { t } from '../shared/i18n'
+import { BrandMark } from '../shared/brand-mark'
 import type { Lang } from '../shared/i18n'
 import type { AsyncState, AuthError, AuthStatus, Screen, Session } from '../shared/types'
 import { fetchAuthStatus, fetchMe, registerAccount, toAuthError, verifyCredentials } from '../../data/session'
@@ -143,9 +144,7 @@ function AuthShell({
         <aside className="hidden lg:flex lg:col-span-2 lg:flex-col lg:justify-between gap-10 p-10 xl:p-14 bg-bg-layout border-r border-border-tertiary">
           <div className="flex flex-col gap-3">
             <div className="flex items-center gap-3">
-              <span className="grid size-9 place-items-center rounded-md bg-primary text-text-on-primary font-semibold">
-                R
-              </span>
+              <BrandMark className="size-9" />
               <span className="text-lg font-semibold">{t(lang, 'brand')}</span>
             </div>
             <TypographyP className="text-text-secondary max-w-md">{t(lang, 'tagline')}</TypographyP>
@@ -208,9 +207,7 @@ function AuthShell({
           {/* 移动端品牌条（lg 以下替代 aside） */}
           <div className="flex flex-col gap-1 pb-8 lg:hidden">
             <div className="flex items-center gap-2">
-              <span className="grid size-8 place-items-center rounded-md bg-primary text-text-on-primary text-sm font-semibold">
-                R
-              </span>
+              <BrandMark className="size-8" />
               <span className="font-semibold">{t(lang, 'brand')}</span>
             </div>
             <TypographyMuted className="text-sm">{t(lang, 'tagline')}</TypographyMuted>

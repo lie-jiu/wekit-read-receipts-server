@@ -54,6 +54,7 @@ import { useApp, useSession } from './app-context'
 import { GROUP_LABEL, NAV, OVERVIEW_PATH, pageTitleOf, ROUTE_ACCOUNT, ROUTE_LOGIN } from './nav'
 import type { NavEntry, NavGroup } from './nav'
 import { CommandMenu } from './command-menu'
+import { BrandMark } from '../flows/shared/brand-mark'
 import { useDocTitle } from './use-doc-title'
 
 const initialsOf = (wxId: string) => {
@@ -66,9 +67,7 @@ function Brand() {
     <SidebarGroup className="p-0">
       <SidebarGroupContent>
         <a href={`#${OVERVIEW_PATH}`} className="flex items-center gap-2 px-2 py-1 outline-none">
-          <span className="grid size-8 shrink-0 place-items-center rounded-md bg-primary text-sm font-semibold text-text-on-primary">
-            R
-          </span>
+          <BrandMark className="size-8 shrink-0" />
           <span className="flex min-w-0 flex-col">
             <span className="truncate text-sm font-semibold">WeKit Read Insights</span>
             <span className="truncate text-xs text-text-tertiary">已读轨迹 · 自建服务端</span>

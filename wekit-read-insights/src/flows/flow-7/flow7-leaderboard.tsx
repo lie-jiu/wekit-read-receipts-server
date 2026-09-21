@@ -94,6 +94,7 @@ import {
 } from 'lucide-react'
 import { displayTime, maskWxId } from '../shared/mock-data'
 import { fmtNum, t } from '../shared/i18n'
+import { BrandMark } from '../shared/brand-mark'
 import type { Lang } from '../shared/i18n'
 import { ResponsiveTable } from '../shared/responsive-table'
 import type { DataTableColumn } from 'sparkdesign'
@@ -915,9 +916,7 @@ export function Screen3_PublicReadonly({
       <header className="pt-safe border-b border-border-tertiary bg-bg-base">
         <div className="mx-auto flex max-w-3xl items-center justify-between gap-3 px-4 py-3">
           <span className="flex items-center gap-2">
-            <span className="grid size-7 place-items-center rounded-md bg-primary text-sm font-semibold text-text-on-primary">
-              R
-            </span>
+            <BrandMark className="size-7" />
             <span className="text-sm font-semibold">{t(lang, 'brand')}</span>
           </span>
           <div className="flex items-center gap-1">
