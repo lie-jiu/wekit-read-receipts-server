@@ -1014,6 +1014,7 @@ export function Flow3_ReadDetails({
   loading = false,
   page = 1,
   onBack,
+  backLabel,
   onPageChange,
   onLocated,
   onChanged,
@@ -1032,6 +1033,8 @@ export function Flow3_ReadDetails({
   /** 服务端分页：页码由容器持有（换页就是换 URL、重取一次） */
   page?: number
   onBack?: () => void
+  /** 回程面包屑的文案；不给就是「总览」（owner 从总览下钻是主路径） */
+  backLabel?: string
   onPageChange?: (next: number) => void
   /** 定位成功：容器要把明细与汇总一起重取（分布图的比例随之变化） */
   onLocated?: () => void
@@ -1214,8 +1217,19 @@ export function Flow3_ReadDetails({
         <Breadcrumb>
           <BreadcrumbList>
             <BreadcrumbItem>
-              <BreadcrumbLink asChild onClick={onBack}>
-                <a href="#">{t(lang, 'navOverview')}</a>
+              {/* preventDefault 是必需的，不是防御性代码：href="#" 的默认跳转会把 hash
+                  清成空串，index 路由随即重定向到总览 —— 于是"回总览"看起来是对的，
+                  只有管理员从用户管理钻取时才暴露成回程弹错页。 */}
+              <BreadcrumbLink asChild>
+                <a
+                  href="#"
+                  onClick={(e) => {
+                    e.preventDefault()
+                    onBack?.()
+                  }}
+                >
+                  {backLabel ?? t(lang, 'navOverview')}
+                </a>
               </BreadcrumbLink>
             </BreadcrumbItem>
             <BreadcrumbSeparator />

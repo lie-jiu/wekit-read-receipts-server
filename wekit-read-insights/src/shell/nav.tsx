@@ -135,6 +135,9 @@ export const ROUTE_ONBOARDING = '/onboarding'
 /** 公开链接（匿名只读）；路径与原服务端 /reads/:id 对齐 */
 export const routeReads = (id: string) => `/reads/${id}`
 
+/** 运营页里唯一会下钻到 FLOW 3 的那一页；钻取页要靠它认回程 */
+export const ADMIN_USERS_PATH = '/admin/users'
+
 export const GROUP_LABEL: Record<NavGroup, { zh: string; en: string }> = {
   main: { zh: '工作区', en: 'Workspace' },
   ops: { zh: '运营', en: 'Operations' },

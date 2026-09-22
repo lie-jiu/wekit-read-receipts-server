@@ -68,12 +68,6 @@ import {
   SelectValue,
   Separator,
   Skeleton,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
   Tag,
   Timeline,
   TimelineConnector,
@@ -87,7 +81,7 @@ import {
   TypographyMuted,
   toast,
 } from 'sparkdesign'
-import { Check, Clock3, Ellipsis, Info, KeyRound, Minus, Plus, Search, ShieldAlert, Trash, UserPlus, UserRound, X } from 'lucide-react'
+import { Check, ChevronRight, Clock3, Ellipsis, Info, KeyRound, Minus, Plus, Search, ShieldAlert, Trash, UserPlus, UserRound, X } from 'lucide-react'
 import { displayTime } from '../shared/mock-data'
 import { ApiError } from '../../data/api'
 import { useResource } from '../../data/hooks'
@@ -563,6 +557,7 @@ export function Screen2_UserDetail({
   auditLogs = [],
   loading = false,
   onResetPassword,
+  onOpenMessage,
 }: {
   user: AdminUserRow | null
   lang: Lang
@@ -574,6 +569,8 @@ export function Screen2_UserDetail({
   auditLogs?: AuditEntry[]
   loading?: boolean
   onResetPassword: (u: AdminUserRow) => void
+  /** 钻取单条消息的已读明细（跳 FLOW 3）。不给就不渲染行内入口 */
+  onOpenMessage?: (m: Message) => void
 }) {
   const msgs = messages
   const audit = auditLogs
@@ -642,7 +639,7 @@ export function Screen2_UserDetail({
             </Item>
           </div>
 
-          {/* 最新 5 条消息：静态键值场景用 Table 原语而非 DataTable */}
+          {/* 最新 5 条消息：抽屉宽度只有 384px，用两行式列表而不是表格 */}
           <section className="flex flex-col gap-2">
             <div className="text-sm font-medium">{lang === 'zh' ? '最近注册的 5 条消息' : 'Latest 5 messages'}</div>
             {loading ? (
@@ -654,27 +651,37 @@ export function Screen2_UserDetail({
             ) : msgs.length === 0 ? (
               <TypographyMuted className="text-xs">{lang === 'zh' ? '该账号还没有注册过消息' : 'No messages registered'}</TypographyMuted>
             ) : (
-              <div className="overflow-x-auto rounded-lg border border-border-tertiary">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>{t(lang, 'message')}</TableHead>
-                      <TableHead className="w-20">{t(lang, 'reads')}</TableHead>
-                      <TableHead className="w-40">{t(lang, 'sentAt')}</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {msgs.map((m) => (
-                      <TableRow key={m.id}>
-                        <TableCell>
-                          <EllipsisText tooltipContent={m.content}>{m.content}</EllipsisText>
-                        </TableCell>
-                        <TableCell className="tabular-nums">{m.reads}</TableCell>
-                        <TableCell className="text-sm text-text-secondary tabular-nums">{displayTime(m.timestamp, lang)}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+              <div className="overflow-hidden rounded-lg border border-border-tertiary">
+                <ul className="divide-y divide-border-tertiary">
+                  {msgs.map((m) => (
+                    <li key={m.id} className="flex items-start gap-1 px-3 py-2">
+                      {/* 抽屉是 sm:max-w-sm = 384px，正文列按 max-content 撑开（实测整表 416 > 可视 271），
+                          三列表格的后两列在任何视口下都落在横向滚动区外。所以这里用两行式列表：
+                          已读数必须和正文同屏，它正是管理员决定"要不要钻取这条"的依据。 */}
+                      {onOpenMessage && (
+                        <Tooltip
+                          content={lang === 'zh' ? '查看这条消息的已读明细' : 'Open read details for this message'}
+                        >
+                          <IconButton
+                            icon={<ChevronRight className="size-3.5" />}
+                            variant="ghost"
+                            size="sm"
+                            className="mt-0.5 shrink-0"
+                            aria-label={lang === 'zh' ? '查看明细' : 'Details'}
+                            onClick={() => onOpenMessage(m)}
+                          />
+                        </Tooltip>
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <EllipsisText tooltipContent={m.content}>{m.content}</EllipsisText>
+                        <div className="text-xs text-text-secondary tabular-nums">
+                          {lang === 'zh' ? `${m.reads} 次已读` : `${m.reads} reads`} ·{' '}
+                          {displayTime(m.timestamp, lang)}
+                        </div>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
               </div>
             )}
           </section>
@@ -953,9 +960,12 @@ export function Screen4_LevelBlocked({
 export function Flow4_AdminUsers({
   lang = 'zh',
   currentWxId = '',
+  onOpenMessage,
 }: {
   lang?: Lang
   currentWxId?: string
+  /** 详情抽屉里的「查看明细」→ 容器（router）跳 FLOW 3 单条消息钻取页 */
+  onOpenMessage?: (m: Message) => void
 }) {
   const [query, setQuery] = useState('')
   const [debounced, setDebounced] = useState('')
@@ -1113,6 +1123,7 @@ export function Flow4_AdminUsers({
         auditLogs={detailAudit.data ? toAuditEntries(detailAudit.data) : []}
         onOpenChange={(v) => !v && setDetail(null)}
         onResetPassword={setResetTarget}
+        onOpenMessage={onOpenMessage}
       />
 
       <Screen3_CreateUser open={createOpen} users={rows} lang={lang} onOpenChange={setCreateOpen} onCreate={createUser} />

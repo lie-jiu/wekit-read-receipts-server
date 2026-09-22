@@ -47,7 +47,7 @@ import type { IpBlockList, Message } from '../flows/shared/types'
 import { useApp, useSession } from './app-context'
 import type { ApiError } from '../data/api'
 import { AppShell } from './app-shell'
-import { OVERVIEW_PATH, ROUTE_ACCOUNT, ROUTE_LOGIN, ROUTE_ONBOARDING } from './nav'
+import { ADMIN_USERS_PATH, OVERVIEW_PATH, ROUTE_ACCOUNT, ROUTE_LOGIN, ROUTE_ONBOARDING, pageTitleOf } from './nav'
 import { useReviewParam } from './dev-dock'
 import { useDocTitle } from './use-doc-title'
 
@@ -208,6 +208,13 @@ function MessageDetailPage() {
   const { lang } = useApp()
   const navigate = useNavigate()
   const { id } = useParams()
+  /** 钻取页有两个入口：总览（owner 看自己的）与用户管理（管理员看别人的）。
+   *  后者把来源路径放进 history state，回程面包屑才回得去那一页 —— 写死总览
+   *  等于把管理员的搜索和翻页作废掉。直接 URL 打开时没有 state，回总览。 */
+  const { state } = useLocation()
+  const from = (state as { from?: string } | null)?.from
+  const backPath = from === ADMIN_USERS_PATH ? ADMIN_USERS_PATH : OVERVIEW_PATH
+  const backLabel = from ? pageTitleOf(from, lang) : undefined
   const [page, setPage] = useState(1)
   const msgId = id ?? ''
   const data = useResource<ReadsPayloadDto>(msgId ? readsDataUrl(msgId, page, PAGE_SIZE) : null)
@@ -234,7 +241,8 @@ function MessageDetailPage() {
         lang={lang}
         tz={tzOfLang(lang)}
         loading={data.loading}
-        onBack={() => navigate(OVERVIEW_PATH)}
+        backLabel={backLabel}
+        onBack={() => navigate(backPath)}
       />
     )
   }
@@ -248,7 +256,8 @@ function MessageDetailPage() {
       tz={tzOfLang(lang)}
       canManage={payload.canManage}
       page={page}
-      onBack={() => navigate(OVERVIEW_PATH)}
+      backLabel={backLabel}
+      onBack={() => navigate(backPath)}
       onPageChange={setPage}
       onLocated={refresh}
       onChanged={refresh}
@@ -322,7 +331,15 @@ function PublicReadPage() {
 function AdminUsersPage() {
   const session = useSession()
   const { lang } = useApp()
-  return <Flow4_AdminUsers lang={lang} currentWxId={session.wxId} />
+  const navigate = useNavigate()
+  return (
+    <Flow4_AdminUsers
+      lang={lang}
+      currentWxId={session.wxId}
+      // state.from：钻取页据此把回程面包屑指回用户管理，而不是写死总览
+      onOpenMessage={(m) => navigate(`/messages/${m.id}`, { state: { from: ADMIN_USERS_PATH } })}
+    />
+  )
 }
 
 function AdminConfigPage() {
@@ -413,7 +430,7 @@ export function AppRoutes() {
         <Route path="/messages" element={<MessageDetailPage />} />
         <Route path="/leaderboard" element={<LeaderboardPage />} />
         <Route
-          path="/admin/users"
+          path={ADMIN_USERS_PATH}
           element={
             <RequireAdmin>
               <AdminUsersPage />
