@@ -960,14 +960,17 @@ export function Screen4_LevelBlocked({
 export function Flow4_AdminUsers({
   lang = 'zh',
   currentWxId = '',
+  initialQuery = '',
   onOpenMessage,
 }: {
   lang?: Lang
   currentWxId?: string
+  /** 「全站消息」页点账号列跳过来时带来的过滤词：列表直接落在那一个账号上 */
+  initialQuery?: string
   /** 详情抽屉里的「查看明细」→ 容器（router）跳 FLOW 3 单条消息钻取页 */
   onOpenMessage?: (m: Message) => void
 }) {
-  const [query, setQuery] = useState('')
+  const [query, setQuery] = useState(initialQuery)
   const [debounced, setDebounced] = useState('')
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(20)
@@ -992,7 +995,9 @@ export function Flow4_AdminUsers({
   const users = useResource<Paged<AdminUserDto>>(adminUsersUrl({ q: debounced, page, pageSize }))
   const rows = users.data?.rows ?? []
   // 抽屉里的两块列表按选中的账号取；没选中就不请求（也避免 403 噪音）
-  const detailMsgs = useResource<Paged<AdminMessageDto>>(detail ? adminMessagesUrl(detail.wxId) : null)
+  const detailMsgs = useResource<Paged<AdminMessageDto>>(
+    detail ? adminMessagesUrl({ wxId: detail.wxId, pageSize: 5 }) : null,
+  )
   const detailAudit = useResource<AuditDto>(detail ? adminAuditUrl(detail.wxId) : null)
 
   const fail = (e: unknown, fallback: string) => {

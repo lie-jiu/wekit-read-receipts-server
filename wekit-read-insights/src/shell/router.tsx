@@ -36,6 +36,7 @@ import { Flow2_Overview } from '../flows/flow-2/flow2-overview'
 import type { OverviewPhase } from '../flows/flow-2/flow2-overview'
 import { Flow3_ReadDetails } from '../flows/flow-3/flow3-read-details'
 import { Flow4_AdminUsers } from '../flows/flow-4/flow4-admin-users'
+import { Flow4_AdminMessages } from '../flows/flow-4/flow4-admin-messages'
 import { Flow4_AdminBlocklist } from '../flows/flow-4/flow4-admin-blocklist'
 import { Flow4_AdminAudit } from '../flows/flow-4/flow4-admin-audit'
 import { Flow5_AdminConfig } from '../flows/flow-5/flow5-admin-config'
@@ -47,7 +48,15 @@ import type { IpBlockList, Message } from '../flows/shared/types'
 import { useApp, useSession } from './app-context'
 import type { ApiError } from '../data/api'
 import { AppShell } from './app-shell'
-import { ADMIN_USERS_PATH, OVERVIEW_PATH, ROUTE_ACCOUNT, ROUTE_LOGIN, ROUTE_ONBOARDING, pageTitleOf } from './nav'
+import {
+  ADMIN_MESSAGES_PATH,
+  ADMIN_USERS_PATH,
+  OVERVIEW_PATH,
+  ROUTE_ACCOUNT,
+  ROUTE_LOGIN,
+  ROUTE_ONBOARDING,
+  pageTitleOf,
+} from './nav'
 import { useReviewParam } from './dev-dock'
 import { useDocTitle } from './use-doc-title'
 
@@ -208,13 +217,14 @@ function MessageDetailPage() {
   const { lang } = useApp()
   const navigate = useNavigate()
   const { id } = useParams()
-  /** 钻取页有两个入口：总览（owner 看自己的）与用户管理（管理员看别人的）。
+  /** 钻取页有两个入口：总览（owner 看自己的）与运营页（管理员看别人的）。
    *  后者把来源路径放进 history state，回程面包屑才回得去那一页 —— 写死总览
-   *  等于把管理员的搜索和翻页作废掉。直接 URL 打开时没有 state，回总览。 */
+   *  等于把管理员的搜索和翻页作废掉。直接 URL 打开时没有 state，回总览。
+   *  来源必须查得到页面标题才认，免得把任意字符串当跳转目标。 */
   const { state } = useLocation()
   const from = (state as { from?: string } | null)?.from
-  const backPath = from === ADMIN_USERS_PATH ? ADMIN_USERS_PATH : OVERVIEW_PATH
   const backLabel = from ? pageTitleOf(from, lang) : undefined
+  const backPath = from && backLabel ? from : OVERVIEW_PATH
   const [page, setPage] = useState(1)
   const msgId = id ?? ''
   const data = useResource<ReadsPayloadDto>(msgId ? readsDataUrl(msgId, page, PAGE_SIZE) : null)
@@ -332,12 +342,28 @@ function AdminUsersPage() {
   const session = useSession()
   const { lang } = useApp()
   const navigate = useNavigate()
+  /** 从「全站消息」点账号列进来时带来过滤词：列表直接落在那一个账号上 */
+  const { state } = useLocation()
+  const initialQuery = typeof (state as { q?: unknown } | null)?.q === 'string' ? (state as { q: string }).q : ''
   return (
     <Flow4_AdminUsers
       lang={lang}
       currentWxId={session.wxId}
-      // state.from：钻取页据此把回程面包屑指回用户管理，而不是写死总览
+      initialQuery={initialQuery}
+      // state.from：钻取页据此把回程面包屑指回来源页，而不是写死总览
       onOpenMessage={(m) => navigate(`/messages/${m.id}`, { state: { from: ADMIN_USERS_PATH } })}
+    />
+  )
+}
+
+function AdminMessagesPage() {
+  const { lang } = useApp()
+  const navigate = useNavigate()
+  return (
+    <Flow4_AdminMessages
+      lang={lang}
+      onOpenMessage={(m) => navigate(`/messages/${m.id}`, { state: { from: ADMIN_MESSAGES_PATH } })}
+      onOpenUser={(wxId) => navigate(ADMIN_USERS_PATH, { state: { q: wxId } })}
     />
   )
 }
@@ -434,6 +460,14 @@ export function AppRoutes() {
           element={
             <RequireAdmin>
               <AdminUsersPage />
+            </RequireAdmin>
+          }
+        />
+        <Route
+          path={ADMIN_MESSAGES_PATH}
+          element={
+            <RequireAdmin>
+              <AdminMessagesPage />
             </RequireAdmin>
           }
         />

@@ -19,6 +19,7 @@
 import type { ReactNode } from 'react'
 import {
   Ban,
+  Inbox,
   LayoutDashboard,
   ScrollText,
   SlidersHorizontal,
@@ -103,6 +104,14 @@ export const NAV: NavEntry[] = [
     adminOnly: true,
   },
   {
+    path: '/admin/messages',
+    label: '全站消息',
+    labelEn: 'Messages',
+    icon: <Inbox />,
+    group: 'ops',
+    adminOnly: true,
+  },
+  {
     path: '/admin/config',
     label: '权益与清理',
     labelEn: 'Entitlements & Retention',
@@ -135,8 +144,12 @@ export const ROUTE_ONBOARDING = '/onboarding'
 /** 公开链接（匿名只读）；路径与原服务端 /reads/:id 对齐 */
 export const routeReads = (id: string) => `/reads/${id}`
 
-/** 运营页里唯一会下钻到 FLOW 3 的那一页；钻取页要靠它认回程 */
+/**
+ * 两个会下钻到 FLOW 3（单条消息已读明细）的运营页。钻取页靠 history state 里的
+ * 来源路径决定回程面包屑指哪，所以路径常量和 NAV 条目必须成对维护。
+ */
 export const ADMIN_USERS_PATH = '/admin/users'
+export const ADMIN_MESSAGES_PATH = '/admin/messages'
 
 export const GROUP_LABEL: Record<NavGroup, { zh: string; en: string }> = {
   main: { zh: '工作区', en: 'Workspace' },

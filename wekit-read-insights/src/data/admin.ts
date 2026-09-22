@@ -23,11 +23,26 @@ export function adminUsersUrl(opts: { q: string; page: number; pageSize: number 
 
 export const fetchAdminUsers = (url: string, signal?: AbortSignal) => api.get<Paged<AdminUserDto>>(url, signal)
 
-/** GET /admin/messages?wxId= —— 用户详情里"最新几条消息" */
+/** GET /admin/messages 的行。isPublic / 首读 / 屏蔽数服务器都不给，别在前端编 */
 export type AdminMessageDto = { id: string; wxId: string; content: string; timestamp: string; reads: number }
+export type AdminMessagesDto = Paged<AdminMessageDto>
 
-export const adminMessagesUrl = (wxId: string, pageSize = 5) =>
-  `/admin/messages?wxId=${encodeURIComponent(wxId)}&pageSize=${pageSize}`
+/**
+ * 同一个端点服务两种看法：用户详情抽屉传 wxId + pageSize=5，
+ * 「全站消息」页两个过滤条件都可空（空即不过滤）。
+ * 筛选与分页都交给服务器：这张表是全站的，取一页回前端筛会得到"本页没有"的假结论。
+ */
+export function adminMessagesUrl(opts: { wxId?: string; q?: string; page?: number; pageSize?: number }): string {
+  const p = new URLSearchParams()
+  if (opts.page !== undefined) p.set('page', String(opts.page))
+  if (opts.pageSize !== undefined) p.set('pageSize', String(opts.pageSize))
+  const wxId = opts.wxId?.trim()
+  if (wxId) p.set('wxId', wxId)
+  const q = opts.q?.trim()
+  if (q) p.set('q', q)
+  const qs = p.toString()
+  return qs ? `/admin/messages?${qs}` : '/admin/messages'
+}
 
 /** 服务端没有 isPublic / 首读 / 屏蔽数这些列，详情列表只画它给得起的字段 */
 export function toAdminMessage(row: AdminMessageDto): Message {
