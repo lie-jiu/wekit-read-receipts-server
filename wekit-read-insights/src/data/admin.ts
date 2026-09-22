@@ -178,3 +178,21 @@ export function orphanLabel(table: string, lang: 'zh' | 'en'): string {
   }
   return en[table] ?? table
 }
+
+// ————————————————— 全局 IP 黑名单 —————————————————
+
+/**
+ * 全局作用域只有一个端点，且没有分页与搜索参数：服务器一次给回整份名单
+ * （它自己有上限），所以筛选和翻页都留在前端。
+ *
+ * 鉴权与本页其他端点一样是逐 handler 的 adminOr()：会话过期或部署的名单变了
+ * 会回 403，而不是 401 —— 页面要把"你没权限"和"请求失败"分开显示。
+ */
+export const GLOBAL_BLOCK_URL = '/admin/ip-block'
+
+/** 重复 IP 回 409 { error: 'exists' }，非法 IP 回 400 —— 由调用方按 code 分支 */
+export const addGlobalBlock = (ip: string): Promise<{ ok: true; ip: string }> =>
+  api.post(GLOBAL_BLOCK_URL, { ip })
+
+export const removeGlobalBlock = (ip: string): Promise<{ ok: true }> =>
+  api.del(`${GLOBAL_BLOCK_URL}?ip=${encodeURIComponent(ip)}`)

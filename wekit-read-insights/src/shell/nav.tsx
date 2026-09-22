@@ -119,7 +119,6 @@ export const NAV: NavEntry[] = [
     icon: <Ban />,
     group: 'ops',
     adminOnly: true,
-    planned: '本轮未单独设计：与用户管理共用 DataTable + Drawer 模式，三级作用域对照已在 FLOW 6 屏 2 给出',
   },
   {
     path: '/admin/audit',

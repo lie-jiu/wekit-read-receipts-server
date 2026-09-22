@@ -36,6 +36,7 @@ import { Flow2_Overview } from '../flows/flow-2/flow2-overview'
 import type { OverviewPhase } from '../flows/flow-2/flow2-overview'
 import { Flow3_ReadDetails } from '../flows/flow-3/flow3-read-details'
 import { Flow4_AdminUsers } from '../flows/flow-4/flow4-admin-users'
+import { Flow4_AdminBlocklist } from '../flows/flow-4/flow4-admin-blocklist'
 import { Flow5_AdminConfig } from '../flows/flow-5/flow5-admin-config'
 import { Flow6_Account } from '../flows/flow-6/flow6-account'
 import { Flow7_Leaderboard } from '../flows/flow-7/flow7-leaderboard'
@@ -328,6 +329,11 @@ function AdminConfigPage() {
   return <Flow5_AdminConfig lang={lang} />
 }
 
+function AdminBlocklistPage() {
+  const { lang } = useApp()
+  return <Flow4_AdminBlocklist lang={lang} />
+}
+
 function AccountPage() {
   const { lang, signOut, refresh } = useApp()
   const session = useSession()
@@ -413,6 +419,14 @@ export function AppRoutes() {
           element={
             <RequireAdmin>
               <AdminConfigPage />
+            </RequireAdmin>
+          }
+        />
+        <Route
+          path="/admin/blocklist"
+          element={
+            <RequireAdmin>
+              <AdminBlocklistPage />
             </RequireAdmin>
           }
         />
