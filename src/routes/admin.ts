@@ -486,5 +486,6 @@ adminApp.get("/admin/audit", (c) => {
   const pageSize = clampLimit(Number(c.req.query("pageSize") ?? 50), 1, 200);
   const page = Math.max(Math.floor(Number(c.req.query("page") ?? 1)) || 1, 1);
   const q = (c.req.query("wxId") ?? "").trim();
-  return c.json(queryAudit({ wxId: q || null, page, pageSize }));
+  const action = (c.req.query("action") ?? "").trim();
+  return c.json(queryAudit({ wxId: q || null, action: action || null, page, pageSize }));
 });

@@ -130,19 +130,35 @@ export function adminOr(c: Context): Response | null {
 /**
  * 读 audit_logs。抽出来是因为要同时服务两个可见性完全不同的端点，
  * SQL 只该有一份：
- *   GET /admin/audit    管理员看全站（可按 wxId 过滤）
+ *   GET /admin/audit    管理员看全站（可按 wxId / action 过滤）
  *   GET /account/audit  普通用户只看自己那几行
  * 表一直在写（见 auth.ts 的 audit()），缺的只是读的那一半。
  */
-export function queryAudit(opts: { wxId: string | null; page: number; pageSize: number }): {
+export function queryAudit(opts: {
+  wxId: string | null
+  action?: string | null
+  page: number
+  pageSize: number
+}): {
   rows: Array<{ wxId: string | null; action: string; detail: string | null; ip: string | null; timestamp: string }>
   total: number
   page: number
   pageSize: number
   totalPages: number
 } {
-  const where = opts.wxId ? "WHERE wx_id = ?" : "";
-  const params = opts.wxId ? [opts.wxId] : [];
+  // 两个过滤条件都走占位符：action 直接来自 URL 查询串，拼进 SQL 就是注入点。
+  // 顺序也必须与下面 SELECT 里 ? 的出现次序一致（COUNT 与 SELECT 共用同一份 params）。
+  const clauses: string[] = [];
+  const params: string[] = [];
+  if (opts.wxId) {
+    clauses.push("wx_id = ?");
+    params.push(opts.wxId);
+  }
+  if (opts.action) {
+    clauses.push("action = ?");
+    params.push(opts.action);
+  }
+  const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
   const total = (
     sqlite.query(`SELECT COUNT(*) AS n FROM audit_logs ${where}`).get(...params) as { n: number }
   ).n;

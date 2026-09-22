@@ -37,8 +37,6 @@ export type NavEntry = {
   group: NavGroup
   /** 运营组整组按 isAdmin 门控，普通用户连入口都看不到 */
   adminOnly?: boolean
-  /** 本轮没有为该页设计专属 flow：渲染为禁用项并说明，不假装已设计 */
-  planned?: string
   /** 评审 dock 可选的状态模拟项 */
   review?: ReviewSpec[]
 }
@@ -127,7 +125,6 @@ export const NAV: NavEntry[] = [
     icon: <ScrollText />,
     group: 'ops',
     adminOnly: true,
-    planned: '本轮未单独设计：单用户维度的留痕已在 FLOW 4 屏 2 的 Timeline 里给出',
   },
 ]
 

@@ -57,7 +57,7 @@ export function CommandMenu({ open, onOpenChange }: { open: boolean; onOpenChang
           <CommandInput placeholder={zh ? '搜索页面或动作…' : 'Search pages and actions…'} />
           <CommandList>
             {groups.map((g) => {
-              const entries = NAV.filter((n) => n.group === g && (!n.adminOnly || session.isAdmin) && !n.planned)
+              const entries = NAV.filter((n) => n.group === g && (!n.adminOnly || session.isAdmin))
               if (entries.length === 0) return null
               return (
                 <CommandGroup key={g} heading={GROUP_LABEL[g].zh}>

@@ -45,7 +45,6 @@ import {
   SidebarProvider,
   SidebarRail,
   SidebarTrigger,
-  Tooltip,
   TypographyMuted,
 } from 'sparkdesign'
 import { CircleUser, Languages, LogOut, Moon, Search, Settings, Sun } from 'lucide-react'
@@ -80,21 +79,6 @@ function Brand() {
 
 function NavItem({ entry, active }: { entry: NavEntry; active: boolean }) {
   const label = entry.label
-  if (entry.planned)
-    return (
-      <SidebarNavMenuItem>
-        {/* 本轮没为这两页设计专属 flow：画成禁用 + 说明，而不是假装已经做好 */}
-        <Tooltip content={entry.planned}>
-          <span className="block w-full">
-            <SidebarMenuButton disabled aria-label={`${label}（待设计）`}>
-              {entry.icon}
-              <span>{label}</span>
-            </SidebarMenuButton>
-          </span>
-        </Tooltip>
-      </SidebarNavMenuItem>
-    )
-
   return (
     <SidebarNavMenuItem>
       <SidebarMenuButton asChild isActive={active} tooltip={label}>

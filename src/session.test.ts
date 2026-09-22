@@ -216,6 +216,22 @@ describe("审计日志读接口", () => {
   });
 
   /**
+   * 动作过滤是给全站留痕页用的：它必须与 wxId 过滤取交集，且命中不了时返回空，
+   * 而不是把"没有这个动作"演成"一条都没查到"。
+   */
+  test("/admin/audit 的 action 过滤与 wxId 取交集", async () => {
+    const only = await getAudit("/admin/audit?action=global_block_add", "admin_wx");
+    expect(only.total).toBeGreaterThanOrEqual(1);
+    expect(only.rows.map((r) => r.action)).toEqual(only.rows.map(() => "global_block_add"));
+
+    const both = await getAudit("/admin/audit?action=global_block_add&wxId=admin_wx", "admin_wx");
+    expect(both.total).toBe(1);
+    expect(both.rows[0]?.wxId).toBe("admin_wx");
+
+    expect((await getAudit("/admin/audit?action=no_such_action", "admin_wx")).rows).toEqual([]);
+  });
+
+  /**
    * 普通用户的留痕必须锁在自己身上：这里刻意不读 query 里的 wxId，
    * 否则 /account/audit?wxId=admin_wx 就变成探测他人操作的口子。
    */

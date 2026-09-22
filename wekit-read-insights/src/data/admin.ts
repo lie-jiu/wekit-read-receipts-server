@@ -49,6 +49,100 @@ export function toAdminMessage(row: AdminMessageDto): Message {
 export const adminAuditUrl = (wxId: string, pageSize = 10) =>
   `/admin/audit?wxId=${encodeURIComponent(wxId)}&pageSize=${pageSize}`
 
+/**
+ * 全站留痕页的查询串。两个过滤条件都可空，空即"不过滤"；
+ * 分页与筛选都交给服务器，因为这张表是全站的，取一页回前端筛会得到"本页没有"的假结论。
+ */
+export function auditListUrl(opts: { wxId: string; action: string; page: number; pageSize: number }): string {
+  const p = new URLSearchParams({ page: String(opts.page), pageSize: String(opts.pageSize) })
+  const wxId = opts.wxId.trim()
+  if (wxId) p.set('wxId', wxId)
+  if (opts.action) p.set('action', opts.action)
+  return `/admin/audit?${p.toString()}`
+}
+
+/**
+ * 动作名的中文对照。这是服务器 audit() 调用点的字面量清单，
+ * 所以刻意不窄化成字面量联合类型：服务器加了新动作而这里没跟上时，
+ * auditActionLabel 会原样显示动作名，宁可看到生的名字也不要整行空白。
+ */
+const AUDIT_ACTION_LABELS: Record<string, { zh: string; en: string }> = {
+  // ——— 账号与会话 ———
+  login: { zh: '登录', en: 'Signed in' },
+  login_failed: { zh: '登录失败', en: 'Sign-in failed' },
+  logout: { zh: '退出登录', en: 'Signed out' },
+  register: { zh: '注册账号', en: 'Account registered' },
+  register_wxid_limited: { zh: '注册被拒（ID 已达上限）', en: 'Registration refused (ID cap)' },
+  password_change: { zh: '修改自己的密码', en: 'Password changed' },
+  // ——— 消息与可见性 ———
+  delete_message: { zh: '删除自己的消息', en: 'Own message deleted' },
+  delete_all_messages: { zh: '清空自己的消息', en: 'Own messages cleared' },
+  message_set_public: { zh: '修改消息公开状态', en: 'Message publicity changed' },
+  // ——— 黑名单（三级作用域） ———
+  message_block_add: { zh: '拉黑 IP（本条消息）', en: 'IP blocked (this message)' },
+  message_block_remove: { zh: '解除拉黑（本条消息）', en: 'IP unblocked (this message)' },
+  account_block_add: { zh: '拉黑 IP（我的全部消息）', en: 'IP blocked (my messages)' },
+  account_block_remove: { zh: '解除拉黑（我的全部消息）', en: 'IP unblocked (my messages)' },
+  global_block_add: { zh: '拉黑 IP（全站）', en: 'IP blocked (site-wide)' },
+  global_block_remove: { zh: '解除拉黑（全站）', en: 'IP unblocked (site-wide)' },
+  // ——— 后台操作 ———
+  admin_create_user: { zh: '创建账号', en: 'Account created' },
+  admin_set_level: { zh: '调整账号等级', en: 'Level changed' },
+  admin_set_password: { zh: '重置他人密码', en: 'Password reset by admin' },
+  admin_delete_user: { zh: '删除账号', en: 'Account deleted' },
+  admin_wipe_user: { zh: '清空某账号的全部消息', en: 'One account’s messages cleared' },
+  admin_delete_all_messages: { zh: '清空全站消息', en: 'All site messages cleared' },
+  admin_delete_message: { zh: '删除指定消息', en: 'Message deleted by admin' },
+  admin_set_level_formula: { zh: '修改权益公式', en: 'Entitlement formula changed' },
+  admin_set_retention: { zh: '修改自动清理策略', en: 'Retention policy changed' },
+  admin_run_retention: { zh: '立即执行一次清理', en: 'Retention run' },
+  admin_cleanup_orphans: { zh: '清理孤儿统计行', en: 'Orphan board rows cleaned' },
+}
+
+/** 下拉里的分组顺序：先日常登录与消息，再黑名单，最后是不可逆的后台操作 */
+export const AUDIT_ACTION_GROUPS: Array<{ group: { zh: string; en: string }; actions: string[] }> = [
+  {
+    group: { zh: '账号与会话', en: 'Account & session' },
+    actions: ['login', 'login_failed', 'logout', 'register', 'register_wxid_limited', 'password_change'],
+  },
+  {
+    group: { zh: '消息', en: 'Messages' },
+    actions: ['delete_message', 'delete_all_messages', 'message_set_public'],
+  },
+  {
+    group: { zh: 'IP 黑名单', en: 'IP blocklists' },
+    actions: [
+      'message_block_add',
+      'message_block_remove',
+      'account_block_add',
+      'account_block_remove',
+      'global_block_add',
+      'global_block_remove',
+    ],
+  },
+  {
+    group: { zh: '后台操作', en: 'Admin actions' },
+    actions: [
+      'admin_create_user',
+      'admin_set_level',
+      'admin_set_password',
+      'admin_delete_user',
+      'admin_wipe_user',
+      'admin_delete_message',
+      'admin_delete_all_messages',
+      'admin_set_level_formula',
+      'admin_set_retention',
+      'admin_run_retention',
+      'admin_cleanup_orphans',
+    ],
+  },
+]
+
+export function auditActionLabel(action: string, lang: 'zh' | 'en'): string {
+  const e = AUDIT_ACTION_LABELS[action]
+  return e ? (lang === 'zh' ? e.zh : e.en) : action
+}
+
 /** GET /admin/audit 的行：服务器不给 id，可空列在这里按"空串"落进视图模型 */
 export type AuditRowDto = {
   wxId: string | null
@@ -62,7 +156,7 @@ export type AuditDto = Paged<AuditRowDto>
 /** 语气色由动作名推出来 —— 服务器只存事实，不存"该显示成什么颜色" */
 function toneOf(action: string): AuditEntry['tone'] {
   if (/fail|denied|invalid|limited|exceeded/.test(action)) return 'error'
-  if (/delete|remove|block|purge|reset|clean|wipe/.test(action)) return 'warning'
+  if (/delete|remove|block|purge|reset|clean|wipe|run_retention/.test(action)) return 'warning'
   if (/create|add|set_level|register|logout|password_change|ok/.test(action)) return 'success'
   return 'neutral'
 }
