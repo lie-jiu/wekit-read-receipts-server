@@ -75,17 +75,18 @@ export function ResponsiveTable<TData extends Record<string, unknown>>({
         >
           {(titleCol || metaCol) && (
             <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
-              {/* break-words：IPv4 里没有任何合法断行点，抽屉在手机上只有 75% 视口宽，
-                  min-w-0 会把标题盒压到比文字更窄，字照旧画满 → 直接压到右边的时间上 */}
-              <div className="min-w-0 flex-1 break-words text-sm text-text">{pick(titleCol, row, rowIndex)}</div>
-              {metaCol && <div className="shrink-0 text-xs text-text-tertiary tabular-nums">{pick(metaCol, row, rowIndex)}</div>}
+              {/* basis-auto 而非 flex-1：抽屉在手机上只有 75% 视口宽，0 基宽会把标题盒压到
+                  比 IPv4 还窄（那串没有合法断行点，只能被切成一竖条）。按 max-content 参与
+                  换行判断后，放不下的是右边那条时间 —— 它整行落到第二行右对齐，IP 保持完整 */}
+              <div className="min-w-0 basis-auto break-words text-sm text-text">{pick(titleCol, row, rowIndex)}</div>
+              {metaCol && <div className="ml-auto shrink-0 text-xs text-text-tertiary tabular-nums">{pick(metaCol, row, rowIndex)}</div>}
             </div>
           )}
           <dl className={titleCol || metaCol ? 'mt-2 flex flex-col gap-1.5' : 'flex flex-col gap-1.5'}>
             {rest.map((col) => (
               <div key={col.key} className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
                 <dt className="shrink-0 text-xs text-text-tertiary">{col.header}</dt>
-                <dd className="min-w-0 flex-1 break-words text-right text-sm text-text">{pick(col, row, rowIndex)}</dd>
+                <dd className="ml-auto min-w-0 basis-auto break-words text-right text-sm text-text">{pick(col, row, rowIndex)}</dd>
               </div>
             ))}
           </dl>
