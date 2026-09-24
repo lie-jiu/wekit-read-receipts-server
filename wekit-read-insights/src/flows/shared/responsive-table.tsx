@@ -74,16 +74,18 @@ export function ResponsiveTable<TData extends Record<string, unknown>>({
           className="rounded-lg border border-border-tertiary bg-bg-container px-3 py-2.5"
         >
           {(titleCol || metaCol) && (
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0 flex-1 text-sm text-text">{pick(titleCol, row, rowIndex)}</div>
+            <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
+              {/* break-words：IPv4 里没有任何合法断行点，抽屉在手机上只有 75% 视口宽，
+                  min-w-0 会把标题盒压到比文字更窄，字照旧画满 → 直接压到右边的时间上 */}
+              <div className="min-w-0 flex-1 break-words text-sm text-text">{pick(titleCol, row, rowIndex)}</div>
               {metaCol && <div className="shrink-0 text-xs text-text-tertiary tabular-nums">{pick(metaCol, row, rowIndex)}</div>}
             </div>
           )}
           <dl className={titleCol || metaCol ? 'mt-2 flex flex-col gap-1.5' : 'flex flex-col gap-1.5'}>
             {rest.map((col) => (
-              <div key={col.key} className="flex items-baseline justify-between gap-3">
+              <div key={col.key} className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
                 <dt className="shrink-0 text-xs text-text-tertiary">{col.header}</dt>
-                <dd className="min-w-0 text-right text-sm text-text">{pick(col, row, rowIndex)}</dd>
+                <dd className="min-w-0 flex-1 break-words text-right text-sm text-text">{pick(col, row, rowIndex)}</dd>
               </div>
             ))}
           </dl>
