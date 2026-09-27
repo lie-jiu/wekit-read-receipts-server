@@ -98,7 +98,7 @@ wekit-read-receipts-server/
 │   ├── routes/       # 子路由：tracking / auth / messages / reads / stats / overview / admin / account
 │   ├── backends/     # 按运行时分发的后端：SQLite（bun:sqlite / DO SQL）与 SPA 产物读取（磁盘）
 │   ├── *.ts          # 核心模块：config / db / auth / geo / levels / rate-limit / stats / retention / utils / http-helpers
-│   └── *.test.ts     # 单元测试：auth / levels / retention / routes / security / spa（bun test）
+│   └── *.test.ts     # 单元测试：auth / levels / overview / retention / routes / security / session / spa（bun test）
 ├── wekit-read-insights/  # 新版界面 SPA（React + Vite，独立工程；构建产物 dist 不进版本库）
 └── scripts/
     ├── manage/       # 管理 CLI 实现：cli / platform / service / env / users / levels
@@ -134,7 +134,7 @@ wekit-read-receipts-server/
 │   ├── stats.ts          # 统计表增量回填、每日清理
 │   ├── retention.ts      # 僵尸用户自动清理：策略读写、预演、执行（含排行榜级联清空）
 │   ├── utils.ts          # 通用工具（utcNow/校验/脱敏/纯 TS SHA-256）
-│   ├── *.test.ts         # 单元测试：auth / levels / retention / routes / security / spa（bun test）
+│   ├── *.test.ts         # 单元测试：auth / levels / overview / retention / routes / security / session / spa（bun test）
 │   ├── routes/           # 按业务职责拆分的子路由模块
 │   │   ├── tracking.ts   # /pixel、/count、/register 客户端打点
 │   │   ├── auth.ts       # /auth/* 认证与会话；GET /login 是 302 → SPA
@@ -186,7 +186,7 @@ ADMIN=wxid_admin bun run dev              # 管理员权限来自 ADMIN 环境�
 ```bash
 bun run dev        # 开发模式（--watch 热重载）
 bun run typecheck  # 双运行时 tsc --noEmit：Bun（根 tsconfig）+ Workers（worker/tsconfig.json）
-bun run test       # bun test：levels / retention / routes / security / spa
+bun run test       # bun test：auth / levels / overview / retention / routes / security / session / spa
 ```
 
 测试经 `bunfig.toml` 的 `[test] preload` 预载 `scripts/test-preload.ts`，强制 `DB_PATH=:memory:`（全部测试共享内存库），不会读写仓库内的 `data.db`。
