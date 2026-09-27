@@ -167,12 +167,13 @@ export function createSession(c: Context, wxId: string): void {
 }
 
 export function destroySession(c: Context): void {
-  const { name } = sessionCookie(c);
+  const { name, secure } = sessionCookie(c);
   const token = getCookie(c, name);
   if (token) {
     sqlite.query("DELETE FROM sessions WHERE token_hash = ?").run(sha256Hex(token));
   }
-  deleteCookie(c, name, { path: "/" });
+  // Hono 对 __Host- 前缀强制要求 Secure，漏传 secure 会让登出请求整个抛错
+  deleteCookie(c, name, { path: "/", secure });
 }
 
 export function getSessionUser(c: Context): SessionUser | null {
