@@ -2,8 +2,12 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "wekit-read-receipts",
   "main": "worker/index.ts",
-  "compatibility_date": "2025-09-01",
-  // nodejs_compat：process.env 由 vars/secrets 自动注入（compat date >= 2025-04-01 默认行为）
+  // 与 wrangler 4.142.0 自带的 workerd 1.20260926.1 对齐；Cloudflare 建议每次升 Wrangler 就把日期追平。
+  // 2025-09-01 → 2026-09-26 之间被自动打开的行为变更已在本地 workerd 冒烟验证过
+  // （DO SQLite、PBKDF2 登录、process.env 注入、SPA 产物与 JSON 404）。
+  "compatibility_date": "2026-09-26",
+  // nodejs_compat：process.env 由 vars/secrets 自动注入（compat date >= 2025-04-01 默认行为）。
+  // compat date >= 2026-08-04 后该 flag 已由日期隐式打开，这里显式保留是为了万一降回旧日期仍能构建。
   "compatibility_flags": ["nodejs_compat"],
   "observability": { "enabled": true },
   "triggers": {
