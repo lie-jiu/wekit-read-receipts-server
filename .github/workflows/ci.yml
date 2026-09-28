@@ -9,7 +9,9 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      # v7：本仓库用的是 pull_request 而非 pull_request_target，
+      # v5.1.0/v6.1.0 起那个「更安全的 PR 检出默认值」破坏性变更对我们无影响。
+      - uses: actions/checkout@v7
 
       - uses: oven-sh/setup-bun@v2
         with:
