@@ -4,7 +4,7 @@
 
 <p align="center">
   <img alt="Bun" src="https://img.shields.io/badge/Bun-1.4%2B-f9f1e1?logo=bun&logoColor=000">
-  <img alt="Hono" src="https://img.shields.io/badge/Hono-4.13.7-e36002?logo=hono&logoColor=fff">
+  <img alt="Hono" src="https://img.shields.io/badge/Hono-4.13.9-e36002?logo=hono&logoColor=fff">
   <img alt="SQLite" src="https://img.shields.io/badge/SQLite-WAL-003b57?logo=sqlite&logoColor=fff">
   <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-7-3178c6?logo=typescript&logoColor=fff">
   <img alt="license" src="https://img.shields.io/badge/license-AGPL--3.0-blue">
@@ -56,13 +56,12 @@
 - **限流**：per-IP 固定窗口 + `/register` per-wxId 双窗口（分钟/天）
 - **安全会话**：30 天；HTTPS 下 `__Host-session` + Secure，HTTP 直连自动降级
 - **可信代理**：CIDR 精确信任，公网直连绝不设置；`X-Forwarded-For` 自右向左取值，抵御反代「追加」模式下的首值伪造
-- **注入防护**：内联脚本数据安全序列化（阻断 `</script>` 逃逸）、前端渲染统一转义、SQL 全参数化
+- **注入防护**：SQL 全参数化；前端渲染转义在 SPA 侧（React 默认转义 + 显式 `textContent`）；服务端不再拼接 HTML，也就没有"内联脚本逃逸"这一类问题（旧 SSR 页面时代的 `safeJson` 随页面一并移除）
 
 ### 界面与部署
 
-- **明暗主题**：6 个页面浅色 / 深色切换，默认跟随系统 `prefers-color-scheme`，选择经 `localStorage` 持久化，`meta theme-color` 随主题联动
-- **键盘可访问性**：`:focus-visible` 焦点环 + `prefers-reduced-motion` 兜底；模态框 Esc 关闭 + Tab 焦点陷阱 + 焦点还原；表格行 Enter / Space 可达
-- **移动端响应式**：`1rem` 字号防 iOS 缩放、`touch-action` 优化、表格横向滚动、关键按钮 40×40 命中区（断点 480 / 640px）
+- **界面是 SPA**：`wekit-read-insights/`（React 19 + Vite + Spark Design）构建为静态产物，由服务端两种运行时各自托管（Bun 读磁盘 / Workers 走 assets 绑定），与 API 同源同进程，不需要额外前端服务器。旧的服务端拼接页面已退役，只留 `/login` `/rank` `/account` `/admin` `/reads/:id` 五个 302
+- **明暗主题**：浅色 / 深色切换，默认跟随系统 `prefers-color-scheme`，选择经 `localStorage` 持久化
 - **多形态部署**：反向代理 / 公网直连 / Cloudflare Tunnel / Cloudflare Workers（免服务器），内置 HTTPS 支持
 - **跨平台自启**：Linux systemd、Windows 启动文件夹 + 隐藏窗口、无 systemd 回退 nohup
 - **定时任务**：每 10 分钟增量回填统计表；每日清理过期会话、审计日志、孤儿 reads
@@ -82,7 +81,7 @@
 |---|---|---|
 | 运行时 | Bun 1.4+ | 内置 `bun:sqlite`，单二进制部署 |
 | 备选运行时 | Cloudflare Workers | 同一代码库经适配层运行于单实例 Durable Object（部署形态 D） |
-| 框架 | Hono 4.13.7 | 轻量 Web 框架 |
+| 框架 | Hono 4.13.9 | 轻量 Web 框架 |
 | 语言 | TypeScript 7 | 原生编译器 tsgo，仅用于 `tsc --noEmit` 类型检查；运行时由 Bun 转译 |
 | 数据库 | SQLite (WAL) | schema 由手写原生 SQL + 版本化迁移维护；Bun 用 `PRAGMA user_version`，Workers 存 `meta` 表 |
 | 依赖 | `hono` | 极简依赖树 |
@@ -91,15 +90,16 @@
 
 ```
 wekit-read-receipts-server/
-├── index.ts          # Bun 服务入口：注入 SQLite 后端与公式存储、建表、启动监听、定时任务
+├── index.ts          # Bun 服务入口：注入 SQLite 后端/公式存储/SPA 产物目录、建表、启动监听、定时任务
 ├── worker/           # Cloudflare Workers 入口：Worker 转发 + 单实例 Durable Object（部署形态 D）
 ├── src/
-│   ├── app.ts        # Hono 聚合层：全局安全头/限流中间件，挂载子路由
-│   ├── routes/       # 子路由：tracking / auth / messages / reads / stats / admin / account
-│   ├── pages/        # 前端页面：dashboard / admin / account / login（服务端拼接 HTML + 内联 JS）
-│   ├── backends/     # SQLite 后端（Bun：bun:sqlite；Workers 后端在 worker/do-sqlite.ts）
+│   ├── app.ts        # Hono 聚合层：全局安全头/限流中间件，挂载子路由，末尾挂 SPA 静态兜底
+│   ├── spa.ts        # SPA 静态托管：路径归属判定（双运行时共用）+ Bun 侧兜底中间件
+│   ├── routes/       # 子路由：tracking / auth / messages / reads / stats / overview / admin / account
+│   ├── backends/     # 按运行时分发的后端：SQLite（bun:sqlite / DO SQL）与 SPA 产物读取（磁盘）
 │   ├── *.ts          # 核心模块：config / db / auth / geo / levels / rate-limit / stats / retention / utils / http-helpers
-│   └── *.test.ts     # 单元测试：auth / levels / retention / routes / security（bun test）
+│   └── *.test.ts     # 单元测试：auth / levels / overview / retention / routes / security / session / spa（bun test）
+├── wekit-read-insights/  # 新版界面 SPA（React + Vite，独立工程；构建产物 dist 不进版本库）
 └── scripts/
     ├── manage/       # 管理 CLI 实现：cli / platform / service / env / users / levels
     └── *.ts          # manage / mkuser / migrate-d1 / backfill-isp / cleanup-orphans / test-preload
@@ -110,53 +110,44 @@ wekit-read-receipts-server/
 
 ```
 wekit-read-receipts-server/
-├── index.ts              # Bun 服务入口：注入 SQLite 后端与公式存储、建表、启动监听、定时任务
-├── wrangler.jsonc        # Cloudflare Workers 部署配置（DO 绑定、Cron Triggers、nodejs_compat）
+├── index.ts              # Bun 服务入口：注入 SQLite 后端/公式存储/SPA 产物读取、建表、启动监听、定时任务
+├── wrangler.jsonc        # Cloudflare Workers 部署配置（DO 绑定、Cron Triggers、nodejs_compat、assets 静态产物）
 ├── worker/               # Workers 入口（部署形态 D）
-│   ├── index.ts          # Worker 默认导出（fetch 转发 + scheduled）与 App DO 类（惰性迁移、内部 cron 端点）
+│   ├── index.ts          # Worker 默认导出（SPA 资源走 assets 绑定，其余转发 DO + scheduled）与 App DO 类（惰性迁移、内部 cron 端点）
 │   ├── do-sqlite.ts      # Durable Objects 内置 SQLite 后端（ctx.storage.sql，同步语义对齐 bun:sqlite）
 │   ├── levels-env-db.ts  # meta 表版等级公式存储
 │   └── env.d.ts          # process 最小类型声明（nodejs_compat）
 ├── src/
 │   ├── app.ts            # Hono 聚合层：全局安全头/请求体上限/限流中间件，以 app.route 挂载子路由，导出 app
 │   ├── http-helpers.ts   # 公共 HTTP 辅助：parseBody、clampLimit、鉴权/归属校验等
-│   ├── config.ts         # 环境变量读取、安全头、限流档位、像素常量
+│   ├── config.ts         # 环境变量读取、安全头与全站唯一 CSP（INSIGHTS）、限流档位、像素常量
+│   ├── spa.ts            # SPA 静态托管：resolveStatic 路径归属判定（双运行时共用）+ Bun 侧兜底中间件
 │   ├── db.ts             # SQLite 后端抽象（同步接口）与版本化迁移（Bun: PRAGMA user_version / Workers: meta 表）
 │   ├── backends/
-│   │   └── bun-sqlite.ts # bun:sqlite 后端（打开文件 + PRAGMA 配置 + ensureBunSqlite 幂等初始化）
+│   │   ├── bun-sqlite.ts # bun:sqlite 后端（打开文件 + PRAGMA 配置 + ensureBunSqlite 幂等初始化）
+│   │   └── bun-static-fs.ts # 磁盘版 SPA 产物读取（Bun 专用；Workers 侧由 assets 绑定回文件）
 │   ├── auth.ts           # 密码哈希/验证（WebCrypto PBKDF2，双运行时一致）、会话（Cookie）签发与审计
 │   ├── geo.ts            # IP 地理解析（双语降级）、运营商分类、结果缓存
 │   ├── levels.ts         # 等级权益公式引擎（x*…/min/max/pow…），公式存储按运行时注入
 │   ├── levels-env-file.ts # .env 文件版公式存储（Bun 专用）
-│   ├── rate-limit.ts     # per-IP 固定窗口限流 + 可信代理 / 边缘 IP 解析
+│   ├── rate-limit.ts     # per-IP 固定窗口限流 + 可信代理 / 边缘 IP 解析（UNKNOWN_IP 哨兵不入黑名单）
 │   ├── stats.ts          # 统计表增量回填、每日清理
 │   ├── retention.ts      # 僵尸用户自动清理：策略读写、预演、执行（含排行榜级联清空）
 │   ├── utils.ts          # 通用工具（utcNow/校验/脱敏/纯 TS SHA-256）
-│   ├── *.test.ts         # 单元测试：auth / levels / retention / routes / security（bun test）
+│   ├── *.test.ts         # 单元测试：auth / levels / overview / retention / routes / security / session / spa（bun test）
 │   ├── routes/           # 按业务职责拆分的子路由模块
 │   │   ├── tracking.ts   # /pixel、/count、/register 客户端打点
-│   │   ├── auth.ts       # /auth/*、/login 认证与会话
-│   │   ├── messages.ts   # /、/messages 仪表盘与消息管理
-│   │   ├── reads.ts      # /reads/:id 已读详情与按需 IP 定位
-│   │   ├── stats.ts      # /leaderboard、/rank 排行榜
-│   │   ├── admin.ts      # /admin/* 管理后台
-│   │   └── account.ts    # /account 账户设置页与账户 IP 黑名单
-│   ├── pages/            # 前端页面 HTML/JS（服务端拼接整段 HTML + 内联 JS 返回）
-│   │   ├── shared.ts             # 统一的浏览器端 helper（esc/escAttr 严格版/t/applyI18n），以字符串插值注入各页面 <script>
-│   │   ├── shared-style.ts       # 共享设计令牌（themeTokens()：24 令牌 + 浅色板 + 焦点环 + reduced-motion）+ 6 页一致的公共 CSS（sharedStyle()）
-│   │   ├── types.ts              # 页面层视图模型类型（BasicSession / DashboardSession 等），路由 → 页面的收窄投影，与 auth.ts SessionUser 解耦
-│   │   ├── index.ts              # 桶文件：重导出各页面模块，路由统一 import { ... } from "../pages"
-│   │   ├── dashboard/            # 仪表盘三页面
-│   │   │   ├── dashboard-page.ts # 消息仪表盘 htmlPage
-│   │   │   ├── leaderboard-page.ts # 排行榜 leaderboardPage
-│   │   │   ├── read-details-page.ts # 已读详情 readDetailsPage
-│   │   │   └── index.ts          # 桶文件：重导出三个页面
-│   │   ├── admin/                # 管理后台
-│   │   │   ├── admin-style.ts    # adminStyle() 内联 CSS
-│   │   │   └── admin-script.ts   # adminScript() 内联 JS（6 大功能模块）
-│   │   ├── admin.ts              # adminPage() 薄组合层（拼 style + script）
-│   │   ├── account.ts            # 账户设置页
-│   │   └── login.ts              # 登录页
+│   │   ├── auth.ts       # /auth/* 认证与会话；GET /login 是 302 → SPA
+│   │   ├── messages.ts   # /messages 消息列表与清空（清空同事务重算 message_count）
+│   │   ├── reads.ts      # /reads/:id/data 已读明细、三级黑名单、按需 IP 定位；GET /reads/:id 是 302
+│   │   ├── stats.ts      # /leaderboard、/leaderboard/me、/rank（重定向）
+│   │   ├── admin.ts      # /admin/* 管理后台 JSON 端点
+│   │   └── account.ts    # /account 账户页端点（IP 黑名单 / 留痕 / 统计）
+├── wekit-read-insights/  # 新版界面 SPA（React 19 + Vite + Spark Design，独立工程：自己的 package.json / bun.lock / tsconfig）
+│   ├── src/data/         # 真接口数据层：api（fetch/错误类型）、hooks、session、overview、reads、admin
+│   ├── src/flows/        # 七个流程页面（flow-1 认证 … flow-7 排行榜），shared/ 放 mock-data 与共用类型
+│   ├── src/shell/        # App Shell：router（HashRouter）/ nav / app-context / command-menu / dev-dock
+│   └── dist/             # 构建产物（.gitignore 排除；服务端两种运行时的托管目标）
 └── scripts/
     ├── manage.ts         # 管理 CLI 入口（bun run manage <cmd>）
     ├── mkuser.ts         # 快速创建/重置用户
@@ -194,11 +185,32 @@ ADMIN=wxid_admin bun run dev              # 管理员权限来自 ADMIN 环境�
 
 ```bash
 bun run dev        # 开发模式（--watch 热重载）
-bun run typecheck  # tsc --noEmit 类型检查（tsgo）
-bun run test       # bun test：levels / retention / routes / security
+bun run typecheck  # 双运行时 tsc --noEmit：Bun（根 tsconfig）+ Workers（worker/tsconfig.json）
+bun run test       # bun test：auth / levels / overview / retention / routes / security / session / spa
 ```
 
 测试经 `bunfig.toml` 的 `[test] preload` 预载 `scripts/test-preload.ts`，强制 `DB_PATH=:memory:`（全部测试共享内存库），不会读写仓库内的 `data.db`。
+
+### 新界面（SPA）的开发与构建
+
+`wekit-read-insights/` 是独立工程（自己的 `package.json` / `bun.lock` / `node_modules`），被根 tsconfig 排除，所以有独立门禁：
+
+```bash
+bun install --cwd wekit-read-insights  # 首次
+bun run web:typecheck                  # SPA 自己的 tsc（根 typecheck 不含它）
+bun run web:build                      # 产物 → wekit-read-insights/dist（不进版本库）
+cd wekit-read-insights && bun run dev  # vite 开发服务器（5173）
+```
+
+> vite 把 `/auth`、`/me`、`/messages`、`/reads`、`/stats`、`/leaderboard`、`/rank`、`/admin`、`/account`、`/pixel`、`/count` 代理到 `http://127.0.0.1:8787`（`VITE_DEV_API_TARGET` 可改），**服务端要先起来**；同源才不用动 `SameSite=Lax` 的会话 cookie。改完 `src/*.ts` 要重启 8787（无热重载），否则 SPA 会静默拿到旧接口形状。
+>
+> 部署前 `bun run web:build` 是必做步骤：Bun 形态直接读磁盘上的 `SPA_DIST`；Workers 形态由 `wrangler deploy` 把 `assets.directory` 打进版本 —— 忘了构建不会报错，只会让 `/` 返回 JSON 404（启动日志与 CI 都会提示）。
+
+### 为什么 vite.config 里把 lottie-react / react-markdown 打成了桩件
+
+`sparkdesign@0.4.11` 的 JS 入口是**单个** 576 kB 的 `dist/spark-design.es.js`，顶层就静态 import 了整条 AI 聊天 / markdown 链（`react-markdown` + `remark-gfm`/`remark-math` + `rehype-katex`(→`katex`) + `lottie-react`(→`lottie-web`) + `prism-react-renderer`）。它的 `exports` 只暴露 `.` 与几个 CSS，所以既不能深路径导入、bundler 也没法把没用到的组件从那一个文件里摇掉 —— 本项目一个都不渲染它们，主包却因此虚胖。`vite.config.ts` 的 `STUBBED_DEPS` 把这些整体指向 `src/stubs/no-render.tsx`（渲染 null），主包从 2,781 kB / gzip 745 kB 降到 1,561 kB / gzip 456 kB。
+
+代价与护栏：以后真要用 Spark 的 markdown / lottie 组件，症状会是"那块区域空白"，所以 `forbidStubbedDeps()` 插件在构建期就拦 —— 这些包（含 `katex`/`lottie-web`/`refractor`/`shiki` 这些传递依赖）一旦被真实解析，构建直接失败并说明两条出路（补 alias，或改用 sparkdesign 的逐组件 CLI 把组件源码落地）。**不要靠删桩件来"修好"空白**，那等于把 745 kB 请回来。
 
 ## 端点
 
@@ -214,21 +226,37 @@ bun run test       # bun test：levels / retention / routes / security
 
 | 端点 | 说明 |
 |---|---|
-| `/login`、`/auth/verify`、`/auth/register`、`/auth/logout`、`/auth/password`、`/auth/status` | 会话管理（30 天；HTTPS 下 `__Host-session` + Secure，HTTP 直连自动降级为普通 cookie） |
-| `/` | 用户仪表盘：消息搜索（FTS5 trigram）、读取明细、删除；消息分页（每页 10 条，`X-Total-Count`） |
-| `/messages`、`DELETE /messages` | 本人消息列表 / 清空 |
-| `/reads/:id` | 单条消息已读详情页（IP、UA、时间） |
+| `/login`、`/auth/verify`、`/auth/register`、`/auth/logout`、`/auth/password`、`/auth/status` | 会话管理（30 天；HTTPS 下 `__Host-session` + Secure，HTTP 直连自动降级为普通 cookie）。`GET /login` 本身是 302 → `/#/login` |
+| `/messages`、`DELETE /messages` | 本人消息列表（FTS5 trigram 搜索、每页 10 条 + `X-Total-Count`）/ 清空。清空会在同一事务里重算 `users.message_count` |
+| `GET /reads/:id` | 302 → `/#/reads/:id`（旧的已读详情服务端页面已退役） |
 | `GET /reads/:id/data` | 已读明细分页数据；服务端过滤黑名单 IP 行（仅返回 `blockedCount` 隐藏条数与 `visibleTotal` 可见数） |
-| `DELETE /reads/:id` | 删除该消息（发布者本人或管理员，同事务清理 reads） |
+| `DELETE /reads/:id` | 删除该消息（发布者本人或管理员，同事务清理 reads 并重算 message_count） |
 | `POST /reads/:id/public` | 切换公开详情（发布者本人或管理员，默认关闭） |
-| `GET/POST/DELETE /reads/:id/block` | 单条消息 IP 黑名单（消息所有者）；`POST` 支持 `{ ip }` 自定义或 `{ "action": "current" }` 一键拉黑当前访问 IP |
-| `/account`、`GET/POST/DELETE /account/ip-block` | 账户设置页：账户 IP 黑名单（跨本人全部消息生效，仅自定义添加，无一键拉黑）+ 修改密码 / 退出登录 / 清除我的 |
-| `GET/POST/DELETE /admin/ip-block` | 全局 IP 黑名单（仅管理员，admin 后台页签唯一入口；仅自定义 IP，无一键拉黑） |
+| `GET/POST/DELETE /reads/:id/block` | 单条消息 IP 黑名单（消息所有者）；`POST` 支持 `{ ip }` 自定义或 `{ "action": "current" }` 一键拉黑当前访问 IP（解析不出来源 IP 时回 400 `ip_unavailable`） |
+| `GET /account` | 302 → `/#/account` |
+| `GET/POST/DELETE /account/ip-block`、`GET /account/audit`、`GET /account/stats` | 账户 IP 黑名单（跨本人全部消息生效，仅自定义添加，无一键拉黑）/ 本人留痕 / 累计被读与来源 IP |
+| `GET /admin` | 302 → `/#/admin/users`（`/admin/*` 其余路径全是 JSON 端点，重定向刻意只匹配裸 `/admin`） |
+| `GET/POST/DELETE /admin/ip-block` | 全局 IP 黑名单（仅管理员；仅自定义 IP，无一键拉黑） |
 | `POST /reads/:id/geo` | 按需 IP 定位：补全省市/运营商双语（幂等，缓存 24h；需登录，本人或管理员；按等级配额累计） |
-| `/leaderboard` | 排行榜：`?metric=reg\|read\|msg` × `?scope=day\|total`（均按 UTC 自然日；wxId 脱敏），无效参数返回 400 |
-| `/admin/*` | 管理后台：用户管理、等级调整、权益公式、消息管理、僵尸用户清理 |
+| `/leaderboard` | 排行榜前 10：`?metric=reg\|read\|msg` × `?scope=day\|total`（均按 UTC 自然日；wxId 与消息内容脱敏），无效参数返回 400。消息榜行带 `isPublic` 供前端判定钻取权限 |
+| `/leaderboard/me` | 我自己的真实名次：`{ rank, count, total }`，`rank=null` 表示本窗口内没有可排名的计数。与 `/leaderboard` 共用 `stats.ts` 的 `boardOf()`，两者不会互相矛盾 |
+| `/rank` | 302 → `/#/leaderboard` |
+| `/admin/*` | 管理后台 JSON 端点：用户管理、等级调整、权益公式、消息管理、僵尸用户清理 |
 
-**公开消息详情**：`is_public=1` 时任何人（含未登录用户）均可只读访问详情页与 `/reads/:id/data`（黑名单过滤仍生效）；未公开时仅发布者本人与管理员可见，未登录跳转登录页；匿名访客隐藏删除 / 公开开关 / IP 黑名单等管理功能。
+### 界面（SPA 静态产物）
+
+| 路径 | 说明 |
+|---|---|
+| `GET /` | SPA 文档（`dist/index.html`）。`Cache-Control: no-store` + 全站唯一的 CSP：`script-src 'self'`（产物全是带哈希的同源 module script，无内联脚本），`style-src 'self' 'unsafe-inline'`（sonner/主题原语运行时插 `<style>`，见 `src/config.ts` 的注释）。界面内部路由走 hash（`/#/overview`、`/#/messages/:id`…），服务端永远看不见，所以不需要 history fallback |
+| `GET /assets/<哈希名>`、根目录少数静态文件 | 构建产物本体，`Cache-Control: public, max-age=31536000, immutable`；扩展名走白名单，不做 percent-decode（`/index.html` 这类第二个文档地址不存在） |
+
+归属判定只有 `src/spa.ts` 的 `resolveStatic()` 一份：Bun 侧由 `staticFallback` 中间件读 `SPA_DIST`（注册在全部业务路由**之后**，所以任何 JSON 端点与旧路径重定向都优先于产物）；Workers 侧由 `worker/index.ts` 在边缘查 `ASSETS` 绑定（`run_worker_first: true`），命中不到文件时落回 DO 给 JSON 404。
+
+**公开消息详情**：`is_public=1` 时任何人（含未登录用户）均可只读访问 `/#/reads/:id` 与 `/reads/:id/data`（黑名单过滤仍生效）；未公开时匿名拿 401、其他登录用户拿 403，SPA 据此显示对应的说明而不是空白页。
+
+**匿名访客看不到读者的完整身份**（响应里 `masked: true`）：IP 去掉主机位（IPv4 留 /24、IPv6 留 `::` 之前的前 3 组），`userAgent` 换成粗粒度类别 token（`wechat`/`desktop`/`mobile`/`other`，与 summary 的客户端分布同一份 `UA_KIND_SQL`）。只掩匿名视角 —— 已登录的非 owner 仍看完整 IP，否则 `/reads/:id/geo` 那套"消耗自己配额定位某一行"就没有输入了。归属地（国/省/市/运营商）不掩，它不含主机位且聚合图本来就在给。
+
+⚠️ 仍未决：账户级黑名单对公开链接的匿名访问**不**生效（服务端只在查看者就是 owner 时才 union），所以 owner 在账户级拉黑的人仍会出现在分享出去的链接里。界面已把这点写在页面上，但改语义要单独定。
 
 <details>
 <summary><b>僵尸清理端点（/admin/retention/*）</b></summary>
@@ -265,8 +293,10 @@ bun run test       # bun test：levels / retention / routes / security
 | `PBKDF2_ITERATIONS` | `100000` | 新哈希的 PBKDF2 迭代次数（下限 1000）。**Workers 免费档（10ms CPU）应设 `20000`**，付费档保持默认；`wrangler.jsonc` 已为 Workers 预置 `20000` |
 | `CRON_KEY` | 无 | **仅 Workers 形态**：Cron Triggers 转发进 DO 的鉴权密钥（`wrangler secret put CRON_KEY`），未设置时定时任务拒绝执行 |
 | `AUDIT_RETENTION_DAYS` | `30` | 审计日志保留天数（`0` = 不清理，长期留存） |
+| `SPA_PATH` | 空（接管 `/`） | SPA 文档的挂载路径。设成 `/insights` 之类可把界面挪到子路径，旧路径的 302 会跟着改指 `<SPA_PATH>/#/…`（见 `src/spa.ts` 的 `spaHash`）。产物资源固定在 `/assets/*` 与根目录少数静态文件名，不随该值变化（Vite `base` 保持默认 `/`，换挂载点不必重新构建） |
+| `SPA_DIST` | `./wekit-read-insights/dist` | **仅 Bun 形态**：SPA 构建产物目录（Workers 由 `wrangler.jsonc` 的 `assets.directory` 决定）。目录缺失时 SPA 路径回 JSON 404，启动日志给出「先跑 bun run web:build」提示 |
 
-> **仅 Bun 部署适用**：`PORT` / `BIND_HOST` / `TLS_CERT` / `TLS_KEY` / `DB_PATH` / `TRUSTED_PROXY`。Workers 形态恒为边缘 HTTPS、真实 IP 由边缘注入 `CF-Connecting-IP`，这些变量不适用（见部署形态 D）。
+> **仅 Bun 部署适用**：`PORT` / `BIND_HOST` / `TLS_CERT` / `TLS_KEY` / `DB_PATH` / `TRUSTED_PROXY` / `SPA_DIST`。Workers 形态恒为边缘 HTTPS、真实 IP 由边缘注入 `CF-Connecting-IP`，这些变量不适用（见部署形态 D）。
 
 <details>
 <summary><b>配额与限流详情</b></summary>
@@ -344,6 +374,8 @@ bun run test       # bun test：levels / retention / routes / security
 | D. Cloudflare Workers（免服务器） | 不适用 | 不适用 | `CF-Connecting-IP`（边缘写入，不可伪造） | 边缘终止（恒 HTTPS） |
 
 生产建议：`DB_PATH` 指向持久化磁盘、`ADMIN` 声明受保护账号、`INVITE_CODE` 开启邀请码、`NODE_ENV=production`。
+
+四种形态都要先 `bun run web:build` 再部署（界面是静态产物，`dist` 不进版本库）：A/B/C 由 Bun 进程读 `SPA_DIST`，D 由 `wrangler deploy` 上传 `assets.directory`。忘了构建不会报错，但 `/` 会返回 JSON 404（启动日志与 CI 都会提示）。
 
 ### A. 公网服务器 + 反向代理（推荐）
 

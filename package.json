@@ -8,19 +8,22 @@
     "bun": ">=1.4.0"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^5.20260911.1",
+    "@cloudflare/workers-types": "^5.20260928.1",
     "@types/bun": "1.4.2",
     "typescript": "^7",
-    "wrangler": "4.131.0"
+    "wrangler": "4.142.0"
   },
   "dependencies": {
-    "hono": "4.13.7"
+    "hono": "4.13.9"
   },
   "scripts": {
     "dev": "bun --watch index.ts",
     "start": "bun index.ts",
     "test": "bun test",
     "typecheck": "tsc --noEmit && tsc --noEmit -p worker",
+    "web:build": "cd wekit-read-insights && bun run build",
+    "web:typecheck": "cd wekit-read-insights && bun run typecheck",
+    "web:lint": "cd wekit-read-insights && bun run lint",
     "deploy": "wrangler deploy",
     "dev:cf": "wrangler dev",
     "check:cf": "wrangler deploy --dry-run",

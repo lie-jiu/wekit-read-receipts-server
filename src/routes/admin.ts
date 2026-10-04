@@ -1,7 +1,9 @@
 import { Hono } from "hono";
-import { CSP, isAdmin } from "../config";
+import { isAdmin } from "../config";
+import { spaHash } from "../spa";
 import { audit, hashPassword, requireAdmin } from "../auth";
-import { sqlite } from "../db";
+import { sqlite, syncMessageCount } from "../db";
+import { STAT_TABLES } from "../stats";
 import { clientIp, isValidIp } from "../rate-limit";
 import {
   LEVEL_ENV_KEYS,
@@ -11,7 +13,7 @@ import {
   validateFormula,
 } from "../levels";
 import { escapeLike, isValidId, isValidWxId, utcNow } from "../utils";
-import { adminOr, clampLimit, readRow, type ReadRow } from "../http-helpers";
+import { adminOr, clampLimit, queryAudit, readRow, type ReadRow } from "../http-helpers";
 import {
   MAX_RETENTION_DAYS,
   getRetentionSettings,
@@ -20,7 +22,6 @@ import {
   saveRetentionSettings,
   type RetentionSettings,
 } from "../retention";
-import { adminPage } from "../pages";
 
 /** 管理后台（统一受 /admin/* 30/分 限流，仅 ADMIN 列表内账号；中间件由 app.ts 顶层控制） */
 export const adminApp = new Hono();
@@ -36,13 +37,12 @@ function levelConfigJson(): Record<string, unknown> {
   return out;
 }
 
-adminApp.get("/admin", (c) => {
-  const user = requireAdmin(c);
-  if (!user) return c.redirect("/login");
-  c.header("Content-Security-Policy", CSP.DASHBOARD);
-  c.header("Content-Type", "text/html; charset=utf-8");
-  return c.body(adminPage({ wxId: user.wxId }));
-});
+/**
+ * 旧的管理后台服务端页面已退役：重定向到 SPA 的 `/#/admin/users`。
+ * 只匹配 `/admin` 本身 —— `/admin/users`、`/admin/level` 等全是 JSON 端点，
+ * 一条 `/admin/*` 的重定向会把它们一起吞掉。
+ */
+adminApp.get("/admin", (c) => c.redirect(spaHash("/admin/users")));
 
 adminApp.get("/admin/users", (c) => {
   const denied = adminOr(c);
@@ -81,7 +81,19 @@ adminApp.get("/admin/users", (c) => {
     totalRegMsgs: number;
   }>;
 
-  return c.json({ rows, total, page, pageSize, totalPages: Math.max(1, Math.ceil(total / pageSize)) });
+  return c.json({
+    rows: rows.map((r) => ({
+      ...r,
+      /** env ADMIN 名单不是 DB 列，只能返回前逐行标注（一页最多 100 行） */
+      isAdmin: isAdmin(r.wxId),
+      /** level 0 的语义是"仅禁止注册新消息"，历史数据仍在 */
+      canRegister: r.level > 0,
+    })),
+    total,
+    page,
+    pageSize,
+    totalPages: Math.max(1, Math.ceil(total / pageSize)),
+  });
 });
 
 adminApp.post("/admin/users", async (c) => {
@@ -158,11 +170,13 @@ adminApp.delete("/admin/users/:wxId", (c) => {
     sqlite.query("DELETE FROM reads WHERE id IN (SELECT id FROM messages WHERE wx_id = ?)").run(wxId);
     sqlite.query("DELETE FROM messages WHERE wx_id = ?").run(wxId);
     sqlite.query("DELETE FROM sessions WHERE wx_id = ?").run(wxId);
-    // 显式清理排行榜三表与账户级 IP 黑名单：不依赖外键级联（级联仅在开启 foreign_keys 的连接上生效，
-    // 外部工具或旧版服务删除用户时可能未开启，会留下孤儿排行榜行）
-    sqlite.query("DELETE FROM registration_stats WHERE wx_id = ?").run(wxId);
-    sqlite.query("DELETE FROM read_stats WHERE wx_id = ?").run(wxId);
-    sqlite.query("DELETE FROM message_read_stats WHERE wx_id = ?").run(wxId);
+    // 显式清理各统计表与账户级 IP 黑名单：不依赖外键级联（级联仅在开启 foreign_keys 的连接上生效，
+    // 外部工具或旧版服务删除用户时可能未开启，会留下孤儿排行榜行）。
+    // 表清单用 stats.ts 的 STAT_TABLES —— 写死三张表的话，v8 新加的 hour_stats / ua_stats
+    // 就成了"删了用户但总览还在算他的量"的漏网之鱼。
+    for (const t of STAT_TABLES) {
+      sqlite.query(`DELETE FROM ${t} WHERE wx_id = ?`).run(wxId);
+    }
     sqlite.query("DELETE FROM ip_block_account WHERE wx_id = ?").run(wxId);
     sqlite.query("DELETE FROM users WHERE wx_id = ?").run(wxId);
   })();
@@ -213,6 +227,7 @@ adminApp.delete("/admin/messages", (c) => {
     sqlite.transaction(() => {
       sqlite.query("DELETE FROM reads WHERE id IN (SELECT id FROM messages WHERE wx_id = ?)").run(wxId);
       sqlite.query("DELETE FROM messages WHERE wx_id = ?").run(wxId);
+      syncMessageCount(wxId);
     })();
     audit(wxId, "admin_wipe_user", `by=${actor} target=${wxId}`, clientIp(c));
   } else {
@@ -223,6 +238,8 @@ adminApp.delete("/admin/messages", (c) => {
     sqlite.transaction(() => {
       sqlite.query("DELETE FROM reads").run();
       sqlite.query("DELETE FROM messages").run();
+      // 全表删除后逐账号重算：不传 wxId 的那条分支走一次全量 UPDATE
+      syncMessageCount();
     })();
     audit(null, "admin_delete_all_messages", `by=${actor}`, clientIp(c));
   }
@@ -235,9 +252,12 @@ adminApp.delete("/admin/messages/:id", (c) => {
   const actor = requireAdmin(c)!.wxId;
   const id = c.req.param("id");
   if (!isValidId(id)) return c.json({ error: "invalid id" }, 400);
+  // 先取所有者：删掉消息行之后就查不到这条消息属于谁了，而 message_count 必须跟着重算
+  const owner = sqlite.query("SELECT wx_id FROM messages WHERE id = ?").get(id) as { wx_id: string } | undefined;
   sqlite.transaction(() => {
     sqlite.query("DELETE FROM reads WHERE id = ?").run(id);
     sqlite.query("DELETE FROM messages WHERE id = ?").run(id);
+    if (owner) syncMessageCount(owner.wx_id);
   })();
   audit(null, "admin_delete_message", `by=${actor} target=${id}`, clientIp(c));
   return c.json({ ok: true });
@@ -368,9 +388,10 @@ adminApp.post("/admin/retention/run", (c) => {
   return c.json({ ok: true, ...result });
 });
 
-/* ── 手动清理孤儿排行榜（历史遗留：外部/FK 关闭删除用户导致三表残留已删用户的孤儿行） ── */
+/* ── 手动清理孤儿排行榜（历史遗留：外部/FK 关闭删除用户会让各统计表残留已删用户的行） ── */
 
-const ORPHAN_STAT_TABLES = ["registration_stats", "read_stats", "message_read_stats"] as const;
+/** 表清单只在 stats.ts 维护一份（STAT_TABLES），这里只是别名 */
+const ORPHAN_STAT_TABLES = STAT_TABLES;
 
 function countOrphanStats(): Record<string, number> {
   const out: Record<string, number> = {};
@@ -455,4 +476,16 @@ adminApp.delete("/admin/ip-block", (c) => {
   if (res.changes === 0) return c.json({ error: "not found" }, 404);
   audit(requireAdmin(c)!.wxId, "global_block_remove", ip, clientIp(c));
   return c.json({ ok: true });
+});
+
+/* ── 操作留痕（仅管理员）：audit_logs 一直在写，原先没有任何读端点 ── */
+
+adminApp.get("/admin/audit", (c) => {
+  const denied = adminOr(c);
+  if (denied) return denied;
+  const pageSize = clampLimit(Number(c.req.query("pageSize") ?? 50), 1, 200);
+  const page = Math.max(Math.floor(Number(c.req.query("page") ?? 1)) || 1, 1);
+  const q = (c.req.query("wxId") ?? "").trim();
+  const action = (c.req.query("action") ?? "").trim();
+  return c.json(queryAudit({ wxId: q || null, action: action || null, page, pageSize }));
 });

@@ -86,6 +86,22 @@ export function setIpResolver(fn: IpResolver | null): void {
   ipResolver = fn;
 }
 
+/**
+ * 测试钩子：清空全部限流窗口。
+ * bun test 的多个套件共享一个进程，某个桶（如 admin 30/分）被前序套件打满后，
+ * 后序断言会拿到 429 而不是业务状态码；窗口是固定时钟的，套件跑得再快也不会自己翻页。
+ */
+export function resetRateLimits(): void {
+  generations.clear();
+}
+
+/**
+ * IP 解析不出来时的占位值（app.request 测试、无 requestIP 且无 CF-Connecting-IP 的本地环境）。
+ * 它不是地址而是哨兵：绝不能进 IP 黑名单 —— 打点失败时 reads.ip 同样是它，
+ * 一旦拉黑 "unknown" 就等于把这条消息的全部已读过滤掉。
+ */
+export const UNKNOWN_IP = "unknown";
+
 /** 去掉 IPv4-mapped IPv6 前缀：::ffff:a.b.c.d → a.b.c.d */
 function normalizeIp(ip: string): string {
   return ip.startsWith("::ffff:") ? ip.slice(7) : ip;
@@ -124,10 +140,10 @@ export function resolveXffIp(xff: string, trusted: string[]): string | null {
 export function peerIp(c: Context): string {
   const env = c.env as { requestIP?: (req: Request) => { address: string } | null } | undefined;
   if (env?.requestIP) {
-    return normalizeIp(env.requestIP(c.req.raw)?.address ?? "unknown");
+    return normalizeIp(env.requestIP(c.req.raw)?.address ?? UNKNOWN_IP);
   }
   const cf = c.req.header("cf-connecting-ip");
-  return cf ? normalizeIp(cf.trim()) : "unknown";
+  return cf ? normalizeIp(cf.trim()) : UNKNOWN_IP;
 }
 
 export function clientIp(c: Context): string {

@@ -27,6 +27,8 @@
     "noUnusedParameters": false,
     "noPropertyAccessFromIndexSignature": false
   },
-  // worker/ 使用 Cloudflare Workers 全局类型（worker/tsconfig.json 单独检查），不混入 Bun 类型环境
-  "exclude": ["worker"]
+  // worker/ 使用 Cloudflare Workers 全局类型（worker/tsconfig.json 单独检查），不混入 Bun 类型环境。
+  // wekit-read-insights/ 是独立的 SPA 工程，有自己的 tsconfig.json 与 node_modules，
+  // 本仓库没有 include 段（= 扫全树），不排除就会把它的 scripts/ 一并纳入检查并报错。
+  "exclude": ["worker", "wekit-read-insights"]
 }

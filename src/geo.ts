@@ -31,6 +31,7 @@
  */
 
 import { GEO_ALLOW_HTTP, GEO_CACHE_FAILURE_MS, GEO_CACHE_MAX, GEO_CACHE_SUCCESS_MS, GEO_TIMEOUT_MS } from "./config";
+import { UNKNOWN_IP } from "./rate-limit";
 
 export type GeoInfo = {
   country: string;
@@ -63,7 +64,7 @@ export function classifyIsp(isp: string): { cn: string; en: string } {
 function isSkippable(ip: string): boolean {
   return (
     !ip ||
-    ip === "unknown" ||
+    ip === UNKNOWN_IP ||
     ip === "0.0.0.0" ||
     ip === "127.0.0.1" ||
     ip === "::1" ||

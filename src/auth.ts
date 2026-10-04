@@ -10,7 +10,7 @@ import {
   SESSION_TTL_MS,
   TRUSTED_PROXY,
 } from "./config";
-import { ipInCidr, peerIp } from "./rate-limit";
+import { ipInCidr, peerIp, UNKNOWN_IP } from "./rate-limit";
 import { sqlite } from "./db";
 import { timingSafeEqual, sha256Hex, utcNow } from "./utils";
 
@@ -136,7 +136,7 @@ export function isSecureRequest(c: Context): boolean {
   }
   if (TRUSTED_PROXY.length === 0) return false;
   const peer = peerIp(c);
-  if (peer === "unknown" || !TRUSTED_PROXY.some((cidr) => ipInCidr(peer, cidr))) return false;
+  if (peer === UNKNOWN_IP || !TRUSTED_PROXY.some((cidr) => ipInCidr(peer, cidr))) return false;
   return c.req.header("x-forwarded-proto")?.split(",")[0]?.trim() === "https";
 }
 
@@ -167,12 +167,13 @@ export function createSession(c: Context, wxId: string): void {
 }
 
 export function destroySession(c: Context): void {
-  const { name } = sessionCookie(c);
+  const { name, secure } = sessionCookie(c);
   const token = getCookie(c, name);
   if (token) {
     sqlite.query("DELETE FROM sessions WHERE token_hash = ?").run(sha256Hex(token));
   }
-  deleteCookie(c, name, { path: "/" });
+  // Hono 对 __Host- 前缀强制要求 Secure，漏传 secure 会让登出请求整个抛错
+  deleteCookie(c, name, { path: "/", secure });
 }
 
 export function getSessionUser(c: Context): SessionUser | null {

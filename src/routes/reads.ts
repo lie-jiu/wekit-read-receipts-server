@@ -1,10 +1,12 @@
 import { Hono } from "hono";
-import { CSP, ENABLE_GEO, geoQuotaFor } from "../config";
+import { ENABLE_GEO, geoQuotaFor } from "../config";
+import { spaHash } from "../spa";
 import { audit, requireUser } from "../auth";
-import { sqlite } from "../db";
+import { sqlite, syncMessageCount } from "../db";
 import { lookupIpLocation } from "../geo";
-import { clientIp, isValidIp } from "../rate-limit";
-import { isValidId, utcDate, utcNow } from "../utils";
+import { clientIp, isValidIp, UNKNOWN_IP } from "../rate-limit";
+import { UA_KIND_SQL } from "../stats";
+import { isValidId, maskIp, utcDate, utcNow } from "../utils";
 import {
   clampLimit,
   emptyReadRow,
@@ -14,42 +16,19 @@ import {
   readsMessageOr,
   type ReadRow,
 } from "../http-helpers";
-import { readDetailsPage } from "../pages";
 
 /** 已读详情页 / 分页 JSON / 按需 IP 定位（POST /reads/:id/geo 受 /reads/:id/geo 30/分 限流，由 app.ts 顶层中间件控制） */
 export const readsApp = new Hono();
 
-readsApp.get("/reads/:id", (c) => {
-  const id = c.req.param("id");
-  const access = publicReadOr(c, id);
-  if (access instanceof Response) {
-    // 未登录访问私有消息 → 跳登录页（与历史行为一致）；已登录但越权 → 403 JSON
-    if (access.status === 401) return c.redirect("/login");
-    return access;
-  }
-  const { msg, user } = access;
-  c.header("Content-Security-Policy", CSP.DASHBOARD);
-  c.header("Content-Type", "text/html; charset=utf-8");
-  // 匿名公开访问：不注入登录信息，前端据此隐藏删除/公开/黑名单等管理 UI；geo 置为 ENABLE_GEO 以便渲染定位按钮（点击后前端提示登录）
-  const session = user
-    ? {
-        wxId: user.wxId,
-        level: user.level,
-        isAdmin: user.isAdmin,
-        geo: ENABLE_GEO,
-        geoQuota: geoQuotaFor(user.level),
-        geoRemaining: Math.max(0, geoQuotaFor(user.level) - geoUsedToday(user)),
-      }
-    : { wxId: "", level: 0, isAdmin: false, geo: ENABLE_GEO, geoQuota: 0, geoRemaining: 0 };
-  return c.body(
-    readDetailsPage(session, {
-      id,
-      content: msg.content,
-      isOwner: !!user && msg.wx_id === user.wxId,
-      isPublic: msg.is_public === 1,
-    }),
-  );
-});
+/**
+ * 旧的已读详情服务端页面已退役：`/reads/:id` 重定向到 SPA 的 `/#/reads/:id`。
+ *
+ * 刻意不在这里做 publicReadOr() 访问判定（旧实现会替匿名访客跳去 /login）：
+ * SPA 会立刻用 GET /reads/:id/data 问一次，那条判定本来就在服务端做，而且拿得到
+ * 更准的原因 —— 401 是"这条没公开/需要登录"，403 是"你没权限"，404 是"没有这条消息"，
+ * 旧实现只能笼统地把人推到登录页。
+ */
+readsApp.get("/reads/:id", (c) => c.redirect(spaHash(`/reads/${c.req.param("id")}`)));
 
 /** 黑名单并集：全局 ∪ 本消息 ∪ 账户(owner)。返回 Set（内存 O(n) 标记，无逐行 SQL） */
 function blockSetFor(id: string, ownerWxId: string | null): Set<string> {
@@ -72,6 +51,88 @@ function blockSetFor(id: string, ownerWxId: string | null): Set<string> {
   return set;
 }
 
+/** 一条消息的「可见行」过滤条件：黑名单命中的行既不出现在表格里，也不参与汇总。
+ *  表格与图必须同一口径，否则会出现"明细 117 行、地域图加起来 120"这种对不上的数。 */
+function visibleFilter(id: string, ownerWxId: string | null): { where: string; params: string[] } {
+  const parts = [
+    "r.id = ?",
+    "r.ip NOT IN (SELECT ip FROM ip_block_global)",
+    "r.ip NOT IN (SELECT ip FROM ip_block_message WHERE id = ?)",
+  ];
+  const params = [id, id];
+  if (ownerWxId) {
+    parts.push("r.ip NOT IN (SELECT ip FROM ip_block_account WHERE wx_id = ?)");
+    params.push(ownerWxId);
+  }
+  return { where: parts.join(" AND "), params };
+}
+
+/**
+ * 单条消息的全量汇总（不是当页）。
+ *
+ * 为什么放到服务器算：明细是分页的，前端手上只有第 N 页；拿页里的行做聚合，
+ * 得到的是"最近 50 次已读的分布"，可它在页面上看起来就和"这条消息的分布"一样。
+ *
+ * hours 保持 UTC 桶，展示时区由前端轮转（最多 24 个桶，成本可忽略，
+ * 接口也就不用为了显示偏好多接一个参数）。
+ */
+function messageSummary(id: string, ownerWxId: string | null, sentAt: string) {
+  const vis = visibleFilter(id, ownerWxId);
+  const hours = Array.from({ length: 24 }, (_, hour) => ({ hour, count: 0 }));
+  const hourRows = sqlite
+    .query(
+      `SELECT CAST(substr(r.timestamp, 12, 2) AS INTEGER) AS hour, COUNT(*) AS count
+       FROM reads r WHERE ${vis.where} GROUP BY 1`,
+    )
+    .all(...vis.params) as Array<{ hour: number; count: number }>;
+  for (const h of hourRows) {
+    const slot = h.hour >= 0 && h.hour < 24 ? hours[h.hour] : undefined;
+    if (slot) slot.count += h.count;
+  }
+  // 一趟标量聚合拿齐"可见数 / 已定位数 / 首读延迟"，不必再各扫一遍
+  const scalars = sqlite
+    .query(
+      `SELECT COUNT(*) AS visible,
+              SUM(CASE WHEN r.country <> '' THEN 1 ELSE 0 END) AS located,
+              CAST(strftime('%s', MIN(r.timestamp)) - strftime('%s', ?) AS INTEGER) AS first_seconds
+       FROM reads r WHERE ${vis.where}`,
+    )
+    .get(sentAt, ...vis.params) as {
+    visible: number | null;
+    located: number | null;
+    first_seconds: number | null;
+  };
+  const visible = scalars.visible ?? 0;
+  const located = scalars.located ?? 0;
+  return {
+    hours,
+    regions: sqlite
+      .query(
+        `SELECT r.country AS country, r.region AS region, COUNT(*) AS count
+         FROM reads r WHERE ${vis.where} AND r.country <> ''
+         GROUP BY 1, 2 ORDER BY 3 DESC LIMIT 20`,
+      )
+      .all(...vis.params) as Array<{ country: string; region: string; count: number }>,
+    isps: sqlite
+      .query(
+        `SELECT r.isp AS isp, COUNT(*) AS count
+         FROM reads r WHERE ${vis.where} AND r.isp <> ''
+         GROUP BY 1 ORDER BY 2 DESC LIMIT 20`,
+      )
+      .all(...vis.params) as Array<{ isp: string; count: number }>,
+    userAgents: sqlite
+      .query(
+        `SELECT ${UA_KIND_SQL} AS kind, COUNT(*) AS count
+         FROM reads r WHERE ${vis.where} GROUP BY 1 ORDER BY 2 DESC`,
+      )
+      .all(...vis.params) as Array<{ kind: string; count: number }>,
+    /** 归属地是按需数据：分部图只是"已定位这部分"的结构，比值先于图给出 */
+    located: { count: located, ratio: visible > 0 ? located / visible : null },
+    /** 首读延迟按可见行算（被拉黑的访问不该把一个消息"显得"很快被读）；无可见行为 null */
+    firstReadSeconds: scalars.first_seconds === null ? null : Math.max(0, scalars.first_seconds),
+  };
+}
+
 /** 已读详情分页 JSON 接口：默认每页 50 条，上限 200（与 /messages 一致）。
  * 黑名单 IP 行在后端直接过滤，API 响应不返回其任何数据（仅返回 blockedCount 数字）。 */
 readsApp.get("/reads/:id/data", (c) => {
@@ -87,34 +148,58 @@ readsApp.get("/reads/:id/data", (c) => {
     .get(id) as { total: number };
   // 账户黑名单仅在查看者为消息 owner 时参与判定（公开消息的匿名访客不应用 owner 的账户黑名单）
   const ownerWxId = user && msg.wx_id === user.wxId ? user.wxId : null;
-  const blockedSet = blockSetFor(id, ownerWxId);
-  // blockedCount 基于全量 reads 计算，不能用分页行数推算
-  let blockedCount = 0;
-  for (const r of sqlite
-    .query("SELECT ip FROM reads WHERE id = ?")
-    .all(id) as Array<{ ip: string }>) {
-    if (blockedSet.has(r.ip)) blockedCount++;
-  }
+  const vis = visibleFilter(id, ownerWxId);
   // SQL 层过滤黑名单行：分页基于可见行数，命中行不出现在响应中
+  // ua_kind 由服务器现算（和 summary 的客户端分布同一份 UA_KIND_SQL，避免两处判定漂移），
+  // 匿名视角要用它替换掉原始 UA 字符串
   const rows = sqlite
     .query(
-      `SELECT ip, timestamp, user_agent, country, region, city, isp, country_en, region_en, city_en, isp_en
-       FROM reads WHERE id = ?
-         AND ip NOT IN (SELECT ip FROM ip_block_global)
-         AND ip NOT IN (SELECT ip FROM ip_block_message WHERE id = ?)
-         ${ownerWxId ? "AND ip NOT IN (SELECT ip FROM ip_block_account WHERE wx_id = ?)" : ""}
-       ORDER BY timestamp DESC LIMIT ? OFFSET ?`,
+      `SELECT r.ip, r.timestamp, r.user_agent, r.country, r.region, r.city, r.isp,
+              r.country_en, r.region_en, r.city_en, r.isp_en, ${UA_KIND_SQL} AS ua_kind
+       FROM reads r WHERE ${vis.where}
+       ORDER BY r.timestamp DESC LIMIT ? OFFSET ?`,
     )
-    .all(...(ownerWxId ? [id, id, ownerWxId, pageSize, offset] : [id, id, pageSize, offset])) as ReadRow[];
+    .all(...vis.params, pageSize, offset) as Array<ReadRow & { ua_kind: string }>;
+  const visibleTotal = (sqlite
+    .query(`SELECT COUNT(*) AS n FROM reads r WHERE ${vis.where}`)
+    .get(...vis.params) as { n: number }).n;
+  // 差额就是被黑名单命中的行数：按"全量 − 可见"算，比再扫一遍 IP 便宜，也不会和分页打架
+  const blockedCount = total - visibleTotal;
+  const isOwner = !!user && msg.wx_id === user.wxId;
+  /**
+   * 匿名访客（没有会话）看到的是掩码后的读者身份：IP 去掉主机位、UA 换成粗粒度类别。
+   * 公开链接是把"谁读了我的消息"广播给任意拿到 URL 的人，原文 IP + UA 足够定位到具体某台设备。
+   *
+   * 只掩匿名，不掩"已登录的非 owner"：后者要能看见完整 IP 才能用 /reads/:id/geo
+   * 消耗自己的配额去定位某一行，一并掩掉等于悄悄废掉那个功能。
+   * 归属地（国/省/市/运营商）保持原样 —— 那是聚合图已经在公开的量，不含主机位。
+   */
+  const anon = !user;
   return c.json({
     id,
     content: msg.content,
+    /** 发出时间：首读延迟按它算。钻取页可以直接用 URL 打开，不能依赖列表已经加载 */
+    sentAt: msg.timestamp,
+    isPublic: msg.is_public === 1,
+    isOwner,
+    /** 管理动作（公开开关 / 黑名单 / 删除）只对 owner 与管理员开放，判定留在服务器 */
+    canManage: isOwner || !!user?.isAdmin,
+    /** 别人的 wxId 不给匿名访客与普通登录用户看；管理员要它才能定位是哪个账号 */
+    ownerWxId: isOwner || user?.isAdmin ? msg.wx_id : null,
+    /** 本响应里的 ip / userAgent 已被掩码，前端据此改用类别文案而不是原样显示 */
+    masked: anon,
     total,
     blockedCount,
-    visibleTotal: total - blockedCount,
+    visibleTotal,
     page,
     pageSize,
-    reads: rows.map(readRow),
+    /** 服务器眼中的访问者 IP：抽屉里「拉黑当前访问 IP」按它来，前端自己猜不出来 */
+    viewerIp: clientIp(c),
+    reads: rows.map((r) => {
+      const row = readRow(r);
+      return anon ? { ...row, ip: maskIp(r.ip), userAgent: r.ua_kind } : row;
+    }),
+    summary: messageSummary(id, ownerWxId, msg.timestamp),
   });
 });
 
@@ -133,6 +218,7 @@ readsApp.delete("/reads/:id", (c) => {
   sqlite.transaction(() => {
     sqlite.query("DELETE FROM reads WHERE id = ?").run(id);
     sqlite.query("DELETE FROM messages WHERE id = ?").run(id);
+    syncMessageCount(msg.wx_id);
   })();
   audit(user.wxId, "delete_message", id, clientIp(c));
   return c.json({ ok: true });
@@ -185,13 +271,18 @@ readsApp.post("/reads/:id/block", async (c) => {
     return c.json({ error: "invalid JSON" }, 400);
   }
   // 仅消息维度支持 action:"current"（一键拉黑当前访问 IP）
-  const ip = body.action === "current" ? clientIp(c) : typeof body.ip === "string" ? body.ip : "";
+  const current = clientIp(c);
+  const ip = body.action === "current" ? current : typeof body.ip === "string" ? body.ip : "";
+  // 哨兵值单独报错：请求者什么也没填，回 "invalid ip" 会让他以为是自己输入有问题
+  if (body.action === "current" && current === UNKNOWN_IP) {
+    return c.json({ error: "ip_unavailable" }, 400);
+  }
   if (!isValidIp(ip)) return c.json({ error: "invalid ip" }, 400);
   const res = sqlite
     .query("INSERT OR IGNORE INTO ip_block_message (id, ip, created_at) VALUES (?, ?, ?)")
     .run(id, ip, utcNow());
   if (res.changes === 0) return c.json({ error: "exists" }, 409);
-  audit(requireUser(c)!.wxId, "message_block_add", `${id} ${ip}`, clientIp(c));
+  audit(requireUser(c)!.wxId, "message_block_add", `${id} ${ip}`, current);
   return c.json({ ok: true, ip });
 });
 

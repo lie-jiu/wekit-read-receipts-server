@@ -6,11 +6,14 @@ import { isSecureRequest } from "./auth";
 import { rateLimit } from "./rate-limit";
 import { trackingApp } from "./routes/tracking";
 import { authApp } from "./routes/auth";
+import { sessionApp } from "./routes/session";
 import { messagesApp } from "./routes/messages";
 import { readsApp } from "./routes/reads";
 import { statsApp } from "./routes/stats";
+import { overviewApp } from "./routes/overview";
 import { adminApp } from "./routes/admin";
 import { accountApp } from "./routes/account";
+import { staticFallback } from "./spa";
 
 const app = new Hono();
 
@@ -78,11 +81,21 @@ app.use("/admin/*", rateLimit("admin"));
 /* 按业务职责挂载子路由 */
 app.route("/", trackingApp);
 app.route("/", authApp);
+app.route("/", sessionApp);
 app.route("/", messagesApp);
 app.route("/", readsApp);
 app.route("/", statsApp);
+app.route("/", overviewApp);
 app.route("/", adminApp);
 app.route("/", accountApp);
+
+/**
+ * SPA 静态兜底：注册在全部业务路由之后，所以 `/`、`/login`、`/messages`、`/reads/:id`、
+ * `/rank`、`/admin` 这六个旧 SSR 路径永远由服务端先应答，产物只占用 `/assets/*`、
+ * 根目录少数静态文件名与 SPA_PATH 本身。
+ * 未注入 reader 时（Workers 走 assets 绑定）整个中间件是一次空判断后放行。
+ */
+app.use("*", staticFallback);
 
 app.notFound((c) => c.json({ error: "not found" }, 404));
 app.onError((err, c) => {

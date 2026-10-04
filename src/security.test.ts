@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { computeId, safeJson, sha256Hex } from "./utils";
+import { computeId, sha256Hex } from "./utils";
 import { ipInCidr, isValidIp, overLimitWxId, resolveXffIp } from "./rate-limit";
 import { REGISTER_PER_WXID_PER_MIN } from "./config";
 
@@ -32,28 +32,6 @@ describe("sha256Hex / computeId（纯 TS SHA-256，跨运行时一致）", () =>
       .update("1757000000123")
       .digest("hex");
     expect(id).toBe(expectId);
-  });
-});
-
-describe("safeJson（内联 <script> 安全序列化）", () => {
-  test("阻断 </script> 逃逸", () => {
-    const out = safeJson({ content: "</script><script>alert(1)</script>" });
-    expect(out).not.toContain("</script>");
-    expect(out).toContain("\\u003c/script\\u003e");
-  });
-
-  test("< > & 转义为 JS 等价 Unicode 序列", () => {
-    expect(safeJson("<&>")).toBe('"\\u003c\\u0026\\u003e"');
-  });
-
-  test("U+2028 / U+2029 行分隔符转义", () => {
-    expect(safeJson("a\u2028b")).toBe('"a\\u2028b"');
-    expect(safeJson("a\u2029b")).toBe('"a\\u2029b"');
-  });
-
-  test("普通字符串语义不变（转义序列在 JS 内等价原字符）", () => {
-    // JSON.stringify 输出转义后的字符串字面量，经 JSON.parse 还原应等于原值
-    expect(JSON.parse(safeJson({ wxId: "wxid_abc", level: 3 }))).toEqual({ wxId: "wxid_abc", level: 3 });
   });
 });
 

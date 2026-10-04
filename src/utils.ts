@@ -153,15 +153,21 @@ export function maskContent(content: string): string {
 }
 
 /**
- * 内联 <script> 安全序列化：JSON.stringify 不转义 `</script>`、`<!--`、U+2028/U+2029，
- * 攻击者可控字符串拼入内联脚本时可逃逸出字符串字面量。将 `<`/`>`/`&` 转义为 JS 等价
- * Unicode 序列（\u003c/\u003e/\u0026），在 JS 字符串内语义不变，但可阻断 HTML 解析层面的逃逸。
+ * 读者 IP 的对外掩码：IPv4 去掉最后一段（留 /24），IPv6 保留前 3 组（留 /48）。
+ * 留前缀而不是全掩，是因为公开链接那页唯一有用的信息就是"哪个网络来的"；
+ * 去掉主机位才是身份泄露的那一半。
+ *
+ * IPv6 只取 `::` 之前的部分：压缩记法里 `fe80::1` 冒号分隔的前三个 token 是
+ * ["fe80","1"]，照 token 数切会把尾部的主机段当成前缀留下。
+ * 解析不出来的脏值一律全掩 —— 宁可少给也不误给。
  */
-export function safeJson(v: unknown): string {
-  return JSON.stringify(v)
-    .replace(/</g, "\\u003c")
-    .replace(/>/g, "\\u003e")
-    .replace(/&/g, "\\u0026")
-    .replace(/\u2028/g, "\\u2028")
-    .replace(/\u2029/g, "\\u2029");
+export function maskIp(ip: string): string {
+  if (ip.includes(":")) {
+    const groups = (ip.split("::")[0] ?? "").split(":").filter(Boolean).slice(0, 3);
+    return groups.length > 0 ? groups.join(":") + "::*" : "*:*";
+  }
+  const parts = ip.split(".");
+  const octetsOk = parts.length === 4 && parts.every((p) => /^\d{1,3}$/.test(p) && Number(p) <= 255);
+  if (!octetsOk) return "*.*.*.*";
+  return `${parts[0]}.${parts[1]}.${parts[2]}.*`;
 }

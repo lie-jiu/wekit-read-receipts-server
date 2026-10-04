@@ -6,13 +6,16 @@
  *   - DO 内置 SQLite（ctx.storage.sql）承载数据库，同步 API 与 bun:sqlite 语义一致（见 do-sqlite.ts）；
  *   - 单实例令进程内限流 / 定位缓存恢复「全局唯一进程」语义；
  *   - Cron Triggers 经 /internal/cron/* 触发定时任务，以 CRON_KEY 鉴权，外部请求无法调用。
+ * SPA 静态产物不进 DO：由 assets 绑定在边缘直接回文件，路径归属判定与 Bun 侧共用 src/spa.ts。
  *
  * 部署：wrangler deploy（配置见 wrangler.jsonc）；机密用 `wrangler secret put` 注入
  * （ADMIN / INVITE_CODE / CRON_KEY 等），vars 与 secrets 会自动出现在 process.env。
+ * 产物目录 wekit-read-insights/dist 不在版本库里，deploy 前须先 `bun run web:build`。
  */
 import app from "../src/app";
 import { migrate, setSqliteBackend } from "../src/db";
 import { setFormulaStore } from "../src/levels";
+import { resolveStatic, withStaticHeaders } from "../src/spa";
 import { backfillStats, dailyCleanup } from "../src/stats";
 import { timingSafeEqual } from "../src/utils";
 import { doSqlite } from "./do-sqlite";
@@ -21,6 +24,8 @@ import { formulaDbStore } from "./levels-env-db";
 export type Env = {
   /** Durable Object 绑定（wrangler.jsonc durable_objects.bindings） */
   APP: DurableObjectNamespace;
+  /** SPA 构建产物（wrangler.jsonc assets.directory，deploy 时随 Worker 一起上传） */
+  ASSETS: Fetcher;
   /** 定时任务触发密钥：`wrangler secret put CRON_KEY`；未设置时内部 cron 端点拒绝一切请求 */
   CRON_KEY?: string;
 } & Record<string, string>;
@@ -79,6 +84,16 @@ export class App {
 
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
+    const url = new URL(req.url);
+    const target = resolveStatic(url.pathname);
+    if (target) {
+      if (target.kind === "redirect") return Response.redirect(new URL(target.to, url).href, 307);
+      /* 重写为产物内的实际文件名再取：SPA 文档在 dist 里就叫 index.html，而它对外挂在 SPA_PATH 下。
+       * run_worker_first 让每个请求都先进到这里，所以旧 SSR 页面（含 `/`）不会被产物抢走；
+       * 命中不到文件时落回 DO 给 JSON 404，而不是让 assets 的错误页伪装成接口响应。 */
+      const res = await env.ASSETS.fetch(new Request(new URL(`/${target.file}`, url).href, req));
+      if (res.status !== 404) return withStaticHeaders(res, target);
+    }
     /* idFromName("singleton")：全账户唯一实例，限流与缓存才有全局语义 */
     return env.APP.get(env.APP.idFromName("singleton")).fetch(req);
   },

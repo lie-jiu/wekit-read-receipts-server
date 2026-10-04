@@ -7,8 +7,8 @@ import {
   retentionMonthsFor,
 } from "../config";
 import { audit } from "../auth";
-import { sqlite, stmt } from "../db";
-import { clientIp, overLimit, overLimitWxId } from "../rate-limit";
+import { sqlite, stmt, syncMessageCount } from "../db";
+import { clientIp, overLimit, overLimitWxId, UNKNOWN_IP } from "../rate-limit";
 import { computeId, isValidId, isValidWxId, utcDate, utcMonthsAgo, utcNow } from "../utils";
 
 /** 客户端打点 / 批量上报（无状态、无鉴权） */
@@ -98,12 +98,16 @@ trackingApp.post("/register", async (c) => {
         .run(id, wxId, content, now);
       if (res.changes === 0) return false;
 
-      // 注册新消息时，自动将消息来源 IP 写入该消息的 IP 黑名单（静默，不影响打点与已读记录）
-      sqlite
-        .query("INSERT OR IGNORE INTO ip_block_message (id, ip, created_at) VALUES (?, ?, ?)")
-        .run(id, ip, now);
+      // 注册新消息时，自动将消息来源 IP 写入该消息的 IP 黑名单（静默，不影响打点与已读记录）。
+      // UNKNOWN_IP 跳过：它不是地址而是解析失败的哨兵，拉黑它等于把这条消息的全部已读过滤掉
+      if (ip !== UNKNOWN_IP) {
+        sqlite
+          .query("INSERT OR IGNORE INTO ip_block_message (id, ip, created_at) VALUES (?, ?, ?)")
+          .run(id, ip, now);
+      }
 
-      sqlite.query("UPDATE users SET message_count = message_count + 1 WHERE wx_id = ?").run(wxId);
+      // message_count 不在这里 +1：同一个事务末尾按 messages 实存行数重算（含配额淘汰），
+      // 两处都写只会让人猜哪一处是权威的
       sqlite
         .query(
           "INSERT INTO registration_stats (date, wx_id, count) VALUES (?, ?, 1) ON CONFLICT (date, wx_id) DO UPDATE SET count = count + 1",
@@ -130,9 +134,7 @@ trackingApp.post("/register", async (c) => {
           sqlite.query("DELETE FROM messages WHERE id = ?").run(m.id);
         }
       }
-      sqlite
-        .query("UPDATE users SET message_count = (SELECT COUNT(*) FROM messages WHERE wx_id = ?) WHERE wx_id = ?")
-        .run(wxId, wxId);
+      syncMessageCount(wxId);
     })();
 
     ids.push(id);
