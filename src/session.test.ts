@@ -7,9 +7,16 @@ process.env.ADMIN = "admin_wx";
 const { sqlite, migrate } = await import("./db");
 const { default: app } = await import("./app");
 const { geoQuotaFor, quotaFor, retentionMonthsFor } = await import("./levels");
+const { resetRateLimits } = await import("./rate-limit");
 const { sha256Hex, utcDate } = await import("./utils");
 
 migrate();
+
+/* 复位限流窗口：多个测试文件共享一个进程，/admin/* 的 30/分 桶会被前序套件打满
+ * （routes.test.ts 的 setIpResolver 还让后续请求共用同一个 IP 键，更容易堆高），
+ * 到本文件的 audit 断言就拿到 429 而不是 403/200 —— CI 上文件顺序与本地不同，正是这样红的。
+ * 清空窗口让本文件与执行顺序无关；窗口按固定时钟翻页，套件跑得再快也不会自己复位。 */
+resetRateLimits();
 
 type MeResponse = {
   wxId: string;

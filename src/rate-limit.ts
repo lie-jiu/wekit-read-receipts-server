@@ -87,6 +87,15 @@ export function setIpResolver(fn: IpResolver | null): void {
 }
 
 /**
+ * 测试钩子：清空全部限流窗口。
+ * bun test 的多个套件共享一个进程，某个桶（如 admin 30/分）被前序套件打满后，
+ * 后序断言会拿到 429 而不是业务状态码；窗口是固定时钟的，套件跑得再快也不会自己翻页。
+ */
+export function resetRateLimits(): void {
+  generations.clear();
+}
+
+/**
  * IP 解析不出来时的占位值（app.request 测试、无 requestIP 且无 CF-Connecting-IP 的本地环境）。
  * 它不是地址而是哨兵：绝不能进 IP 黑名单 —— 打点失败时 reads.ip 同样是它，
  * 一旦拉黑 "unknown" 就等于把这条消息的全部已读过滤掉。

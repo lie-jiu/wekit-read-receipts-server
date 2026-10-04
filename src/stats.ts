@@ -160,15 +160,34 @@ export function backfillStats(): number {
       .query("SELECT COUNT(*) AS n FROM reads WHERE rowid <= ? AND timestamp > ?")
       .get(cur.rid, cur.ts) as { n: number };
     if (reused.n > 0) {
-      // 必须清全部派生表：漏一张就会被 aggregateSince(0) 重算成「旧值 + 全量」
-      for (const table of DERIVED_STAT_TABLES) {
-        sqlite.query(`DELETE FROM ${table}`).run();
-      }
-      aggregateSince(0);
+      rebuildWithinTransaction();
     } else {
       aggregateSince(cur.rid);
     }
     return 0;
+  })();
+}
+
+/** 清空全部派生表后从零聚合（必须在事务内调用；游标随 aggregateSince 一并推进） */
+function rebuildWithinTransaction(): void {
+  // 必须清全部派生表：漏一张就会被 aggregateSince(0) 重算成「旧值 + 全量」
+  for (const table of DERIVED_STAT_TABLES) {
+    sqlite.query(`DELETE FROM ${table}`).run();
+  }
+  aggregateSince(0);
+}
+
+/**
+ * 全量重建派生滚表并把游标推到最新（事务内，幂等）。
+ *
+ * 与 backfillStats 的复用检测是同一个盲区的两面：检测判据是「rowid ≤ 游标但时间戳晚于游标」，
+ * 依赖写库时 rowid 与时间同序。测试夹具会把历史时间戳的行插到共享库的游标之后
+ * （多个套件共用一个 :memory: 库，别的套件删过行、rowid 被复用），恰好落在盲区里被增量路径跳过；
+ * 夹具改用本函数后与游标位置无关。运行期若判定复用不可信，也走同一段重建逻辑。
+ */
+export function rebuildStats(): void {
+  sqlite.transaction(() => {
+    rebuildWithinTransaction();
   })();
 }
 

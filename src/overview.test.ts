@@ -6,7 +6,7 @@ process.env.ADMIN = "admin_wx";
 
 const { sqlite, migrate } = await import("./db");
 const { default: app } = await import("./app");
-const { backfillStats } = await import("./stats");
+const { backfillStats, rebuildStats } = await import("./stats");
 const { sha256Hex } = await import("./utils");
 
 migrate();
@@ -82,7 +82,12 @@ read("a", "10.0.0.2", "2026-01-05 22:00:00", IOS, null);
 // b：跨到次日 01:00，已定位
 read("b", "10.0.0.3", "2026-01-07 01:00:00", ANDROID, ["中国", "浙江", "中国联通"]);
 
-backfillStats();
+/* 全量重算而不是增量回填：多个套件共享一个 :memory: 库与同一个 stats_cursor，
+ * 别的套件删过 reads 后（rowid 被复用）游标可能停在被删的 rowid 上；本文件夹具的
+ * 时间戳（2026-01）早于游标时间，恰好落进复用检测的盲区（它只发现「边界内时间更晚」的行），
+ * 增量回填会把复用到的行静默跳过 —— CI 上 overview 排在最后就是这个后果：
+ * live 查询看得到三行、rollup 只有两行。全量重算与游标位置无关，顺带把共享库抹平回一致。 */
+rebuildStats();
 
 /** app.request 的返回类型是 Response | Promise<Response>，必须先 await 再取 json */
 async function fetchOverview(qs = ""): Promise<Overview> {
