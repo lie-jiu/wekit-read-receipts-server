@@ -120,7 +120,7 @@ wekit-read-receipts-server/
 ├── src/
 │   ├── app.ts            # Hono 聚合层：全局安全头/请求体上限/限流中间件，以 app.route 挂载子路由，导出 app
 │   ├── http-helpers.ts   # 公共 HTTP 辅助：parseBody、clampLimit、鉴权/归属校验等
-│   ├── config.ts         # 环境变量读取、安全头与三套 CSP（LOGIN/DASHBOARD/INSIGHTS）、限流档位、像素常量
+│   ├── config.ts         # 环境变量读取、安全头与全站唯一 CSP（INSIGHTS）、限流档位、像素常量
 │   ├── spa.ts            # SPA 静态托管：resolveStatic 路径归属判定（双运行时共用）+ Bun 侧兜底中间件
 │   ├── db.ts             # SQLite 后端抽象（同步接口）与版本化迁移（Bun: PRAGMA user_version / Workers: meta 表）
 │   ├── backends/
